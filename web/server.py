@@ -44,6 +44,7 @@ from src.llm_client import LLMClient
 from src.model_registry import list_models, sync_models_from_ollama
 from src.models_db import Job, ModelRecord, User
 from src.worker import start_inprocess_worker
+from web.brain_routes import router as brain_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 store = AgentStore()
@@ -69,6 +70,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="MulteAgent API", version="0.4.0", lifespan=lifespan)
+app.include_router(brain_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

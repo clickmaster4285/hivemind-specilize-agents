@@ -149,6 +149,20 @@ def test_ingest_lifecycle(folder, config):
     assert status_row == (1, "ok")
 
 
+def test_older_chunker_output_is_rechunked_in_place(folder, config):
+    assert _ingest(config).new == 2
+    # pretend zones.md was chunked by an older chunker version
+    with psycopg.connect(brain_db.owner_url(config), autocommit=True) as conn:
+        conn.execute(
+            "UPDATE brain.documents SET metadata = metadata || '{\"chunker\": \"0\"}' WHERE url = 'file:zones.md'"
+        )
+    stats = _ingest(config)
+    assert (stats.rechunked, stats.same, stats.new, stats.changed) == (1, 1, 0, 0)
+    docs = [(u, v, s) for u, v, s, _ in _documents(config)]
+    assert ("file:zones.md", 1, "active") in docs and ("file:zones.md", 2, "active") not in docs  # no new version
+    assert _ingest(config).same == 2  # now up to date
+
+
 def test_disabled_source_is_refused(folder, config):
     with brain_db.connect(config, system=True) as conn:
         conn.execute("UPDATE brain.sources SET enabled = false WHERE slug = %s", (SLUG,))

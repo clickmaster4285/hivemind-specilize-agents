@@ -3,8 +3,8 @@
 1. Split the Markdown into sections at headings; each section remembers its heading path
    ("DNS zones > Zone types > Primary zone").
 2. Inside a section, pack whole blocks (paragraph / list / table / code block) into chunks of
-   about TARGET_TOKENS, never more than MAX_TOKENS — except a single code block or table that is
-   larger on its own: it stays whole rather than being cut.
+   about TARGET_TOKENS, never more than MAX_TOKENS. A code block larger than that stays whole;
+   a table larger than that is split by rows, repeating its header row in every part.
 3. Consecutive chunks of the same section overlap by ~15% (trailing prose blocks are repeated)
    so a fact on a boundary is still found.
 4. Tiny sections are merged into the next one so we do not store "heading + one line" chunks.
@@ -15,6 +15,9 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
+
+# Bump when chunking output changes: ingestion re-chunks stored documents made by an older version.
+CHUNKER_VERSION = 2
 
 TARGET_TOKENS = 450
 MAX_TOKENS = 600
@@ -39,10 +42,35 @@ def estimate_tokens(text: str) -> int:
     return max(1, math.ceil(len(text) / 4))
 
 
+def _is_code(block: str) -> bool:
+    return bool(_FENCE.match(block.lstrip().split("\n", 1)[0]))
+
+
+def _is_table(block: str) -> bool:
+    return block.lstrip().startswith("|")
+
+
 def _is_atomic(block: str) -> bool:
-    """Code blocks and tables must never be split."""
-    first = block.lstrip().split("\n", 1)[0]
-    return bool(_FENCE.match(first)) or first.lstrip().startswith("|")
+    """Code blocks and tables are never cut mid-way (big tables are split only at row borders)."""
+    return _is_code(block) or _is_table(block)
+
+
+def _split_table(block: str) -> list[str]:
+    """Split a large Markdown table into parts of whole rows, each starting with the header."""
+    lines = block.strip().split("\n")
+    has_separator = len(lines) > 1 and set(lines[1].replace("|", "").strip()) <= set("-: ")
+    header = lines[:2] if has_separator else lines[:1]
+    rows = lines[len(header):]
+    parts: list[str] = []
+    current: list[str] = []
+    for row in rows:
+        if current and estimate_tokens("\n".join(header + current + [row])) > TARGET_TOKENS:
+            parts.append("\n".join(header + current))
+            current = []
+        current.append(row)
+    if current:
+        parts.append("\n".join(header + current))
+    return parts or [block]
 
 
 def _sections(md: str) -> list[tuple[list[str], str]]:
@@ -141,10 +169,12 @@ def _pack(blocks: list[str]) -> list[str]:
     """Greedy packing of blocks into chunk texts with overlap between neighbours."""
     units: list[str] = []
     for block in blocks:
-        if not _is_atomic(block) and estimate_tokens(block) > MAX_TOKENS:
-            units.extend(_split_long_prose(block))
-        else:
+        if estimate_tokens(block) <= MAX_TOKENS or _is_code(block):
             units.append(block)
+        elif _is_table(block):
+            units.extend(_split_table(block))
+        else:
+            units.extend(_split_long_prose(block))
 
     chunks: list[str] = []
     current: list[str] = []

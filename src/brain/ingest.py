@@ -25,7 +25,7 @@ from pgvector import Vector
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from src.brain.chunking import chunk_markdown
+from src.brain.chunking import CHUNKER_VERSION, Chunk, chunk_markdown
 from src.brain.db import BrainDBError, connect
 from src.brain.embed import EmbedError, embed_texts, passage_text
 from src.brain.extract import extract_file
@@ -44,6 +44,7 @@ class IngestStats:
     new: int = 0
     changed: int = 0
     same: int = 0
+    rechunked: int = 0
     removed: int = 0
     failed: int = 0
     chunks: int = 0
@@ -67,9 +68,27 @@ def _load_source(conn, slug: str) -> dict[str, Any] | None:
 
 
 def _active_version(conn, source_id: int, url: str, *, lock: bool = False):
-    sql = """SELECT id, content_hash, version FROM brain.documents
+    """(id, content_hash, version, chunker version) of the active document, or None."""
+    sql = """SELECT id, content_hash, version, metadata->>'chunker' FROM brain.documents
              WHERE source_id = %s AND url = %s AND status = 'active'"""
     return conn.execute(sql + (" FOR UPDATE" if lock else ""), (source_id, url)).fetchone()
+
+
+def _insert_chunks(conn, doc_id: int, source: dict[str, Any], chunks: list[Chunk], vectors) -> None:
+    with conn.cursor() as cur:
+        cur.executemany(
+            """INSERT INTO brain.chunks
+                 (document_id, chunk_index, heading_path, content, token_count, embedding,
+                  collection_id, scope, owner_id, agent_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            [
+                (
+                    doc_id, c.index, c.heading_path or None, c.content, c.token_count, Vector(v),
+                    source["collection_id"], source["scope"], source["owner_id"], source["agent_id"],
+                )
+                for c, v in zip(chunks, vectors)
+            ],
+        )
 
 
 def _ingest_file(
@@ -81,14 +100,15 @@ def _ingest_file(
     config: Config,
     embed: Embedder,
 ) -> tuple[str, int]:
-    """Returns ('new' | 'changed' | 'same', chunks written)."""
+    """Returns ('new' | 'changed' | 'same' | 'rechunked', chunks written)."""
     raw = file.path.read_text(encoding="utf-8", errors="replace")
     doc = extract_file(file.path.name, raw, fallback_title=file.path.stem.replace("-", " "))
     content_hash = hashlib.sha256(doc.content_md.encode("utf-8")).hexdigest()
 
     with connect(config, system=True) as conn:
         current = _active_version(conn, source["id"], file.url)
-        if current and current[1] == content_hash:
+        unchanged = bool(current and current[1] == content_hash)
+        if unchanged and current[3] == str(CHUNKER_VERSION):
             conn.execute(
                 "UPDATE brain.documents SET fetched_at = %s, metadata = metadata - 'missing_runs' WHERE id = %s",
                 (_now(), current[0]),
@@ -101,7 +121,23 @@ def _ingest_file(
         raise ValueError("no text left after cleaning")
     vectors = embed([passage_text(doc.title, c.heading_path, c.content) for c in chunks])
 
-    metadata = {**doc.metadata, "path": file.rel_path}
+    if unchanged:
+        # Same text, made by an older chunker: replace its chunks in place (no new version)
+        with connect(config, system=True) as conn:
+            current = _active_version(conn, source["id"], file.url, lock=True)
+            if not current or current[1] != content_hash:
+                raise ValueError("document changed during re-chunking; it will be picked up next run")
+            conn.execute("DELETE FROM brain.chunks WHERE document_id = %s", (current[0],))
+            _insert_chunks(conn, current[0], source, chunks, vectors)
+            conn.execute(
+                """UPDATE brain.documents
+                   SET fetched_at = %s, metadata = (metadata - 'missing_runs') || %s
+                   WHERE id = %s""",
+                (_now(), Jsonb({"chunker": str(CHUNKER_VERSION)}), current[0]),
+            )
+        return "rechunked", len(chunks)
+
+    metadata = {**doc.metadata, "path": file.rel_path, "chunker": str(CHUNKER_VERSION)}
     if doc.description:
         metadata["description"] = doc.description
     if revision:
@@ -124,20 +160,7 @@ def _ingest_file(
                 source["collection_id"], source["scope"], source["owner_id"], source["agent_id"],
             ),
         ).fetchone()[0]
-        with conn.cursor() as cur:
-            cur.executemany(
-                """INSERT INTO brain.chunks
-                     (document_id, chunk_index, heading_path, content, token_count, embedding,
-                      collection_id, scope, owner_id, agent_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                [
-                    (
-                        doc_id, c.index, c.heading_path or None, c.content, c.token_count, Vector(v),
-                        source["collection_id"], source["scope"], source["owner_id"], source["agent_id"],
-                    )
-                    for c, v in zip(chunks, vectors)
-                ],
-            )
+        _insert_chunks(conn, doc_id, source, chunks, vectors)
     return ("changed" if current else "new"), len(chunks)
 
 
@@ -255,11 +278,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    print("\nsource                      status   new  changed  same  removed  failed  chunks   time")
+    print("\nsource                      status   new  changed  same  rechunked  removed  failed  chunks   time")
     for s in results:
         print(
-            f"{s.slug:<27} {s.status:<8} {s.new:>3} {s.changed:>8} {s.same:>5} {s.removed:>8} "
-            f"{s.failed:>7} {s.chunks:>7} {s.seconds:>6}s"
+            f"{s.slug:<27} {s.status:<8} {s.new:>3} {s.changed:>8} {s.same:>5} {s.rechunked:>10} "
+            f"{s.removed:>8} {s.failed:>7} {s.chunks:>7} {s.seconds:>6}s"
         )
     return 0 if all(s.status == "ok" for s in results) else 2
 

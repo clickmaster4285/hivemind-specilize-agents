@@ -1,0 +1,195 @@
+# Brain evaluation set (doc/BRAIN_DESIGN.md §9). Run: python -m src.brain.evaluate
+# docs: acceptable answer pages, matched against the end of the document URL
+#       (".../networking/dns/aging-scavenging" matches "aging-scavenging").
+# out_of_scope: the brain must answer "not enough evidence" (nothing in the knowledge base covers it).
+# Source covered so far: ms-windows-server-dns. Add questions whenever a source is added.
+
+questions:
+  # ── English ─────────────────────────────────────────────────────────
+  - id: en-doh-enable
+    lang: en
+    question: How do I enable DNS over HTTPS on the DNS server?
+    docs: [enable-dns-over-https-server]
+  - id: en-ports
+    lang: en
+    question: Which network ports does DNS use?
+    docs: [network-ports]
+  - id: en-aging
+    lang: en
+    question: What is the difference between DNS aging and scavenging?
+    docs: [aging-scavenging, configure-aging-scavenging]
+  - id: en-conditional-forwarder
+    lang: en
+    question: How do I configure a conditional forwarder for another domain?
+    docs: [forwarding, manage-dns-zones, quickstart-install-configure-dns-server]
+  - id: en-sign-zone
+    lang: en
+    question: How do I sign a DNS zone with DNSSEC?
+    docs: [sign-dnssec-zone]
+  - id: en-key-master
+    lang: en
+    question: What does the DNSSEC Key Master do?
+    docs: [dnssec-key-master, transfer-dnssec-key-master]
+  - id: en-transfer-key-master
+    lang: en
+    question: How do I move the Key Master role to another DNS server?
+    docs: [transfer-dnssec-key-master]
+  - id: en-zone-types
+    lang: en
+    question: What zone types are there, like primary, secondary and stub zones?
+    docs: [zone-types]
+  - id: en-reverse
+    lang: en
+    question: How does a reverse lookup find a name from an IP address?
+    docs: [reverse-lookup]
+  - id: en-logging
+    lang: en
+    question: How do I enable DNS debug and analytical event logging?
+    docs: [dns-logging-and-diagnostics]
+  - id: en-split-brain
+    lang: en
+    question: How can I give internal and external clients different answers for the same name?
+    docs: [split-brain-DNS-deployment, dns-sb-with-ad]
+  - id: en-geo
+    lang: en
+    question: How do I send users to the nearest datacenter based on their location?
+    docs: [primary-geo-location, primary-secondary-geo-location, app-lb-geo]
+  - id: en-secure-update
+    lang: en
+    question: What are secure dynamic updates?
+    docs: [dynamic-update]
+  - id: en-client-troubleshoot
+    lang: en
+    question: A Windows client cannot resolve names. How do I troubleshoot it?
+    docs: [troubleshoot-dns-client]
+  - id: en-install
+    lang: en
+    question: How do I install the DNS Server role with PowerShell?
+    docs: [quickstart-install-configure-dns-server]
+  - id: en-a-record
+    lang: en
+    question: How do I add a host A record?
+    docs: [manage-resource-records]
+  - id: en-anycast
+    lang: en
+    question: What is anycast DNS?
+    docs: [anycast]
+  - id: en-nrpt
+    lang: en
+    question: What is the Name Resolution Policy Table used for?
+    docs: [name-resolution-policy-table]
+  - id: en-doh-problems
+    lang: en
+    question: DNS over HTTPS stopped working on my server, what should I check?
+    docs: [troubleshoot-dns-over-https-server, monitor-dns-over-https]
+  - id: en-cmdlet-forwarder
+    lang: en
+    question: What does Set-DnsServerForwarder change?
+    docs: [forwarding, quickstart-install-configure-dns-server]
+  - id: en-event-541
+    lang: en
+    question: What does DNS audit event 541 mean?
+    docs: [dns-logging-and-diagnostics]
+  - id: en-wins
+    lang: en
+    question: How does DNS use WINS lookup?
+    docs: [wins-lookup]
+
+  # ── Hinglish ────────────────────────────────────────────────────────
+  - id: hi-aging
+    lang: hi-Latn
+    question: purane DNS records apne aap delete kaise honge?
+    docs: [aging-scavenging, configure-aging-scavenging]
+  - id: hi-forwarder
+    lang: hi-Latn
+    question: DNS server pe forwarder kaise add karein?
+    docs: [forwarding, quickstart-install-configure-dns-server]
+  - id: hi-doh
+    lang: hi-Latn
+    question: server pe DNS over HTTPS kaise enable karte hain?
+    docs: [enable-dns-over-https-server]
+  - id: hi-sign
+    lang: hi-Latn
+    question: zone ko DNSSEC se sign kaise karein?
+    docs: [sign-dnssec-zone]
+  - id: hi-ports
+    lang: hi-Latn
+    question: DNS kaun kaun se ports use karta hai?
+    docs: [network-ports]
+  - id: hi-client
+    lang: hi-Latn
+    question: client pe naam resolve nahi ho raha, kya check karun?
+    docs: [troubleshoot-dns-client]
+  - id: hi-reverse
+    lang: hi-Latn
+    question: IP address se computer ka naam kaise pata karein?
+    docs: [reverse-lookup]
+  - id: hi-time-of-day
+    lang: hi-Latn
+    question: din ke time ke hisaab se alag DNS response kaise dein?
+    docs: [dns-tod-intelligent, dns-tod-azure-cloud-app-server]
+  - id: hi-logging
+    lang: hi-Latn
+    question: DNS ki logging kaise on karein?
+    docs: [dns-logging-and-diagnostics]
+  - id: hi-zone-types
+    lang: hi-Latn
+    question: primary aur secondary zone mein kya fark hai?
+    docs: [zone-types]
+
+  # ── Exact identifiers: terse, the way people paste a cmdlet name ────
+  # (each identifier appears on only 1–2 pages — tests the keyword/exact side of hybrid search)
+  - id: ex-zone-aging
+    lang: en
+    question: What does Get-DnsServerZoneAging show?
+    docs: [configure-aging-scavenging]
+  - id: ex-nrpt-rule
+    lang: hi-Latn
+    question: Get-DnsClientNrptRule ka output kaise samjhein?
+    docs: [name-resolution-policy-table]
+  - id: ex-stub-zone
+    lang: en
+    question: Add-DnsServerStubZone example
+    docs: [manage-dns-zones]
+  - id: ex-clear-cache
+    lang: en
+    question: When should I run Clear-DnsClientCache?
+    docs: [troubleshoot-dns-server]
+  - id: ex-zone-scope
+    lang: en
+    question: Get-DnsServerZoneScope
+    docs: [primary-secondary-geo-location]
+  - id: ex-unsign
+    lang: hi-Latn
+    question: Invoke-DnsServerZoneUnSign kab use karein?
+    docs: [sign-dnssec-zone]
+  - id: ex-encryption
+    lang: en
+    question: Set-DnsServerEncryptionProtocol parameters
+    docs: [enable-dns-over-https-server, troubleshoot-dns-over-https-server]
+  - id: ex-delegation
+    lang: en
+    question: Add-DnsServerZoneDelegation
+    docs: [manage-dns-zones]
+
+  # ── Out of scope: the right answer is "not enough evidence" ─────────
+  - id: oos-vlan
+    lang: en
+    question: How do I configure a VLAN on a Cisco switch?
+    out_of_scope: true
+  - id: oos-biryani
+    lang: en
+    question: What is a good recipe for chicken biryani?
+    out_of_scope: true
+  - id: oos-linux-root
+    lang: en
+    question: How do I reset a forgotten Linux root password?
+    out_of_scope: true
+  - id: oos-instagram
+    lang: hi-Latn
+    question: Instagram ads ka budget kaise set karein?
+    out_of_scope: true
+  - id: oos-cricket
+    lang: en
+    question: Who won the cricket world cup in 2011?
+    out_of_scope: true

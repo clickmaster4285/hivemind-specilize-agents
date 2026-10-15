@@ -305,10 +305,10 @@ Whatever the input, the brain stores **one internal format: clean Markdown** (`d
 1. **Spot exact terms** in the question with simple patterns — CVE IDs, error codes (`0x…`, `E…`), version numbers, `--flags`, file paths.
 2. **Meaning search:** embed the question (with Qwen3's query instruction, e.g. *"Given an IT question, retrieve passages that answer it"*) → top 30 chunks by cosine similarity.
 3. **Keyword search:** `websearch_to_tsquery('simple', …)` → top 30 chunks. Exact terms from step 1 are required matches here.
-4. **Merge** both lists with **Reciprocal Rank Fusion** (RRF, k = 60) — a chunk ranked high by both methods rises to the top. Simple, no tuning, robust.
+4. **Merge** with **weighted Reciprocal Rank Fusion** (RRF, k = 60). *Measured on the eval set (2026-10-15), equal-weight RRF made ranking worse (MRR 0.81 vs 0.88 meaning-only): broad keyword matches on common words outvoted correct meaning matches.* Final weights: meaning 1.0 · passages containing **every exact identifier** 1.0 (extra vote) · broad keyword matches 0 (kept only as fallback candidates). Result: MRR 0.93, and identifier questions 0.79 → 1.00. Weights live in `src/brain/retrieve.py`; re-measure when sources change.
 5. **Filter:** only `active` documents, only chunks the account may see, optionally only certain collections (used by specialists later).
 6. **Diversify:** at most 2 chunks per document, then take the top **6–8** chunks within a ~3,000-token budget (fits the 8K context together with the question and answer).
-7. **Evidence check:** if the best match is below a relevance threshold (tuned on the test set) → answer *"not enough evidence in the knowledge base"* instead of guessing.
+7. **Evidence check:** if the best meaning match is below **0.49** (and no exact identifier matched) → answer *"not enough evidence in the knowledge base"* instead of guessing. Tuned 2026-10-15: answerable questions scored ≥ 0.526, unrelated ones ≤ 0.451. The margin is small — re-tune as sources grow.
 
 **Re-ranking** (a second model that re-scores the top 30) is **not** in Phase 1: it costs VRAM or CPU time. We add it only if the test set shows retrieval mistakes that it would fix.
 
