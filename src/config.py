@@ -81,6 +81,7 @@ class Config:
     # Knowledge brain (Postgres + pgvector). Owner URL runs migrations; the app connects as brain_app.
     brain_database_url: str = ""
     brain_app_password: str = ""
+    model_embed: str = "qwen3-embedding:0.6b"
 
     @classmethod
     def from_env(cls) -> Config:
@@ -167,6 +168,7 @@ class Config:
             llm_think=_optional_bool("LLM_THINK"),
             brain_database_url=os.getenv("BRAIN_DATABASE_URL", ""),
             brain_app_password=os.getenv("BRAIN_APP_PASSWORD", ""),
+            model_embed=os.getenv("MODEL_EMBED", "qwen3-embedding:0.6b"),
         )
 
     def with_model(self, model: str | None) -> Config:

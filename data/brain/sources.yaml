@@ -14,6 +14,8 @@ sources:
     # Cite the published page, not the raw file:
     #   WindowsServerDocs/<path>.md -> https://learn.microsoft.com/en-us/windows-server/<path>
     page_url: "https://learn.microsoft.com/en-us/windows-server/{path}"
+    page_root: WindowsServerDocs
+    language: en
     collection: it
     publisher: Microsoft
     licence: CC-BY-4.0            # repo LICENSE file, checked 2026-10-15 (code samples: MIT, LICENSE-CODE)
