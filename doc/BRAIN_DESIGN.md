@@ -294,6 +294,20 @@ Whatever the input, the brain stores **one internal format: clean Markdown** (`d
 | Fast | Tiny and quick to parse; change detection is a simple hash/diff |
 
 **Inputs accepted in Phase 1:** HTML web pages (most public docs) and Markdown/plain text (docs published in GitHub repos — usually the cleanest source).
+
+### 4.3 Web sources and automatic refresh (built in B5)
+
+| Kind | How pages are found |
+|------|---------------------|
+| `web_page` | `url` (+ optional `urls`), following links `crawl_depth` levels deep (max 3) — same host and `include` URL pattern only |
+| `sitemap` | every page in the sitemap (sitemap indexes followed) that matches `include` |
+| `feed` | every RSS / Atom item that matches `include` |
+
+- **Polite fetching** (`src/brain/web.py`): identifies itself, obeys `robots.txt`, 1 request/second per host, refuses redirects to other hosts, 5 MB / 30 s limits, text content only.
+- **HTML → Markdown:** the page's main content area (`<main>`, `<article>`, `role=main`, …) without navigation, scripts or "¶" anchors, converted with `markdownify`. (Tried `trafilatura` first: it mangled inline code and tables on documentation pages.)
+- **Change detection:** the stored `ETag` / `Last-Modified` are sent back; an unchanged page costs an HTTP **304** and no download. Changed content → new version; old version kept as `superseded`.
+- **Outage protection:** if the start page / sitemap / feed cannot be loaded, the run stops — an outage is never mistaken for "every page disappeared".
+- **Scheduler** (`src/brain/scheduler.py`, started with the API): every `BRAIN_SCHEDULER_MINUTES` (30) it syncs `sources.yaml` and refreshes sources whose `refresh_every` has passed. Optional `BRAIN_REFRESH_WINDOW` (e.g. `01-06`). A Postgres advisory lock keeps it to one refresh at a time across processes. Manual run: `python -m src.brain.ingest --due`.
 **Later, only when a source needs it:** PDF (parsed in a sandboxed step; PDFs are harder to extract cleanly and can carry malicious content), then Word/PowerPoint. Each converter's only job is "input → Markdown", so adding one never touches the rest of the brain.
 
 ---
@@ -335,7 +349,9 @@ src/brain/
   db.py          connection pool (psycopg + pgvector), sets brain.account_id per request
   migrate.py     applies deploy/brain-migrations/*.sql in order
   sources.py     add / list / enable / disable sources
-  fetch.py       HTTP fetch: allowlist, robots.txt, rate limit, ETag
+  fetch.py       lists a source's files/pages (git, local folder, web kinds)
+  web.py         polite HTTP: robots.txt, rate limit, same-host redirects, ETag/304, crawl, sitemap, feed
+  scheduler.py   automatic refresh of due sources (advisory lock, optional time window)
   extract.py     HTML / Markdown → clean Markdown + headings (PDF later)
   chunking.py    heading-aware chunking
   embed.py       qwen3-embedding calls (CPU, batched, query instruction)

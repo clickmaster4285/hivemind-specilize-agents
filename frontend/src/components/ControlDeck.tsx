@@ -544,14 +544,14 @@ export default function ControlDeck() {
     [jobById, selectThreadId],
   );
 
-  useEffect(() => {
-    refreshHealth();
-    const timer = setInterval(() => {
-      void refreshHealth();
-      if (getToken()) void refreshModels(false);
-    }, 15000);
-    return () => clearInterval(timer);
-  }, [refreshHealth, refreshModels]);
+  // useEffect(() => {
+  //   refreshHealth();
+  //   const timer = setInterval(() => {
+  //     void refreshHealth();
+  //     if (getToken()) void refreshModels(false);
+  //   }, 15000);
+  //   return () => clearInterval(timer);
+  // }, [refreshHealth, refreshModels]);
 
   useEffect(() => {
     setProjects(listProjects());

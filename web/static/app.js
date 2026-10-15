@@ -388,4 +388,4 @@ showEmptyFeed();
 updateModeLabels();
 refreshHealth();
 loadAgents();
-setInterval(refreshHealth, 15000);
+// setInterval(refreshHealth, 15000);
