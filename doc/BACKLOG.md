@@ -119,4 +119,5 @@ To build:
 |------|------|-------|
 | 2026-10-14 | Model setup | `LLM_THINK` setting added; all roles on `qwen3.5:9b`; embedding models hidden from chat model list |
 | 2026-10-14 | Backlog created | This file |
+| 2026-10-15 | **B1 done** — brain schema | `deploy/brain-migrations/001_init.sql` applied via `python -m src.brain.migrate`; 6 tables + `source_status` view in schema `brain`; app login `brain_app` (no superuser, no RLS bypass); 12/12 RLS tests pass (`python -m pytest tests/test_brain_rls.py`). First source registered: Microsoft Windows Server DNS docs (CC-BY-4.0) in `data/brain/sources.yaml`. Gotcha: use `127.0.0.1`, not `localhost`, in `BRAIN_DATABASE_URL` (Windows tries IPv6 first and hangs) |
 | 2026-10-14 | Brain database up | Docker `pgvector/pgvector:0.8.0-pg17` on 127.0.0.1:5432 (`docker compose up -d db`); extensions `vector` + `pg_trgm`; password + `BRAIN_DATABASE_URL` in `.env`. Search test: Hinglish↔English vector matches work; exact CVE ID found by full-text; trigram weak on very short words (`kese`/`kaise` = 0.22) |

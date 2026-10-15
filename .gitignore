@@ -8,7 +8,11 @@ logs/*.md
 logs/*.txt
 !logs/.gitkeep
 agents/agents.json
-data/
+data/*
+# Brain source registry + test questions are tracked (doc/BRAIN_DESIGN.md §4.1)
+!data/brain/
+!data/brain_eval/
+data/brain_eval/results/
 artifacts/
 models/checkpoints/*.safetensors
 models/checkpoints/*.ckpt

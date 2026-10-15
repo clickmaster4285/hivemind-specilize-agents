@@ -1,0 +1,25 @@
+# Approved knowledge sources for the brain — the single list of what the brain may learn from.
+# Every change here (add / edit / remove) is tracked by Git. Synced into brain.sources (B2).
+# Rules (doc/BRAIN_DESIGN.md §4.1):
+#   - a public source needs a verified licence before it can be enabled
+#   - removing an entry disables the source; its documents are kept for audit
+#   - start small (max_pages), measure with the test set, then grow
+
+sources:
+  - slug: ms-windows-server-dns
+    title: Windows Server documentation — DNS
+    kind: git_repo
+    url: https://github.com/MicrosoftDocs/windowsserverdocs
+    include: "WindowsServerDocs/networking/dns/**/*.md"
+    # Cite the published page, not the raw file:
+    #   WindowsServerDocs/<path>.md -> https://learn.microsoft.com/en-us/windows-server/<path>
+    page_url: "https://learn.microsoft.com/en-us/windows-server/{path}"
+    collection: it
+    publisher: Microsoft
+    licence: CC-BY-4.0            # repo LICENSE file, checked 2026-10-15 (code samples: MIT, LICENSE-CODE)
+    refresh_every: 7d
+    max_pages: 150
+    reason: First source — Windows Server DNS administration; clean Markdown, clear licence, updated weekly
+    added_by: admin
+    added_on: 2026-10-15
+    enabled: true

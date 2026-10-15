@@ -78,6 +78,9 @@ class Config:
     api_port: int
     # Ollama "think" flag: None = model default, False = answer directly, True = reason first
     llm_think: bool | None = None
+    # Knowledge brain (Postgres + pgvector). Owner URL runs migrations; the app connects as brain_app.
+    brain_database_url: str = ""
+    brain_app_password: str = ""
 
     @classmethod
     def from_env(cls) -> Config:
@@ -162,6 +165,8 @@ class Config:
             api_host=os.getenv("API_HOST", "0.0.0.0"),
             api_port=int(os.getenv("API_PORT", "8787")),
             llm_think=_optional_bool("LLM_THINK"),
+            brain_database_url=os.getenv("BRAIN_DATABASE_URL", ""),
+            brain_app_password=os.getenv("BRAIN_APP_PASSWORD", ""),
         )
 
     def with_model(self, model: str | None) -> Config:
