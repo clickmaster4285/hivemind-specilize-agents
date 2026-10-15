@@ -9,6 +9,7 @@ from typing import Any
 
 from src.agent_store import AgentStore
 from src.agentic.runtime import run_agentic
+from src.brain.answer import should_use_brain
 from src.conversation import normalize_conversation
 from src.chat_runner import run_chat
 from src.image_gen import run_image_gen
@@ -36,6 +37,7 @@ def process_job(job_id: str, config: Config | None = None) -> None:
             return
         mode = job.mode
         query = job.query
+        user_id = job.user_id
         payload = json.loads(job.payload_json or "{}")
         model_plan = json.loads(job.model_plan_json or "{}")
 
@@ -135,6 +137,12 @@ def process_job(job_id: str, config: Config | None = None) -> None:
             return
 
         if mode == "chat":
+            use_brain = config.brain_enabled and should_use_brain(
+                query,
+                intent=intent,
+                reason=(route or {}).get("reason"),
+                has_images=bool(has_images or images),
+            )
             result = run_chat(
                 query,
                 config=config,
@@ -142,6 +150,9 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 on_progress=on_progress,
                 images=images if (has_images or images) else [],
                 conversation=conversation,
+                use_brain=use_brain,
+                account_id=str(user_id) if user_id is not None else None,
+                job_id=job_id,
             )
             with session_scope(config) as session:
                 if get_job(session, job_id) and get_job(session, job_id).status == "cancelled":

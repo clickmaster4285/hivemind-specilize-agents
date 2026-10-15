@@ -1,4 +1,4 @@
-import type { ChatImage, DebateEvent, FeedItem, Job, JobArtifact, ToolStep } from "@/lib/types";
+import type { BrainSource, ChatImage, DebateEvent, FeedItem, Job, JobArtifact, ToolStep } from "@/lib/types";
 import { formatAgentOutput, formatToolResult, summarizeArgs } from "@/lib/format";
 
 const DOC_KINDS = new Set([
@@ -258,6 +258,10 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
           .map((img) => ({ filename: String(img.filename), mime: img.mime }))
       : undefined;
     const jobId = event.job_id ? String(event.job_id) : undefined;
+    const sources = Array.isArray(event.sources)
+      ? (event.sources as BrainSource[]).filter((s) => s && typeof s.n === "number" && s.title)
+      : undefined;
+    const grounded = typeof event.grounded === "boolean" ? event.grounded : undefined;
     const hasPending = prev.some((item) => item.agentId === event.agent_id && item.pending);
     if (!hasPending) {
       return [
@@ -273,6 +277,8 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
           pending: false,
           jobId,
           imageFiles,
+          sources,
+          grounded,
         },
       ];
     }
@@ -286,6 +292,8 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
             jobId: jobId || item.jobId,
             imageFiles: imageFiles || item.imageFiles,
             artifacts: item.artifacts,
+            sources: sources || item.sources,
+            grounded: grounded ?? item.grounded,
           }
         : item,
     );

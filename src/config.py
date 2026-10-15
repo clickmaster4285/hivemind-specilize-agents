@@ -82,6 +82,11 @@ class Config:
     brain_database_url: str = ""
     brain_app_password: str = ""
     model_embed: str = "qwen3-embedding:0.6b"
+    # Chat answers real questions from the knowledge brain (with citations)
+    brain_enabled: bool = True
+    # No relevant passages: "general" = say so, then answer from the model's own knowledge;
+    #                       "refuse"  = only say the knowledge base does not cover it
+    brain_no_evidence: str = "general"
 
     @classmethod
     def from_env(cls) -> Config:
@@ -169,6 +174,10 @@ class Config:
             brain_database_url=os.getenv("BRAIN_DATABASE_URL", ""),
             brain_app_password=os.getenv("BRAIN_APP_PASSWORD", ""),
             model_embed=os.getenv("MODEL_EMBED", "qwen3-embedding:0.6b"),
+            brain_enabled=_bool("BRAIN_ENABLED", True),
+            brain_no_evidence=(
+                "refuse" if (os.getenv("BRAIN_NO_EVIDENCE") or "").strip().lower() == "refuse" else "general"
+            ),
         )
 
     def with_model(self, model: str | None) -> Config:

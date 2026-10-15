@@ -1224,6 +1224,46 @@ body {
   filter: brightness(1.08);
 }
 
+/* Knowledge-base sources under a grounded answer */
+.brain-sources {
+  margin: 0.6rem 0 0.2rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--teal) 35%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--teal) 6%, var(--panel-2));
+  font-size: 0.78rem;
+}
+
+.brain-sources summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.brain-sources ol {
+  margin: 0.35rem 0 0;
+  padding-left: 1.4rem;
+}
+
+.brain-sources li {
+  margin: 0.2rem 0;
+  overflow-wrap: anywhere;
+}
+
+.brain-sources a {
+  color: var(--teal);
+}
+
+.brain-source-section {
+  color: var(--text);
+}
+
+.brain-source-meta {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .msg-toolbar {
   display: flex;
   flex-wrap: wrap;

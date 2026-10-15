@@ -6,9 +6,17 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from src.brain.answer import answer_question, current_time_text
+from src.brain.db import BrainDBError
+from src.brain.embed import EmbedError
 from src.config import Config
 from src.conversation import format_conversation_block, normalize_conversation
 from src.llm_client import LLMClient
+
+BRAIN_DOWN_NOTICE = (
+    "> **Knowledge base unavailable right now** — this answer is from the model's general knowledge, "
+    "not verified against sources."
+)
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
@@ -53,10 +61,14 @@ def run_chat(
     on_progress: ProgressCallback | None = None,
     images: list[str] | None = None,
     conversation: list[dict[str, str]] | None = None,
+    use_brain: bool = False,
+    account_id: str | None = None,
+    job_id: str | None = None,
 ) -> ChatResult:
     config = config or Config.from_env()
     model_plan = model_plan or {}
     pics = [img for img in (images or []) if img]
+    use_brain = use_brain and not pics
     if pics:
         model = model_plan.get("vision") or config.model_vision or config.llm_model
         system = VISION_SYSTEM
@@ -64,7 +76,9 @@ def run_chat(
     else:
         model = model_plan.get("worker") or model_plan.get("planner") or config.model_fast or config.llm_model
         system = CHAT_SYSTEM
-        role = "Direct reply"
+        role = "Searching knowledge base" if use_brain else "Direct reply"
+    # The model has no clock: always tell it the current date and time.
+    system = f"{system}\n\nCurrent date and time: {current_time_text()}."
     client = LLMClient(config)
     result = ChatResult()
     started = time.perf_counter()
@@ -91,9 +105,26 @@ def run_chat(
     )
 
     try:
-        prior = format_conversation_block(normalize_conversation(conversation))
+        history = normalize_conversation(conversation)
+        prior = format_conversation_block(history)
         user_msg = f"{prior}\n\n## Current message\n{query}" if prior else query
-        output = client.chat(system=system, user=user_msg, model=model, images=pics or None)
+        extra: dict[str, Any] = {}
+        if use_brain:
+            try:
+                answer = answer_question(
+                    query, config=config, account_id=account_id, job_id=job_id, model=model,
+                    conversation=history, conversation_block=prior, chat=client.chat,
+                )
+                output = answer.text
+                role = "Knowledge base" if answer.grounded else "General knowledge"
+                extra = {"grounded": answer.grounded, "sources": answer.sources_payload()}
+            except (BrainDBError, EmbedError) as exc:
+                result.errors.append(f"knowledge base unavailable: {exc}")
+                output = f"{BRAIN_DOWN_NOTICE}\n\n" + client.chat(system=system, user=user_msg, model=model)
+                role = "General knowledge"
+                extra = {"grounded": False, "sources": []}
+        else:
+            output = client.chat(system=system, user=user_msg, model=model, images=pics or None)
         result.output = output
         elapsed = time.perf_counter() - started
         _emit(
@@ -107,6 +138,7 @@ def run_chat(
                 "accent": "#c4a35a",
                 "elapsed_seconds": elapsed,
                 "output": output,
+                **extra,
             },
         )
     except Exception as exc:  # noqa: BLE001

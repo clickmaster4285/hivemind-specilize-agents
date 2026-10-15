@@ -103,6 +103,18 @@ export type JobArtifact = {
   jobId?: string;
 };
 
+/** A knowledge-base passage an answer was built from (numbered like the [n] citations). */
+export type BrainSource = {
+  n: number;
+  title: string;
+  url?: string | null;
+  heading_path?: string | null;
+  publisher?: string | null;
+  updated_at?: string | null;
+  source: string;
+  cited: boolean;
+};
+
 export type FeedItem = {
   id: string;
   kind: "user" | "agent" | "system";
@@ -118,4 +130,7 @@ export type FeedItem = {
   jobId?: string;
   imageFiles?: { filename: string; mime?: string }[];
   artifacts?: JobArtifact[];
+  /** Knowledge-base answers: true = built from sources; false = brain had nothing relevant */
+  grounded?: boolean;
+  sources?: BrainSource[];
 };

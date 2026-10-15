@@ -315,6 +315,41 @@ function ArtifactChips({
   );
 }
 
+/** Knowledge-base sources under a grounded answer; numbers match the [n] citations in the text. */
+function SourceList({ item }: { item: FeedItem }) {
+  const sources = item.sources || [];
+  if (item.pending || !item.grounded || !sources.length) return null;
+  const cited = sources.filter((s) => s.cited);
+  const shown = cited.length ? cited : sources;
+  return (
+    <details className="brain-sources" open>
+      <summary>
+        Sources · {shown.length}
+        {cited.length && cited.length < sources.length ? ` cited (${sources.length} found)` : ""}
+      </summary>
+      <ol>
+        {shown.map((s) => (
+          <li key={s.n} value={s.n}>
+            {s.url && /^https?:\/\//i.test(s.url) ? (
+              <a href={s.url} target="_blank" rel="noreferrer noopener">
+                {s.title}
+              </a>
+            ) : (
+              <span>{s.title}</span>
+            )}
+            {s.heading_path ? (
+              <span className="brain-source-section"> › {s.heading_path.split(" > ").pop()}</span>
+            ) : null}
+            <span className="brain-source-meta">
+              {[s.publisher, s.updated_at ? `updated ${s.updated_at}` : null].filter(Boolean).join(" · ")}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 export default function ControlDeck() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authUser, setAuthUser] = useState("admin");
@@ -1233,6 +1268,7 @@ export default function ControlDeck() {
                             <AgentThumbs item={item} fallbackJobId={activeJobId} />
                             <ArtifactChips item={item} fallbackJobId={activeJobId} />
                             <MarkdownBody content={item.body} pending={item.pending} />
+                            <SourceList item={item} />
                           </>
                         )}
                         {item.kind === "user" ||
