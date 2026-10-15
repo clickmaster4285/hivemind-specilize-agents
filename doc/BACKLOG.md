@@ -31,7 +31,7 @@ Benchmark evidence: the router, panel-quality and parallel-load test (`bench_mod
 The brain is the knowledge system, not the model: documents + metadata + search index + update tracking.
 The model only reasons over what the brain retrieves.
 
-- [ ] Brain design doc (schema, ingestion, retrieval, API, evaluation) — *to discuss first*
+- [x] Brain design doc → [BRAIN_DESIGN.md](BRAIN_DESIGN.md) (draft, open decisions in §11)
 - [ ] **Hybrid retrieval**: vector search (meaning) + keyword/full-text search (exact terms such as CVE IDs, error codes, package names, flags), merged and optionally re-ranked
 - [ ] **Fresh sources**: scheduled ingestion of trusted official sources (docs, advisories, feeds) + change detection + re-indexing — no retraining
 - [ ] Answers cite sources and say "not enough evidence" when retrieval finds nothing relevant
