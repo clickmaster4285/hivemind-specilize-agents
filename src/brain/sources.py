@@ -24,7 +24,8 @@ KINDS = {"web_page", "sitemap", "feed", "git_repo", "api", "upload"}
 _SLUG = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
 _INTERVAL = re.compile(r"^\s*(\d+)\s*([dhm])\s*$", re.IGNORECASE)
 # Registry keys stored in sources.config instead of their own column
-CONFIG_KEYS = ("page_url", "page_root", "branch", "path", "language")
+CONFIG_KEYS = ("page_url", "page_root", "branch", "path", "language", "urls", "crawl_depth")
+MAX_CRAWL_DEPTH = 3
 
 
 class RegistryError(ValueError):
@@ -90,6 +91,14 @@ def _spec(entry: dict[str, Any], position: int) -> SourceSpec:
     max_pages = entry.get("max_pages")
     if max_pages is not None and (not isinstance(max_pages, int) or max_pages < 1):
         raise RegistryError(f"{where}: max_pages must be a positive whole number")
+    depth = entry.get("crawl_depth", 0)
+    if not isinstance(depth, int) or not 0 <= depth <= MAX_CRAWL_DEPTH:
+        raise RegistryError(f"{where}: crawl_depth must be a whole number from 0 to {MAX_CRAWL_DEPTH}")
+    urls = entry.get("urls") or []
+    if not isinstance(urls, list) or not all(isinstance(u, str) and u.startswith(("http://", "https://")) for u in urls):
+        raise RegistryError(f"{where}: urls must be a list of http(s) addresses")
+    if kind in {"web_page", "sitemap", "feed"} and not str(entry.get("url", "")).startswith(("http://", "https://")):
+        raise RegistryError(f"{where}: url must start with http:// or https://")
     return SourceSpec(
         slug=slug,
         title=str(entry["title"]),

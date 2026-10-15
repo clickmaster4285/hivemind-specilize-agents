@@ -19,6 +19,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from pgvector import Vector
@@ -28,8 +29,9 @@ from psycopg.types.json import Jsonb
 from src.brain.chunking import CHUNKER_VERSION, Chunk, chunk_markdown
 from src.brain.db import BrainDBError, connect
 from src.brain.embed import EmbedError, embed_texts, passage_text
-from src.brain.extract import extract_file
-from src.brain.fetch import FetchError, SourceFile, prepare_source_files
+from src.brain.extract import extract_file, http_date
+from src.brain.fetch import FetchError, Loaded, SourceFile, prepare_source_files
+from src.brain.web import WebClient
 from src.brain.migrate import MigrationError, migrate
 from src.brain.sources import RegistryError, load_registry, sync_sources
 from src.config import Config
@@ -68,10 +70,24 @@ def _load_source(conn, slug: str) -> dict[str, Any] | None:
 
 
 def _active_version(conn, source_id: int, url: str, *, lock: bool = False):
-    """(id, content_hash, version, chunker version) of the active document, or None."""
-    sql = """SELECT id, content_hash, version, metadata->>'chunker' FROM brain.documents
+    """(id, content_hash, version, chunker version, etag, last_modified) of the active document, or None."""
+    sql = """SELECT id, content_hash, version, metadata->>'chunker', etag, metadata->>'last_modified'
+             FROM brain.documents
              WHERE source_id = %s AND url = %s AND status = 'active'"""
     return conn.execute(sql + (" FOR UPDATE" if lock else ""), (source_id, url)).fetchone()
+
+
+def _mark_checked(config: Config, doc_id: int, loaded: Loaded | None = None) -> None:
+    """Unchanged document: record that we looked, keep the newest HTTP validators."""
+    extra = {"last_modified": loaded.last_modified} if loaded and loaded.last_modified else {}
+    with connect(config, system=True) as conn:
+        conn.execute(
+            """UPDATE brain.documents
+               SET fetched_at = %s, metadata = (metadata - 'missing_runs') || %s,
+                   etag = coalesce(%s, etag)
+               WHERE id = %s""",
+            (_now(), Jsonb(extra), loaded.etag if loaded else None, doc_id),
+        )
 
 
 def _insert_chunks(conn, doc_id: int, source: dict[str, Any], chunks: list[Chunk], vectors) -> None:
@@ -101,19 +117,22 @@ def _ingest_file(
     embed: Embedder,
 ) -> tuple[str, int]:
     """Returns ('new' | 'changed' | 'same' | 'rechunked', chunks written)."""
-    raw = file.path.read_text(encoding="utf-8", errors="replace")
-    doc = extract_file(file.path.name, raw, fallback_title=file.path.stem.replace("-", " "))
-    content_hash = hashlib.sha256(doc.content_md.encode("utf-8")).hexdigest()
-
     with connect(config, system=True) as conn:
         current = _active_version(conn, source["id"], file.url)
-        unchanged = bool(current and current[1] == content_hash)
-        if unchanged and current[3] == str(CHUNKER_VERSION):
-            conn.execute(
-                "UPDATE brain.documents SET fetched_at = %s, metadata = metadata - 'missing_runs' WHERE id = %s",
-                (_now(), current[0]),
-            )
-            return "same", 0
+    chunks_current = bool(current and current[3] == str(CHUNKER_VERSION))
+
+    # Web pages: send the stored validators; the server answers 304 when nothing changed.
+    loaded = file.load(current[4], current[5]) if chunks_current else file.load()
+    if loaded is None:
+        _mark_checked(config, current[0])
+        return "same", 0
+
+    doc = extract_file(loaded.name, loaded.text, fallback_title=Path(loaded.name).stem.replace("-", " "))
+    content_hash = hashlib.sha256(doc.content_md.encode("utf-8")).hexdigest()
+    unchanged = bool(current and current[1] == content_hash)
+    if unchanged and chunks_current:
+        _mark_checked(config, current[0], loaded)
+        return "same", 0
 
     # Slow part (embedding) runs outside any transaction
     chunks = chunk_markdown(doc.content_md)
@@ -142,6 +161,9 @@ def _ingest_file(
         metadata["description"] = doc.description
     if revision:
         metadata["revision"] = revision
+    if loaded.last_modified:
+        metadata["last_modified"] = loaded.last_modified
+    updated_at = doc.updated_at or http_date(loaded.last_modified)
 
     with connect(config, system=True) as conn:
         current = _active_version(conn, source["id"], file.url, lock=True)
@@ -152,11 +174,11 @@ def _ingest_file(
         doc_id = conn.execute(
             """INSERT INTO brain.documents
                  (source_id, url, title, language, updated_at, fetched_at, content_md, content_hash,
-                  version, metadata, collection_id, scope, owner_id, agent_id)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                  version, etag, metadata, collection_id, scope, owner_id, agent_id)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (
-                source["id"], file.url, doc.title, language, doc.updated_at, _now(), doc.content_md,
-                content_hash, (current[2] + 1) if current else 1, Jsonb(metadata),
+                source["id"], file.url, doc.title, language, updated_at, _now(), doc.content_md,
+                content_hash, (current[2] + 1) if current else 1, loaded.etag, Jsonb(metadata),
                 source["collection_id"], source["scope"], source["owner_id"], source["agent_id"],
             ),
         ).fetchone()[0]
@@ -186,6 +208,7 @@ def ingest_source(
     *,
     embed: Embedder | None = None,
     log: Callable[[str], None] = print,
+    web_client: WebClient | None = None,
 ) -> IngestStats:
     """Ingest one enabled source. Records an ingest_runs row whatever happens."""
     config = config or Config.from_env()
@@ -208,7 +231,7 @@ def ingest_source(
     fatal: str | None = None
     try:
         log(f"[{slug}] fetching…")
-        prepared = prepare_source_files(source)
+        prepared = prepare_source_files(source, web_client=web_client)
         listed_urls = [f.url for f in prepared.files]
         files = prepared.files[: source["max_pages"]] if source["max_pages"] else prepared.files
         language = (source["config"] or {}).get("language", "en")
@@ -261,8 +284,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", help="ingest only this source slug")
     parser.add_argument("--sync-only", action="store_true", help="only sync sources.yaml into the database")
+    parser.add_argument("--due", action="store_true",
+                        help="ingest only sources whose refresh_every has passed (what the scheduler does)")
     args = parser.parse_args(argv)
     config = Config.from_env()
+    if args.due:
+        from src.brain.scheduler import run_due  # local import: scheduler imports this module
+
+        try:
+            results = run_due(config, log_fn=print)
+        except (RegistryError, MigrationError, BrainDBError) as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        if not results:
+            print("No sources are due for a refresh.")
+        return 0 if all(s.status == "ok" for s in results) else 2
     try:
         migrate(config)
         report = sync_sources(config)

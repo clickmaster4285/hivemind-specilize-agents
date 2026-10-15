@@ -87,6 +87,10 @@ class Config:
     # No relevant passages: "general" = say so, then answer from the model's own knowledge;
     #                       "refuse"  = only say the knowledge base does not cover it
     brain_no_evidence: str = "general"
+    # Automatic refresh of sources whose refresh_every has passed (runs inside the API process)
+    brain_scheduler: bool = True
+    brain_refresh_window: str = ""      # local hours "01-06" (night only); empty = any time
+    brain_scheduler_minutes: int = 30   # how often to look for due sources
 
     @classmethod
     def from_env(cls) -> Config:
@@ -178,6 +182,9 @@ class Config:
             brain_no_evidence=(
                 "refuse" if (os.getenv("BRAIN_NO_EVIDENCE") or "").strip().lower() == "refuse" else "general"
             ),
+            brain_scheduler=_bool("BRAIN_SCHEDULER", True),
+            brain_refresh_window=(os.getenv("BRAIN_REFRESH_WINDOW") or "").strip(),
+            brain_scheduler_minutes=max(5, int(os.getenv("BRAIN_SCHEDULER_MINUTES", "30"))),
         )
 
     def with_model(self, model: str | None) -> Config:

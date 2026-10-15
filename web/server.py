@@ -62,6 +62,10 @@ async def lifespan(_app: FastAPI):
     with session_scope(config) as session:
         sync_models_from_ollama(session, config, probe_details=True)
     start_inprocess_worker(config)
+    # Keep the knowledge brain fresh: re-check sources whose refresh_every has passed
+    from src.brain.scheduler import start_scheduler
+
+    start_scheduler(config)
     if config.image_warm_on_start:
         from src.sdxl_pipeline import warm_pipeline_async
 

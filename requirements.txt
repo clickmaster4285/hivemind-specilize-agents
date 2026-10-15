@@ -12,6 +12,8 @@ psycopg[binary]>=3.1.0
 # Knowledge brain (Postgres + pgvector) — see doc/BRAIN_DESIGN.md
 pgvector>=0.4.1
 PyYAML>=6.0
+beautifulsoup4>=4.13      # web sources: HTML parsing (MIT)
+markdownify>=1.2          # web sources: HTML -> Markdown (MIT)
 
 # Local SDXL image generation (Diffusers).
 # On Quadro P4000 / Pascal GPUs: use Python 3.11–3.13 and install CUDA 11.8 torch:

@@ -25,3 +25,20 @@ sources:
     added_by: admin
     added_on: 2026-10-15
     enabled: true
+
+  - slug: python-docs-howto
+    title: Python documentation — HOWTO guides
+    kind: web_page
+    url: https://docs.python.org/3/howto/index.html
+    crawl_depth: 1                # the index page + the guides it links to
+    include: "https://docs.python.org/3/howto/*.html"
+    collection: development
+    publisher: Python Software Foundation
+    licence: PSF-2.0              # page footer, checked 2026-10-15 (code examples: 0BSD)
+    language: en
+    refresh_every: 7d
+    max_pages: 40
+    reason: First development source — practical Python guides (logging, regex, sockets, sorting, …)
+    added_by: admin
+    added_on: 2026-10-15
+    enabled: true

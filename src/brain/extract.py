@@ -1,7 +1,7 @@
 """Turn source files into the brain's one internal format: clean Markdown (doc/BRAIN_DESIGN.md §4.2).
 
-Phase 1 inputs: Markdown (incl. Microsoft Learn flavour) and plain text.
-HTML arrives with web sources (B5); PDF / Office later — each converter only maps input -> Markdown.
+Inputs: Markdown (incl. Microsoft Learn flavour), plain text, HTML web pages (main content only).
+PDF / Office later — each converter only maps input -> Markdown.
 """
 
 from __future__ import annotations
@@ -9,9 +9,12 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import yaml
+from bs4 import BeautifulSoup
+from markdownify import MarkdownConverter
 
 _FRONT_MATTER = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*\r?\n", re.DOTALL)
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -118,6 +121,82 @@ def extract_markdown(raw: str, *, fallback_title: str) -> Extracted:
     )
 
 
+# Where the real content of a documentation page usually lives, most specific first
+_MAIN_SELECTORS = ("main", "article", "[role=main]", "div.body", "div#content", "div.content")
+# Page furniture that is never knowledge
+_BOILERPLATE = (
+    "script, style, noscript, template, iframe, svg, form, button, nav, header, footer, aside, "
+    "a.headerlink, .headerlink, .sphinxsidebar, .related, .breadcrumbs, .toc, #toc, "
+    "[role=navigation], [role=banner], [role=contentinfo], [aria-hidden=true]"
+)
+_DATE_META = ("article:modified_time", "last-modified", "dcterms.modified", "date")
+
+
+class _DocsMarkdown(MarkdownConverter):
+    """markdownify with fenced code blocks that keep their language (```python)."""
+
+    def convert_pre(self, el, text, parent_tags):  # noqa: ARG002 — markdownify hook signature
+        lang = ""
+        classes = (el.get("class") or []) + ((el.parent.get("class") or []) if el.parent else [])
+        for cls in classes:
+            match = re.match(r"(?:language|highlight|lang)-([\w+#-]+)", cls)
+            if match:
+                lang = match.group(1)
+                break
+        code = el.get_text().rstrip("\n")
+        return f"\n\n```{lang}\n{code}\n```\n\n"
+
+
+def _html_date(soup: BeautifulSoup) -> datetime | None:
+    for name in _DATE_META:
+        tag = soup.find("meta", attrs={"property": name}) or soup.find("meta", attrs={"name": name})
+        if tag and tag.get("content"):
+            value = tag["content"].strip()
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+            except ValueError:
+                parsed = _parse_date(value[:10])
+                if parsed:
+                    return parsed
+    return None
+
+
+def http_date(value: str | None) -> datetime | None:
+    """Parse an HTTP Last-Modified header."""
+    if not value:
+        return None
+    try:
+        return parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_html(raw: str, *, fallback_title: str) -> Extracted:
+    """Main content of a web page -> clean Markdown (navigation, scripts, anchors removed)."""
+    soup = BeautifulSoup(raw, "html.parser")
+    page_title = soup.title.get_text(" ", strip=True) if soup.title else ""
+    description_tag = soup.find("meta", attrs={"name": "description"})
+    updated = _html_date(soup)
+    main = next((m for m in (soup.select_one(s) for s in _MAIN_SELECTORS) if m is not None), None)
+    main = main or soup.body or soup
+    for tag in main.select(_BOILERPLATE):
+        tag.decompose()
+    h1 = main.find("h1")
+    title = (h1.get_text(" ", strip=True) if h1 else "") or page_title or fallback_title
+    markdown = _DocsMarkdown(heading_style="ATX", bullets="-", strip=["img"]).convert_soup(main)
+    content = clean_markdown(markdown)
+    if not _H1.search(content):
+        content = f"# {title}\n\n{content}"
+    return Extracted(
+        title=title.replace("¶", "").strip(),
+        content_md=content,
+        description=description_tag.get("content", "").strip() or None if description_tag else None,
+        updated_at=updated,
+        metadata={"page_title": page_title} if page_title else {},
+    )
+
+
 def extract_text(raw: str, *, fallback_title: str) -> Extracted:
     body = raw.lstrip("﻿").replace("\r\n", "\n").strip()
     return Extracted(title=fallback_title, content_md=f"# {fallback_title}\n\n{body}\n")
@@ -130,4 +209,6 @@ def extract_file(name: str, raw: str, *, fallback_title: str) -> Extracted:
         return extract_markdown(raw, fallback_title=fallback_title)
     if lower.endswith(".txt"):
         return extract_text(raw, fallback_title=fallback_title)
-    raise ValueError(f"Unsupported file type for {name} (Phase 1: .md, .markdown, .txt)")
+    if lower.endswith((".html", ".htm")):
+        return extract_html(raw, fallback_title=fallback_title)
+    raise ValueError(f"Unsupported file type for {name} (supported: .md, .markdown, .txt, .html)")
