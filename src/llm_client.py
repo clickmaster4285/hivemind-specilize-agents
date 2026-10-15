@@ -83,10 +83,20 @@ class LLMClient:
                 user_msg,
             ],
         }
+        if cfg.llm_think is not None:
+            payload["think"] = cfg.llm_think
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
                 response = requests.post(url, json=payload, timeout=cfg.timeout_seconds)
+                if (
+                    response.status_code == 400
+                    and "think" in payload
+                    and "thinking" in (response.text or "").lower()
+                ):
+                    # Model has no thinking support — drop the flag and resend once.
+                    payload.pop("think")
+                    response = requests.post(url, json=payload, timeout=cfg.timeout_seconds)
                 response.raise_for_status()
                 data = response.json()
                 content = data.get("message", {}).get("content")

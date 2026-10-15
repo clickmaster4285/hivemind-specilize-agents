@@ -64,6 +64,16 @@ def detect_image_gen(details: dict[str, Any] | None, name: str = "") -> bool:
     return any(c in {"image", "images", "image_generation", "diffusion"} for c in caps)
 
 
+def is_embedding_model(name: str, details: dict[str, Any] | None = None) -> bool:
+    """Embedding-only models (nomic-embed-text, qwen3-embedding, …) cannot chat."""
+    if "embed" in name.lower():
+        return True
+    if not details:
+        return False
+    caps = {str(c).lower() for c in (details.get("capabilities") or [])}
+    return "embedding" in caps and "completion" not in caps
+
+
 def _name_looks_like_vision(name: str) -> bool:
     lower = name.lower()
     return "vision" in lower or "llava" in lower or "moondream" in lower or "minicpm-v" in lower
@@ -92,9 +102,9 @@ def sync_models_from_ollama(
     now = datetime.now(timezone.utc)
     for item in tags:
         name = str(item.get("name") or item.get("model") or "").strip()
-        if not name:
+        if not name or is_embedding_model(name):
+            # Not added to `seen`, so any stale chat row for it is marked unavailable below.
             continue
-        seen.add(name)
         existing = session.scalar(select(ModelRecord).where(ModelRecord.name == name))
         backend = "remote_openai_compatible" if name.endswith(":cloud") else "local_ollama"
         vision = _name_looks_like_vision(name)
@@ -108,9 +118,12 @@ def sync_models_from_ollama(
             except Exception:
                 vision = _name_looks_like_vision(name)
                 image_gen = looks_like_image_gen_model(name)
+            if is_embedding_model(name, details):
+                continue
         elif existing is not None:
             vision = bool(getattr(existing, "vision", False)) or vision
             image_gen = bool(getattr(existing, "image_gen", False)) or image_gen
+        seen.add(name)
         if existing:
             existing.last_seen_at = now
             existing.backend = backend

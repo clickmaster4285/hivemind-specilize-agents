@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "MulteAgent Brain",
+      "Group": "Servers",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "multeagent",
+      "Username": "multeagent",
+      "SSLMode": "prefer"
+    }
+  }
+}

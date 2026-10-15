@@ -19,6 +19,14 @@ def _bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _optional_bool(name: str) -> bool | None:
+    """Unset or blank -> None (leave the backend default); otherwise parse like _bool."""
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return None
+    return raw.lower() in {"1", "true", "yes", "on"}
+
+
 _PROFILE_DEFAULTS = {
     "fast": {"steps": 16, "guidance": 5.5, "strength": 0.42},
     "quality": {"steps": 28, "guidance": 7.0, "strength": 0.35},
@@ -68,6 +76,8 @@ class Config:
     default_admin_password: str
     api_host: str
     api_port: int
+    # Ollama "think" flag: None = model default, False = answer directly, True = reason first
+    llm_think: bool | None = None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -93,7 +103,7 @@ class Config:
 
         return cls(
             llm_base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434").rstrip("/"),
-            llm_model=os.getenv("LLM_MODEL", "llama3.1:latest"),
+            llm_model=os.getenv("LLM_MODEL", "qwen3.5:9b"),
             temperature=float(os.getenv("LLM_TEMPERATURE", "0.4")),
             timeout_seconds=int(os.getenv("LLM_TIMEOUT_SECONDS", "300")),
             llm_num_ctx=max(512, int(os.getenv("LLM_NUM_CTX", "8192"))),
@@ -109,10 +119,10 @@ class Config:
             max_active_jobs_per_user=max(1, int(os.getenv("MAX_ACTIVE_JOBS_PER_USER", "1"))),
             queue_depth_limit=max(1, int(os.getenv("QUEUE_DEPTH_LIMIT", "40"))),
             overflow_wait_seconds=float(os.getenv("OVERFLOW_WAIT_SECONDS", "45")),
-            model_fast=os.getenv("MODEL_FAST", "qwen2.5:3b"),
-            model_strong=os.getenv("MODEL_STRONG", "llama3.1:latest"),
+            model_fast=os.getenv("MODEL_FAST", "qwen3.5:9b"),
+            model_strong=os.getenv("MODEL_STRONG", "qwen3.5:9b"),
             model_cloud=os.getenv("MODEL_CLOUD", ""),
-            model_vision=os.getenv("MODEL_VISION", "llava:7b"),
+            model_vision=os.getenv("MODEL_VISION", "qwen3.5:9b"),
             model_image=os.getenv("MODEL_IMAGE", "sdxl-local"),
             model_image_path=image_path,
             image_width=max(256, int(os.getenv("IMAGE_WIDTH", "768"))),
@@ -151,6 +161,7 @@ class Config:
             default_admin_password=os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123"),
             api_host=os.getenv("API_HOST", "0.0.0.0"),
             api_port=int(os.getenv("API_PORT", "8787")),
+            llm_think=_optional_bool("LLM_THINK"),
         )
 
     def with_model(self, model: str | None) -> Config:
