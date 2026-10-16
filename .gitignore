@@ -6,6 +6,7 @@ __pycache__/
 venv/
 logs/*.md
 logs/*.txt
+logs/*.log
 !logs/.gitkeep
 agents/agents.json
 data/*

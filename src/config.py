@@ -93,6 +93,10 @@ class Config:
     brain_scheduler_minutes: int = 30   # how often to look for due sources
     # SDXL lives in system RAM (CPU offload): free it after this many idle minutes (0 = keep loaded)
     image_idle_unload_minutes: int = 10
+    # SDXL runs in its own process (python -m src.image_service) so the API never holds the model
+    image_service_port: int = 8790
+    image_service_token: str = ""
+    image_service_autostart: bool = True   # API starts the service on the first image request
 
     @classmethod
     def from_env(cls) -> Config:
@@ -189,6 +193,9 @@ class Config:
             brain_refresh_window=(os.getenv("BRAIN_REFRESH_WINDOW") or "").strip(),
             brain_scheduler_minutes=max(5, int(os.getenv("BRAIN_SCHEDULER_MINUTES", "30"))),
             image_idle_unload_minutes=max(0, int(os.getenv("IMAGE_IDLE_UNLOAD_MINUTES", "10"))),
+            image_service_port=int(os.getenv("IMAGE_SERVICE_PORT", "8790")),
+            image_service_token=os.getenv("IMAGE_SERVICE_TOKEN", ""),
+            image_service_autostart=_bool("IMAGE_SERVICE_AUTOSTART", True),
         )
 
     def with_model(self, model: str | None) -> Config:

@@ -67,9 +67,12 @@ async def lifespan(_app: FastAPI):
 
     start_scheduler(config)
     if config.image_warm_on_start:
-        from src.sdxl_pipeline import warm_pipeline_async
+        # SDXL lives in its own process; start it (and load the model) in the background
+        import threading
 
-        warm_pipeline_async(config)
+        from src.image_client import ImageServiceClient
+
+        threading.Thread(target=ImageServiceClient(config).warm, name="image-service-warm", daemon=True).start()
     yield
 
 
@@ -156,7 +159,7 @@ class DebateRequest(BaseModel):
 
 @app.get("/api/health")
 def health(db: Session = Depends(get_db)) -> dict[str, Any]:
-    from src.sdxl_pipeline import pipeline_status
+    from src.image_client import ImageServiceClient
 
     config = Config.from_env()
     client = LLMClient(config)
@@ -170,7 +173,7 @@ def health(db: Session = Depends(get_db)) -> dict[str, Any]:
         "llm_slots": config.llm_slots,
         "image_slots": config.image_slots,
         "image_profile": config.image_profile,
-        "image_pipeline": pipeline_status(),
+        "image_pipeline": ImageServiceClient(config).status(),
         "sso_enabled": config.sso_enabled,
         "auth_required": True,
     }

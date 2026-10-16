@@ -1,4 +1,8 @@
-"""Text-to-image and image-to-image via in-process Diffusers SDXL."""
+"""Text-to-image and image-to-image jobs, rendered by the separate SDXL image service.
+
+The API process never loads SDXL: src/image_client.py starts the image service on demand and
+sends it the job over HTTP (see src/image_service.py).
+"""
 
 from __future__ import annotations
 
@@ -9,16 +13,10 @@ from typing import Any, Callable
 
 from src.attachments import load_mask_image, load_pil_images, save_images
 from src.config import Config
+from src.image_client import ImageCancelled, ImageServiceClient, ImageServiceError
 from src.image_prompt import polish_prompt, should_polish
 from src.llm_lock import image_slot
 from src.ollama_mgmt import unload_ollama_models
-from src.sdxl_pipeline import (
-    ImageGenCudaError,
-    ImageGenNotConfigured,
-    generate as sdxl_generate,
-    generate_from_image as sdxl_img2img,
-    generate_inpaint as sdxl_inpaint,
-)
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
@@ -139,6 +137,16 @@ def run_image_gen(
                             "message": f"Freed Ollama VRAM: {', '.join(unloaded)}",
                         },
                     )
+            client = ImageServiceClient(config)
+            if client.health() is None:
+                _emit(on_progress, {"type": "status", "message": "Starting the image service (first image takes longer)…"})
+            # This job's settings (profile / UI presets) are sent explicitly: the service has its own defaults.
+            settings = dict(
+                negative_prompt=config.image_negative_prompt or None,
+                steps=config.image_steps,
+                guidance=config.image_guidance,
+                should_continue=should_continue,
+            )
             with image_slot(config):
                 if use_inpaint:
                     if not init_images:
@@ -148,32 +156,24 @@ def run_image_gen(
                             "Inpaint needs a mask image (filename containing 'mask'; "
                             "white = areas to repaint). Or use Edit (img2img) without a mask."
                         )
-                    image = sdxl_inpaint(
-                        prompt,
-                        init_images[0],
-                        mask,
-                        config=config,
-                        should_continue=should_continue,
+                    image = client.generate(
+                        "inpaint", prompt, init_image=init_images[0], mask=mask,
+                        strength=max(config.image_strength, 0.75), **settings,
                     )
                 elif use_img2img:
                     if not init_images:
                         raise ValueError(
                             "img2img requested but no usable attached image was found."
                         )
-                    image = sdxl_img2img(
-                        prompt,
-                        init_images[0],
-                        config=config,
-                        should_continue=should_continue,
+                    image = client.generate(
+                        "img2img", prompt, init_image=init_images[0], strength=config.image_strength, **settings,
                     )
                 else:
-                    image = sdxl_generate(
-                        prompt,
-                        config=config,
-                        should_continue=should_continue,
+                    image = client.generate(
+                        "txt2img", prompt, width=config.image_width, height=config.image_height, **settings,
                     )
             if should_continue is not None and not should_continue():
-                raise RuntimeError("Image generation cancelled.")
+                raise ImageCancelled("Image generation cancelled.")
             buf = io.BytesIO()
             image.save(buf, format="PNG")
             png = buf.getvalue()
@@ -211,12 +211,13 @@ def run_image_gen(
                 )
             if prompt != raw_query:
                 output += f"\n\nPrompt used: `{prompt}`"
-        except ImageGenNotConfigured as exc:
+        except ImageCancelled as exc:
             errors.append(str(exc))
             output = str(exc)
-        except ImageGenCudaError as exc:
+        except ImageServiceError as exc:
+            # not configured, CUDA problem, service failed to start, … — message comes from the service
             errors.append(str(exc))
-            output = str(exc)
+            output = f"Image generation failed: {exc}"
         except Exception as exc:  # noqa: BLE001
             errors.append(str(exc))
             output = (
