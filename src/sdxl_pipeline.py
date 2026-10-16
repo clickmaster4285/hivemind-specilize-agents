@@ -123,13 +123,20 @@ def _start_idle_unloader(config: Config) -> None:
     _unloader.start()
 
 
-def _check_cuda_kernels() -> None:
-    """Fail fast if torch CUDA has no kernels for this GPU (Pascal + wrong wheel)."""
+def _check_cuda_kernels(config: Config) -> None:
+    """Fail fast if torch cannot use the GPU (CPU-only wheel, or no kernels for Pascal)."""
     import torch
 
     if not torch.cuda.is_available():
-        logger.warning("CUDA not available; SDXL will run on CPU (very slow).")
-        return
+        if config.image_allow_cpu:
+            logger.warning("CUDA not available; SDXL will run on CPU (very slow, float32).")
+            return
+        raise ImageGenCudaError(
+            f"PyTorch cannot use the GPU (installed: torch {torch.__version__}, CUDA build: "
+            f"{torch.version.cuda or 'none — CPU-only'}). Images would take ~4 minutes on the CPU. "
+            "Install the GPU build:  pip install -r requirements-image-cu118.txt  "
+            "(or set IMAGE_ALLOW_CPU=true to accept CPU mode)."
+        )
     try:
         x = torch.zeros(1, device="cuda", dtype=torch.float16)
         _ = x + 1
@@ -178,7 +185,7 @@ def _load_pipelines(resolved: str, config: Config) -> tuple[Any, Any]:
         UniPCMultistepScheduler,
     )
 
-    _check_cuda_kernels()
+    _check_cuda_kernels(config)
     dtype = torch.float16 if torch.cuda.is_available() else torch.float32
     logger.info("Loading SDXL from %s (dtype=%s)", resolved, dtype)
     txt = StableDiffusionXLPipeline.from_single_file(

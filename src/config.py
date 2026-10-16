@@ -97,6 +97,8 @@ class Config:
     image_service_port: int = 8790
     image_service_token: str = ""
     image_service_autostart: bool = True   # API starts the service on the first image request
+    # Refuse to run SDXL on the CPU (≈4 min/image, float32 = double RAM) unless explicitly allowed
+    image_allow_cpu: bool = False
 
     @classmethod
     def from_env(cls) -> Config:
@@ -196,6 +198,7 @@ class Config:
             image_service_port=int(os.getenv("IMAGE_SERVICE_PORT", "8790")),
             image_service_token=os.getenv("IMAGE_SERVICE_TOKEN", ""),
             image_service_autostart=_bool("IMAGE_SERVICE_AUTOSTART", True),
+            image_allow_cpu=_bool("IMAGE_ALLOW_CPU", False),
         )
 
     def with_model(self, model: str | None) -> Config:

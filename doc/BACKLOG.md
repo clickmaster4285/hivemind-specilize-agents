@@ -111,7 +111,17 @@ To build:
 - Fix: put the current date/time (and timezone) into every system prompt — small change
 - Same root cause as stale facts ("who is the PM…"): the model only knows its training data; fresh facts must come from the brain
 
-### L7. SDXL memory is double the expected size → slow images
+### L7. SDXL memory is double the expected size → slow images — ✅ resolved 2026-10-16
+
+**Root cause:** the venv had `torch 2.14.1+cpu` (pulled in by `accelerate` on 2026-10-13 instead of
+`requirements-image-cu118.txt`). SDXL silently ran on the CPU in float32 → double RAM, ~4 min/image,
+GPU at 0%. Fixed by installing `torch==2.7.1+cu118` / `torchvision==0.22.1+cu118`:
+image 2: 215 s → **41 s**, service RAM 17.4 → **10.4 GB**, GPU up to 100% / 7.3 GB.
+Guard added: the image service now **refuses** CPU mode with a clear "install the GPU build" message
+(`IMAGE_ALLOW_CPU=true` to override). Remaining quality item: 768×768 sometimes gives tiled/collage
+images (SDXL is trained at 1024) — try 896/1024 now that the GPU works.
+
+Original notes:
 
 - The image service holds **17.4 GB** with SDXL loaded; the fp16 checkpoint is 6.46 GB, so ~8 GB is expected
 - Likely some components loaded/kept in fp32 (log: "Casting directly with `to()` … set torch_dtype") or the load peak not released

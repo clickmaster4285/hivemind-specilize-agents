@@ -33,6 +33,18 @@ IMAGE_GEN_RE = re.compile(
     r"portrait of|landscape of|anime style|pixel art)\b",
     re.I,
 )
+# Asking for prompt TEXT ("improve this prompt …") is chat, even when the prompt is full of image
+# words like "highly detailed". Only "… and generate/draw it" means: also make the image.
+PROMPT_TEXT_RE = re.compile(
+    r"\b(improve|rewrite|refine|enhance|fix|polish|optimi[sz]e|correct|better|expand|shorten|translate|"
+    r"write|give\s+me|suggest|make)\b.{0,40}\bprompts?\b|"
+    r"\bprompts?\b.{0,30}\b(improve|better|rewrite|refine|enhance|ideas?|suggestions?)\b",
+    re.I,
+)
+ALSO_GENERATE_RE = re.compile(
+    r"\b(and|then|&)\s+(generate|create|draw|render|make|paint)\b(?!\s+(a\s+)?(better|new)\s+prompt)",
+    re.I,
+)
 IMAGE_EDIT_RE = re.compile(
     r"\b(regenerate|remix|restyle|img2img|image[- ]to[- ]image|inpaint)\b|"
     r"\b(edit|modify|change|replace|swap|update)\b.{0,80}\b"
@@ -222,6 +234,10 @@ def _heuristic(query: str) -> RouteDecision | None:
 
     if GREETING_RE.match(text) or len(text) <= 12 and not DEBATE_RE.search(text):
         return RouteDecision("auto", "chat", "chat", "greeting / short chitchat -> chat")
+
+    if PROMPT_TEXT_RE.search(text) and not ALSO_GENERATE_RE.search(text):
+        # creative (not "chat"): prompt writing should not go through the knowledge brain
+        return RouteDecision("auto", "chat", "creative", "asks for prompt text, not an image -> chat")
 
     if IMAGE_GEN_RE.search(text) or IMAGE_EDIT_RE.search(text):
         return _image_gen_decision(
