@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import Config
+from src.image_models import preset_for
 
 logger = logging.getLogger(__name__)
 
@@ -177,12 +178,27 @@ def _maybe_tiny_vae(pipe: Any, config: Config, dtype: Any) -> None:
         logger.warning("TinyVAE unavailable, keeping default VAE: %s", exc)
 
 
+def _maybe_fixed_vae(pipe: Any, config: Config, dtype: Any) -> None:
+    """Swap in a VAE that is safe in float16 (no float32 upcast at decode time)."""
+    import torch
+
+    if not config.image_vae or dtype != torch.float16:
+        return
+    try:
+        from diffusers import AutoencoderKL
+
+        pipe.vae = AutoencoderKL.from_pretrained(config.image_vae, torch_dtype=dtype)
+        logger.info("Using VAE %s", config.image_vae)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("VAE %s unavailable, keeping the checkpoint's VAE: %s", config.image_vae, exc)
+
+
 def _load_pipelines(resolved: str, config: Config) -> tuple[Any, Any]:
     import torch
     from diffusers import (
+        DPMSolverMultistepScheduler,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLPipeline,
-        UniPCMultistepScheduler,
     )
 
     _check_cuda_kernels(config)
@@ -193,10 +209,19 @@ def _load_pipelines(resolved: str, config: Config) -> tuple[Any, Any]:
         torch_dtype=dtype,
         use_safetensors=True,
     )
-    txt.scheduler = UniPCMultistepScheduler.from_config(txt.scheduler.config)
+    # The sampler the model page recommends: DPM++ 2M Karras (RealVisXL, Juggernaut) or
+    # DPM++ SDE Karras (Lightning). Both sharper than UniPC at the same steps.
+    sde = preset_for(resolved).sampler == "dpmpp_sde_karras"
+    txt.scheduler = DPMSolverMultistepScheduler.from_config(
+        txt.scheduler.config, use_karras_sigmas=True,
+        algorithm_type="sde-dpmsolver++" if sde else "dpmsolver++",
+    )
     if getattr(txt, "watermark", None) is not None:
         txt.watermark = None
-    _maybe_tiny_vae(txt, config, dtype)
+    if config.image_tiny_vae:
+        _maybe_tiny_vae(txt, config, dtype)
+    else:
+        _maybe_fixed_vae(txt, config, dtype)
     # Share weights — do not load the 7GB checkpoint twice.
     img = StableDiffusionXLImg2ImgPipeline(**txt.components)
     img.scheduler = txt.scheduler
@@ -208,11 +233,14 @@ def _load_pipelines(resolved: str, config: Config) -> tuple[Any, Any]:
     return txt, img
 
 
-def get_pipelines(config: Config | None = None) -> tuple[Any, Any]:
-    """Return (txt2img, img2img) singletons for this process (loads on first use)."""
+def get_pipelines(config: Config | None = None, checkpoint: Path | None = None) -> tuple[Any, Any]:
+    """Return (txt2img, img2img) singletons for this process (loads on first use).
+
+    `checkpoint` overrides MODEL_IMAGE_PATH; asking for another checkpoint replaces the loaded one.
+    """
     global _txt2img, _img2img, _pipeline_path, _warm_state, _warm_error, _last_used
     config = config or Config.from_env()
-    path = config.model_image_path
+    path = checkpoint or config.model_image_path
     if path is None or not Path(path).is_file():
         raise ImageGenNotConfigured(
             "Image generation is not configured. Set MODEL_IMAGE_PATH to your "
@@ -229,6 +257,7 @@ def get_pipelines(config: Config | None = None) -> tuple[Any, Any]:
             _txt2img = None
             _img2img = None
             _pipeline_path = None
+            _free_memory()
         try:
             _txt2img, _img2img = _load_pipelines(resolved, config)
             _pipeline_path = resolved
@@ -278,6 +307,13 @@ def _dims(config: Config, width: int | None, height: int | None) -> tuple[int, i
     return max(256, (int(w) // 8) * 8), max(256, (int(h) // 8) * 8)
 
 
+def _generator(seed: int | None) -> Any:
+    """Seeded noise so an image can be repeated exactly (CPU generator: same result on any device)."""
+    import torch
+
+    return None if seed is None else torch.Generator("cpu").manual_seed(int(seed))
+
+
 def _step_callback(should_continue: Any | None):
     if should_continue is None:
         return None
@@ -301,10 +337,12 @@ def generate(
     steps: int | None = None,
     guidance: float | None = None,
     should_continue: Any | None = None,
+    seed: int | None = None,
+    checkpoint: Path | None = None,
 ) -> Any:
     """Run text-to-image; returns a PIL.Image.Image."""
     config = config or Config.from_env()
-    pipe, _ = get_pipelines(config)
+    pipe, _ = get_pipelines(config, checkpoint)
     w, h = _dims(config, width, height)
     n_steps = steps if steps is not None else config.image_steps
     guide = guidance if guidance is not None else config.image_guidance
@@ -320,6 +358,7 @@ def generate(
         "height": h,
         "num_inference_steps": n_steps,
         "guidance_scale": guide,
+        "generator": _generator(seed),
     }
     cb = _step_callback(should_continue)
     if cb is not None:
@@ -339,12 +378,14 @@ def generate_from_image(
     steps: int | None = None,
     guidance: float | None = None,
     should_continue: Any | None = None,
+    seed: int | None = None,
+    checkpoint: Path | None = None,
 ) -> Any:
     """Run image-to-image; returns a PIL.Image.Image."""
     from PIL import Image
 
     config = config or Config.from_env()
-    _, pipe = get_pipelines(config)
+    _, pipe = get_pipelines(config, checkpoint)
     n_steps = steps if steps is not None else config.image_steps
     guide = guidance if guidance is not None else config.image_guidance
     strength_v = strength if strength is not None else config.image_strength
@@ -371,6 +412,7 @@ def generate_from_image(
         "strength": strength_v,
         "num_inference_steps": n_steps,
         "guidance_scale": guide,
+        "generator": _generator(seed),
     }
     cb = _step_callback(should_continue)
     if cb is not None:
@@ -391,13 +433,15 @@ def generate_inpaint(
     steps: int | None = None,
     guidance: float | None = None,
     should_continue: Any | None = None,
+    seed: int | None = None,
+    checkpoint: Path | None = None,
 ) -> Any:
     """Inpaint masked regions; mask white = repaint, black = keep."""
     from PIL import Image
     from diffusers import StableDiffusionXLInpaintPipeline
 
     config = config or Config.from_env()
-    txt, _ = get_pipelines(config)
+    txt, _ = get_pipelines(config, checkpoint)
     # Build inpaint pipe from shared components (no second 7GB load).
     pipe = StableDiffusionXLInpaintPipeline(**txt.components)
     pipe.scheduler = txt.scheduler
@@ -430,6 +474,7 @@ def generate_inpaint(
         "guidance_scale": guide,
         "width": target_w,
         "height": target_h,
+        "generator": _generator(seed),
     }
     cb = _step_callback(should_continue)
     if cb is not None:

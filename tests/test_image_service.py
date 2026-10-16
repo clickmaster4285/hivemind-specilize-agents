@@ -203,3 +203,17 @@ def test_client_starts_a_real_service_process():
         assert info["pipeline"]["loaded"] is False                   # nothing loaded until a job arrives
     finally:
         os.kill(info["pid"], signal.SIGTERM)                         # stop the test service
+
+
+def test_seed_is_returned_and_repeatable(api, fake_sdxl):
+    first = api.post("/generate", json=_req(), headers=AUTH).json()
+    assert 0 <= first["seed"] < 2**32                               # random when not given
+    again = api.post("/generate", json=_req(seed=first["seed"]), headers=AUTH).json()
+    assert again["seed"] == first["seed"]
+
+
+@pytest.mark.parametrize("name, message", [("../evil.safetensors", "invalid checkpoint"),
+                                           ("missing.safetensors", "checkpoint not found")])
+def test_checkpoint_must_be_a_file_in_models_checkpoints(api, name, message):
+    resp = api.post("/generate", json=_req(checkpoint=name), headers=AUTH)
+    assert resp.status_code == 400 and message in resp.json()["detail"]

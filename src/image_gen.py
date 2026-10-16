@@ -8,13 +8,15 @@ from __future__ import annotations
 
 import base64
 import io
+import math
 import time
 from typing import Any, Callable
 
 from src.attachments import load_mask_image, load_pil_images, save_images
 from src.config import Config
 from src.image_client import ImageCancelled, ImageServiceClient, ImageServiceError
-from src.image_prompt import polish_prompt, should_polish
+from src.image_models import CHECKPOINT_DIR, parse_image_flags, preset_for, size_for_aspect
+from src.image_prompt import polish_prompt, rewrite_prompt, should_polish
 from src.llm_lock import image_slot
 from src.ollama_mgmt import unload_ollama_models
 
@@ -40,6 +42,18 @@ Then restart the API and try again. Vision models (`llava`) can only **look at**
 def _emit(cb: ProgressCallback | None, event: dict[str, Any]) -> None:
     if cb:
         cb(event)
+
+
+def _png_text(prompt: str, negative: str, seed: Any, model: str) -> Any:
+    """Store how the image was made inside the PNG, so it can be repeated later."""
+    from PIL.PngImagePlugin import PngInfo
+
+    info = PngInfo()
+    info.add_text("prompt", prompt)
+    info.add_text("negative_prompt", negative)
+    info.add_text("seed", str(seed))
+    info.add_text("model", model)
+    return info
 
 
 def looks_like_image_gen_model(name: str) -> bool:
@@ -73,8 +87,12 @@ def run_image_gen(
     attachments: list[dict[str, Any]] | None = None,
     image_mode: str | None = None,
     should_continue: Callable[[], bool] | None = None,
+    checkpoint: str | None = None,
 ) -> tuple[str, list[dict[str, str]], list[str], float]:
-    """Return (message, saved attachment dicts, errors, seconds)."""
+    """Return (message, saved attachment dicts, errors, seconds).
+
+    `checkpoint` = a file name in models/checkpoints/ for this job (default: MODEL_IMAGE_PATH).
+    """
     config = config or Config.from_env()
     model_plan = model_plan or {}
     label = (
@@ -114,17 +132,45 @@ def run_image_gen(
         },
     )
 
-    raw_query = (query or "").strip()
+    flags = parse_image_flags(query)
+    raw_query = flags.prompt
     needs_edit_polish = use_img2img or use_inpaint
-    prompt = (
-        polish_prompt(raw_query, img2img=needs_edit_polish)
-        if config.image_prompt_polish
-        and should_polish(raw_query, img2img=needs_edit_polish)
-        else raw_query
-    )
+    aspect = flags.aspect
+    rewritten = None
+    if (not needs_edit_polish and config.image_prompt_rewrite
+            and should_polish(raw_query, img2img=False)):
+        _emit(on_progress, {"type": "status", "message": "Writing a detailed image prompt…"})
+        rewritten = rewrite_prompt(raw_query, config)
+    if rewritten is not None:
+        prompt = rewritten.prompt
+        aspect = aspect or rewritten.aspect
+    elif config.image_prompt_polish and should_polish(raw_query, img2img=needs_edit_polish):
+        prompt = polish_prompt(raw_query, img2img=needs_edit_polish)
+    else:
+        prompt = raw_query
+
+    if not checkpoint and config.image_profile == "fast" and config.image_fast_checkpoint:
+        checkpoint = config.image_fast_checkpoint
+    path = CHECKPOINT_DIR / checkpoint if checkpoint else config.model_image_path
+    preset = preset_for(path)
+    base_w, base_h = (preset.size, preset.size) if preset.size else (config.image_width, config.image_height)
+    width, height = size_for_aspect(aspect, base_w, base_h)
+    steps = preset.steps or config.image_steps
+    if preset.steps and (use_img2img or use_inpaint):
+        # an edit runs only steps × strength of them: keep a distilled model at its real step count
+        strength = max(config.image_strength, 0.75) if use_inpaint else config.image_strength
+        steps = min(50, math.ceil(preset.steps / max(strength, 0.05)))
+    guidance = config.image_guidance
+    if preset.guidance is not None:
+        guidance = preset.guidance
+    elif preset.max_guidance is not None:
+        guidance = min(guidance, preset.max_guidance)
+    negative = preset.negative_prompt or config.image_negative_prompt or ""
+    if flags.negative:
+        negative = f"{negative}, {flags.negative}" if negative else flags.negative
+    ckpt_name = path.name if path is not None and path.parent.resolve() == CHECKPOINT_DIR.resolve() else None
 
     output = NO_CHECKPOINT
-    path = config.model_image_path
     if path is not None and path.is_file():
         try:
             if config.image_unload_ollama:
@@ -142,10 +188,12 @@ def run_image_gen(
                 _emit(on_progress, {"type": "status", "message": "Starting the image service (first image takes longer)…"})
             # This job's settings (profile / UI presets) are sent explicitly: the service has its own defaults.
             settings = dict(
-                negative_prompt=config.image_negative_prompt or None,
-                steps=config.image_steps,
-                guidance=config.image_guidance,
+                negative_prompt=negative or None,
+                steps=steps,
+                guidance=guidance,
                 should_continue=should_continue,
+                seed=flags.seed,
+                checkpoint=ckpt_name,
             )
             with image_slot(config):
                 if use_inpaint:
@@ -169,13 +217,12 @@ def run_image_gen(
                         "img2img", prompt, init_image=init_images[0], strength=config.image_strength, **settings,
                     )
                 else:
-                    image = client.generate(
-                        "txt2img", prompt, width=config.image_width, height=config.image_height, **settings,
-                    )
+                    image = client.generate("txt2img", prompt, width=width, height=height, **settings)
             if should_continue is not None and not should_continue():
                 raise ImageCancelled("Image generation cancelled.")
+            seed = image.info.get("seed")
             buf = io.BytesIO()
-            image.save(buf, format="PNG")
+            image.save(buf, format="PNG", pnginfo=_png_text(prompt, negative, seed, preset.label))
             png = buf.getvalue()
             stored = save_images(
                 config,
@@ -193,24 +240,28 @@ def run_image_gen(
             saved = stored
             if use_inpaint:
                 output = (
-                    f"Inpainted with local SDXL (`{label}`, profile={config.image_profile}) "
-                    f"at {config.image_width}×{config.image_height}, "
-                    f"{config.image_steps} steps, strength {config.image_strength:.2f}."
+                    f"Inpainted with **{preset.label}** (profile {config.image_profile}): "
+                    f"{steps} steps, strength {config.image_strength:.2f}, seed {seed}."
                 )
             elif use_img2img:
                 output = (
-                    f"Edited with local SDXL img2img (`{label}`, profile={config.image_profile}) "
-                    f"at {config.image_width}×{config.image_height}, "
-                    f"{config.image_steps} steps, strength {config.image_strength:.2f}."
+                    f"Edited with **{preset.label}** (profile {config.image_profile}): "
+                    f"{steps} steps, strength {config.image_strength:.2f}, seed {seed}."
                 )
             else:
                 output = (
-                    f"Generated with local SDXL (`{label}`, profile={config.image_profile}) "
-                    f"at {config.image_width}×{config.image_height}, "
-                    f"{config.image_steps} steps."
+                    f"Generated with **{preset.label}** (profile {config.image_profile}) at {width}×{height}, "
+                    f"{steps} steps, guidance {guidance:g}, seed {seed}."
                 )
             if prompt != raw_query:
                 output += f"\n\nPrompt used: `{prompt}`"
+            if seed is not None:
+                output += (
+                    f"\n\nSame image again: add `--seed {seed}` to your request. "
+                    "Without it every request gives a new variation."
+                )
+            if flags.ignored:
+                output += f"\n\nIgnored (Midjourney-only): `{' '.join(flags.ignored)}`"
         except ImageCancelled as exc:
             errors.append(str(exc))
             output = str(exc)

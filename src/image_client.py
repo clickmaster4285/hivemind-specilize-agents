@@ -130,8 +130,13 @@ class ImageServiceClient:
         guidance: float | None = None,
         strength: float | None = None,
         should_continue: Callable[[], bool] | None = None,
+        seed: int | None = None,
+        checkpoint: str | None = None,
     ) -> Any:
-        """Generate one image (PIL.Image). Raises ImageCancelled / ImageServiceError."""
+        """Generate one image (PIL.Image). Raises ImageCancelled / ImageServiceError.
+
+        The seed and checkpoint actually used are in image.info["seed"] / image.info["checkpoint"].
+        """
         from PIL import Image
 
         self.ensure_running()
@@ -141,6 +146,7 @@ class ImageServiceClient:
             "width": width, "height": height, "steps": steps, "guidance": guidance, "strength": strength,
             "init_image_b64": _b64_png(init_image) if init_image is not None else None,
             "mask_b64": _b64_png(mask) if mask is not None else None,
+            "seed": seed, "checkpoint": checkpoint,
         }
 
         done = threading.Event()
@@ -172,4 +178,7 @@ class ImageServiceClient:
         data = resp.json()
         if data.get("cancelled"):
             raise ImageCancelled("Image generation cancelled.")
-        return Image.open(io.BytesIO(base64.b64decode(data["image_b64"]))).convert("RGB")
+        image = Image.open(io.BytesIO(base64.b64decode(data["image_b64"]))).convert("RGB")
+        image.info["seed"] = data.get("seed")
+        image.info["checkpoint"] = data.get("checkpoint")
+        return image

@@ -1,8 +1,20 @@
-"""Fast local prompt cleanup for SDXL (no LLM round-trip)."""
+"""Prompt preparation for SDXL.
+
+polish_prompt  — fast local cleanup (no LLM), used for edits and as the fallback.
+rewrite_prompt — the chat model turns a request into a concrete, visual SDXL prompt and picks the
+                 aspect ratio. Vague wording was the main cause of bad images (doc/ISSUES_LOG.md #21).
+"""
 
 from __future__ import annotations
 
+import json
+import logging
 import re
+from dataclasses import dataclass
+
+from src.config import Config
+
+logger = logging.getLogger(__name__)
 
 _PREFIX_RE = re.compile(
     r"^(please\s+)?("
@@ -75,3 +87,90 @@ def polish_prompt(query: str, *, img2img: bool = False) -> str:
             text = f"{text}, highly detailed, sharp focus, natural lighting"
 
     return text[:800]
+
+
+# ── LLM rewrite ─────────────────────────────────────────────────────────
+REWRITE_SYSTEM = """You write prompts for Stable Diffusion XL, a photo-realistic text-to-image model.
+Rewrite the user's request as ONE image prompt.
+
+Rules:
+- Keep every subject, detail and constraint the user asked for. Do not add new main subjects.
+- Be concrete and visual: subject and appearance, action or pose, setting, lighting, camera and
+  framing, style. Describe what is VISIBLE, not names of ideas or meanings.
+- Replace vague or ambiguous references with what they look like (a character's "iconic look",
+  a word with two meanings, "make it beautiful").
+- The user may write in Hinglish or another language: always write the prompt in English.
+- Default style is a realistic photograph, unless the user asks for an illustration, painting,
+  3D render, anime, logo, icon, etc.
+- SDXL cannot render readable text: only keep text the user explicitly asked for, max 3 words in quotes.
+- Real-world scale: "small house" is a small real house. Never write "tiny", "miniature" or
+  "diorama" unless the user asks for a miniature.
+- 25-50 words (SDXL reads only the first ~75 words-pieces), comma-separated phrases, most important
+  first. No filler like "8k, masterpiece, best quality". Do not put the aspect ratio in the prompt.
+- Pick the aspect ratio: one of 1:1, 4:3, 3:4, 3:2, 2:3, 16:9, 9:16 (a person's portrait 2:3,
+  landscapes and wide scenes 3:2 or 16:9, products and icons 1:1, phone wallpaper 9:16).
+
+Reply with JSON only: {"prompt": "...", "aspect": "W:H"}"""
+
+ASPECTS = {"1:1", "4:3", "3:4", "3:2", "2:3", "16:9", "9:16"}
+_JSON_RE = re.compile(r"\{.*\}", re.S)
+_TRAILING_RATIO_RE = re.compile(
+    r"[,\s]*\b(?:aspect(?:\s+ratio)?\s*)?\d{1,2}\s*:\s*\d{1,2}(?:\s+aspect(?:\s+ratio)?)?\s*$", re.I,
+)
+MAX_PROMPT_WORDS = 55   # SDXL's text encoder reads 77 tokens; ~55 English words fit
+
+
+def fit_prompt(prompt: str, max_words: int = MAX_PROMPT_WORDS) -> str:
+    """Keep whole comma-separated phrases from the start until the word budget is used."""
+    if len(prompt.split()) <= max_words:
+        return prompt
+    kept: list[str] = []
+    used = 0
+    for phrase in (p.strip() for p in prompt.split(",")):
+        n = len(phrase.split())
+        if used + n > max_words:
+            break
+        kept.append(phrase)
+        used += n
+    return ", ".join(kept) or " ".join(prompt.split()[:max_words])
+
+
+@dataclass(frozen=True)
+class PromptRewrite:
+    prompt: str
+    aspect: tuple[int, int] | None
+
+
+def parse_rewrite(raw: str) -> PromptRewrite | None:
+    """Read the model's JSON reply; None when it is unusable."""
+    m = _JSON_RE.search(raw or "")
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(0))
+    except ValueError:
+        return None
+    prompt = str(data.get("prompt") or "").strip().strip('"').strip()
+    prompt = fit_prompt(_TRAILING_RATIO_RE.sub("", prompt).strip(" ,"))   # drop "…, 2:3", cap length
+    if len(prompt) < 10:
+        return None
+    aspect_s = str(data.get("aspect") or "").strip()
+    aspect = tuple(int(x) for x in aspect_s.split(":")) if aspect_s in ASPECTS else None
+    return PromptRewrite(prompt=prompt[:800], aspect=aspect)  # type: ignore[arg-type]
+
+
+def rewrite_prompt(query: str, config: Config) -> PromptRewrite | None:
+    """Ask the chat model for a better SDXL prompt. None on any failure (caller falls back)."""
+    from src.llm_client import LLMClient
+
+    text = (query or "").strip()
+    if not text:
+        return None
+    try:
+        raw = LLMClient(config).chat(
+            system=REWRITE_SYSTEM, user=text[:1500], temperature=0.3, max_retries=0,
+        )
+    except Exception as exc:  # noqa: BLE001 — a failed rewrite must never block the image
+        logger.info("prompt rewrite skipped: %s", exc)
+        return None
+    return parse_rewrite(raw)

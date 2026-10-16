@@ -3,7 +3,7 @@
 Things we have decided, and things we will plan and build later.
 **Current focus: the Knowledge Brain (Phase 1).** Everything under "Later" waits until the brain works.
 
-Related: [FULL_PROJECT_PLAN.md](FULL_PROJECT_PLAN.md) · [HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) · [IMPROVEMENT_ROADMAP.md](IMPROVEMENT_ROADMAP.md)
+Related: [FULL_PROJECT_PLAN.md](FULL_PROJECT_PLAN.md) · [HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) · [IMPROVEMENT_ROADMAP.md](IMPROVEMENT_ROADMAP.md) · [ISSUES_LOG.md](ISSUES_LOG.md) (problems we hit and how we solved them)
 
 ---
 

@@ -27,10 +27,11 @@ def _optional_bool(name: str) -> bool | None:
     return raw.lower() in {"1", "true", "yes", "on"}
 
 
+# size = side of a square image; other aspect ratios keep the same pixel count (src/image_models.py)
 _PROFILE_DEFAULTS = {
-    "fast": {"steps": 16, "guidance": 5.5, "strength": 0.42},
-    "quality": {"steps": 28, "guidance": 7.0, "strength": 0.35},
-    "balanced": {"steps": 20, "guidance": 6.5, "strength": 0.4},
+    "fast": {"steps": 16, "guidance": 5.5, "strength": 0.42, "size": 768},
+    "quality": {"steps": 28, "guidance": 7.0, "strength": 0.35, "size": 1024},
+    "balanced": {"steps": 20, "guidance": 6.5, "strength": 0.4, "size": 896},
 }
 
 
@@ -99,6 +100,13 @@ class Config:
     image_service_autostart: bool = True   # API starts the service on the first image request
     # Refuse to run SDXL on the CPU (≈4 min/image, float32 = double RAM) unless explicitly allowed
     image_allow_cpu: bool = False
+    # Replacement VAE (Hugging Face id or local folder); "" = the checkpoint's own VAE.
+    # The fp16-fix VAE decodes in float16 instead of upcasting to float32 (faster, less VRAM).
+    image_vae: str = ""
+    # Let the chat model rewrite image requests into concrete SDXL prompts (falls back to polish)
+    image_prompt_rewrite: bool = True
+    # Checkpoint (file name in models/checkpoints) the "fast" profile uses; "" = MODEL_IMAGE_PATH
+    image_fast_checkpoint: str = ""
 
     @classmethod
     def from_env(cls) -> Config:
@@ -199,6 +207,9 @@ class Config:
             image_service_token=os.getenv("IMAGE_SERVICE_TOKEN", ""),
             image_service_autostart=_bool("IMAGE_SERVICE_AUTOSTART", True),
             image_allow_cpu=_bool("IMAGE_ALLOW_CPU", False),
+            image_vae=(os.getenv("IMAGE_VAE") or "").strip(),
+            image_prompt_rewrite=_bool("IMAGE_PROMPT_REWRITE", True),
+            image_fast_checkpoint=(os.getenv("IMAGE_FAST_CHECKPOINT") or "").strip(),
         )
 
     def with_model(self, model: str | None) -> Config:
@@ -217,9 +228,12 @@ class Config:
         """Apply per-job image overrides (UI presets / profiles)."""
         prof = (profile or "").strip().lower() or None
         pdata = _PROFILE_DEFAULTS.get(prof) if prof else None
+        size = pdata["size"] if pdata else None
         return replace(
             self,
             image_profile=prof or self.image_profile,
+            image_width=size or self.image_width,
+            image_height=size or self.image_height,
             image_steps=max(
                 1,
                 int(

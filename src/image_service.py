@@ -18,6 +18,7 @@ import hmac
 import io
 import logging
 import os
+import secrets
 import threading
 import time
 from typing import Any, Literal
@@ -27,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from src import sdxl_pipeline as sdxl
 from src.config import Config
+from src.image_models import resolve_checkpoint
 
 log = logging.getLogger("image_service")
 
@@ -59,6 +61,8 @@ class GenerateRequest(BaseModel):
     strength: float | None = Field(default=None, ge=0.05, le=1.0)
     init_image_b64: str | None = Field(default=None, max_length=MAX_IMAGE_B64_CHARS)
     mask_b64: str | None = Field(default=None, max_length=MAX_IMAGE_B64_CHARS)
+    seed: int | None = Field(default=None, ge=0, lt=2**32)            # None = random
+    checkpoint: str | None = Field(default=None, max_length=200)      # file name in models/checkpoints
 
 
 def _decode_image(b64: str, what: str) -> Any:
@@ -113,9 +117,16 @@ def generate(req: GenerateRequest) -> dict[str, Any]:
             if stop.is_set():
                 return {"cancelled": True}
             keep_going = lambda: not stop.is_set()  # noqa: E731
+            try:
+                checkpoint = resolve_checkpoint(req.checkpoint, _config.model_image_path)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if req.checkpoint and not (checkpoint and checkpoint.is_file()):
+                raise HTTPException(status_code=400, detail=f"checkpoint not found: models/checkpoints/{req.checkpoint}")
+            seed = req.seed if req.seed is not None else secrets.randbelow(2**32)
             common = dict(
                 config=_config, negative_prompt=req.negative_prompt, steps=req.steps,
-                guidance=req.guidance, should_continue=keep_going,
+                guidance=req.guidance, should_continue=keep_going, seed=seed, checkpoint=checkpoint,
             )
             if req.mode == "txt2img":
                 image = sdxl.generate(req.prompt, width=req.width, height=req.height, **common)
@@ -137,6 +148,8 @@ def generate(req: GenerateRequest) -> dict[str, Any]:
         return {
             "image_b64": base64.b64encode(buf.getvalue()).decode("ascii"),
             "seconds": round(time.perf_counter() - started, 1),
+            "seed": seed,
+            "checkpoint": checkpoint.name if checkpoint else None,
         }
     except sdxl.ImageGenNotConfigured as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
