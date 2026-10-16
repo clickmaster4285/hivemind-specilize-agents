@@ -91,6 +91,8 @@ class Config:
     brain_scheduler: bool = True
     brain_refresh_window: str = ""      # local hours "01-06" (night only); empty = any time
     brain_scheduler_minutes: int = 30   # how often to look for due sources
+    # SDXL lives in system RAM (CPU offload): free it after this many idle minutes (0 = keep loaded)
+    image_idle_unload_minutes: int = 10
 
     @classmethod
     def from_env(cls) -> Config:
@@ -159,7 +161,8 @@ class Config:
             ),
             image_prompt_polish=_bool("IMAGE_PROMPT_POLISH", True),
             image_profile=profile,
-            image_warm_on_start=_bool("IMAGE_WARM_ON_START", True),
+            # Off by default: warming holds the whole SDXL model in RAM before anyone asks for an image
+            image_warm_on_start=_bool("IMAGE_WARM_ON_START", False),
             image_unload_ollama=_bool("IMAGE_UNLOAD_OLLAMA", True),
             image_tiny_vae=_bool("IMAGE_TINY_VAE", False),
             remote_llm_base_url=os.getenv("REMOTE_LLM_BASE_URL", "").rstrip("/"),
@@ -185,6 +188,7 @@ class Config:
             brain_scheduler=_bool("BRAIN_SCHEDULER", True),
             brain_refresh_window=(os.getenv("BRAIN_REFRESH_WINDOW") or "").strip(),
             brain_scheduler_minutes=max(5, int(os.getenv("BRAIN_SCHEDULER_MINUTES", "30"))),
+            image_idle_unload_minutes=max(0, int(os.getenv("IMAGE_IDLE_UNLOAD_MINUTES", "10"))),
         )
 
     def with_model(self, model: str | None) -> Config:

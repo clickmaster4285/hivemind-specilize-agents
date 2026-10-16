@@ -1,9 +1,19 @@
-"""Process-wide SDXL Diffusers pipelines (txt2img + img2img, Pascal/8GB-safe)."""
+"""Process-wide SDXL Diffusers pipelines (txt2img + img2img, Pascal/8GB-safe).
+
+Memory: with model CPU offload the whole model lives in system RAM and parts move to the GPU
+only while an image is generated. So the model is loaded on first use (IMAGE_WARM_ON_START=false
+by default) and unloaded again after IMAGE_IDLE_UNLOAD_MINUTES without image jobs.
+"""
 
 from __future__ import annotations
 
+import functools
+import gc
 import logging
 import threading
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +27,10 @@ _img2img: Any | None = None
 _pipeline_path: str | None = None
 _warm_state: str = "cold"  # cold | warming | ready | error
 _warm_error: str | None = None
+_in_use = 0                         # generations currently running
+_last_used = 0.0                    # time.monotonic() of the last load / generation
+_unloader: threading.Thread | None = None
+IDLE_CHECK_SECONDS = 60
 
 
 class ImageGenNotConfigured(RuntimeError):
@@ -28,12 +42,85 @@ class ImageGenCudaError(RuntimeError):
 
 
 def pipeline_status() -> dict[str, Any]:
+    loaded = _txt2img is not None and _img2img is not None
     return {
         "state": _warm_state,
         "error": _warm_error,
-        "loaded": _txt2img is not None and _img2img is not None,
+        "loaded": loaded,
         "path": _pipeline_path,
+        "in_use": _in_use,
+        "idle_seconds": round(time.monotonic() - _last_used) if loaded and not _in_use else 0,
     }
+
+
+@contextmanager
+def _using() -> Iterator[None]:
+    """Mark the model busy for one generation so the idle unloader never frees it mid-image."""
+    global _in_use, _last_used
+    with _lock:
+        _in_use += 1
+    try:
+        yield
+    finally:
+        with _lock:
+            _in_use -= 1
+            _last_used = time.monotonic()
+
+
+def _tracked(fn: Any) -> Any:
+    """Decorator: the whole generation (incl. fetching the model) counts as one use."""
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        with _using():
+            return fn(*args, **kwargs)
+
+    return wrapper
+
+
+def _free_memory() -> None:
+    gc.collect()
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:  # noqa: BLE001 — freeing memory must never raise
+        pass
+
+
+def unload_if_idle(idle_seconds: float) -> bool:
+    """Drop the loaded model when no image job ran for `idle_seconds`. Returns True if unloaded."""
+    global _txt2img, _img2img, _pipeline_path, _warm_state
+    with _lock:
+        if _txt2img is None or _in_use or time.monotonic() - _last_used < idle_seconds:
+            return False
+        _txt2img = None
+        _img2img = None
+        _pipeline_path = None
+        _warm_state = "cold"
+    _free_memory()
+    logger.info("SDXL unloaded after %.0f idle minutes — RAM released", idle_seconds / 60)
+    return True
+
+
+def _start_idle_unloader(config: Config) -> None:
+    """One background thread per process, started the first time the model is loaded."""
+    global _unloader
+    minutes = config.image_idle_unload_minutes
+    if minutes <= 0 or (_unloader is not None and _unloader.is_alive()):
+        return
+
+    def _loop() -> None:
+        while True:
+            time.sleep(IDLE_CHECK_SECONDS)
+            try:
+                unload_if_idle(minutes * 60)
+            except Exception:  # noqa: BLE001 — never let the thread die
+                logger.exception("SDXL idle unload failed")
+
+    _unloader = threading.Thread(target=_loop, name="sdxl-idle-unload", daemon=True)
+    _unloader.start()
 
 
 def _check_cuda_kernels() -> None:
@@ -115,8 +202,8 @@ def _load_pipelines(resolved: str, config: Config) -> tuple[Any, Any]:
 
 
 def get_pipelines(config: Config | None = None) -> tuple[Any, Any]:
-    """Return (txt2img, img2img) singletons for this process."""
-    global _txt2img, _img2img, _pipeline_path, _warm_state, _warm_error
+    """Return (txt2img, img2img) singletons for this process (loads on first use)."""
+    global _txt2img, _img2img, _pipeline_path, _warm_state, _warm_error, _last_used
     config = config or Config.from_env()
     path = config.model_image_path
     if path is None or not Path(path).is_file():
@@ -140,11 +227,13 @@ def get_pipelines(config: Config | None = None) -> tuple[Any, Any]:
             _pipeline_path = resolved
             _warm_state = "ready"
             _warm_error = None
+            _last_used = time.monotonic()
         except Exception as exc:  # noqa: BLE001
             _warm_state = "error"
             _warm_error = str(exc)
             raise
-        return _txt2img, _img2img
+    _start_idle_unloader(config)
+    return _txt2img, _img2img
 
 
 def get_pipeline(config: Config | None = None) -> Any:
@@ -194,6 +283,7 @@ def _step_callback(should_continue: Any | None):
     return _cb
 
 
+@_tracked
 def generate(
     prompt: str,
     *,
@@ -231,6 +321,7 @@ def generate(
     return result.images[0]
 
 
+@_tracked
 def generate_from_image(
     prompt: str,
     init_image: Any,
@@ -281,6 +372,7 @@ def generate_from_image(
     return result.images[0]
 
 
+@_tracked
 def generate_inpaint(
     prompt: str,
     init_image: Any,
@@ -363,3 +455,4 @@ def reset_pipeline() -> None:
         _pipeline_path = None
         _warm_state = "cold"
         _warm_error = None
+    _free_memory()
