@@ -172,6 +172,68 @@ questions:
     question: Add-DnsServerZoneDelegation
     docs: [manage-dns-zones]
 
+  # ── Python HOWTOs (source: python-docs-howto, collection: development) ──
+  - id: py-logging-file
+    lang: en
+    question: How do I write Python log messages to a file?
+    docs: [logging.html, logging-cookbook.html]
+  - id: py-rotating-log
+    lang: en
+    question: How can I rotate log files when they get too big?
+    docs: [logging-cookbook.html, logging.html]
+  - id: py-argparse
+    lang: en
+    question: How do I add optional command-line arguments to a Python script?
+    docs: [argparse.html]
+  - id: py-sort-key
+    lang: en
+    question: How do I sort a list of dictionaries by one of their keys?
+    docs: [sorting.html]
+  - id: py-cmp-to-key
+    lang: en
+    question: What is functools.cmp_to_key for?
+    docs: [sorting.html]
+  - id: py-regex-groups
+    lang: en
+    question: How do named groups work in Python regular expressions?
+    docs: [regex.html]
+  - id: py-socket-server
+    lang: en
+    question: How do I create a TCP server socket in Python?
+    docs: [sockets.html]
+  - id: py-unicode-error
+    lang: en
+    question: Why do I get UnicodeDecodeError when reading a text file?
+    docs: [unicode.html]
+  - id: py-event-loop
+    lang: en
+    question: What does the asyncio event loop actually do?
+    docs: [a-conceptual-overview-of-asyncio.html]
+  - id: py-enum-auto
+    lang: en
+    question: How do I give enum members automatic values?
+    docs: [enum.html]
+  - id: py-ip-in-network
+    lang: en
+    question: How do I check in Python whether an IP address belongs to a network?
+    docs: [ipaddress.html]
+  - id: hi-py-logging
+    lang: hi-Latn
+    question: Python mein logs ko file mein kaise save karein?
+    docs: [logging.html, logging-cookbook.html]
+  - id: hi-py-sort
+    lang: hi-Latn
+    question: list ko kisi key ke hisaab se sort kaise karte hain?
+    docs: [sorting.html]
+  - id: hi-py-argparse
+    lang: hi-Latn
+    question: script mein command line arguments kaise lein?
+    docs: [argparse.html]
+  - id: hi-py-regex
+    lang: hi-Latn
+    question: regex mein group ka kya matlab hai aur kaise use karein?
+    docs: [regex.html]
+
   # ── Out of scope: the right answer is "not enough evidence" ─────────
   - id: oos-vlan
     lang: en
