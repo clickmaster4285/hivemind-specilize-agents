@@ -11,12 +11,23 @@ intents:
       - what is a DNS zone and how is it different from a domain
       - explain python decorators with an example
       - what is the difference between a list and a tuple
+      # decision questions (the old debate intent, removed 2026-10-17) are answered in chat
+      - should we launch our product in Dubai or Karachi first
+      - pros and cons of moving our servers to the cloud
+      - is it a good decision to hire two more developers this quarter
+      - evaluate the risks of expanding to a new market
+      - should I invest in a new office or keep working remotely
+      - which strategy is better for growth, ads or partnerships
       - how does a DNS forwarder work
       - explain the architecture of DNS
       - what is a flowchart
       - what is an ER diagram used for and when should I use one
       - explain what a UML class diagram shows
       - my computer keeps freezing, how do I troubleshoot it
+      - how does a ping sweep work and what does it show
+      - what is ARP and how does it map IP addresses to MAC addresses
+      - explain how network scanners like nmap find devices
+      - how do I find which DNS server my computer uses
       - why is my website not resolving after changing nameservers
       - write a python function that removes duplicates from a list
       - fix this error: ModuleNotFoundError no module named requests
@@ -59,6 +70,19 @@ intents:
       - tumhare brain mein kya kya hai
       - tum kaun ho aur kya kar sakte ho
       - when was your knowledge base last updated
+
+  web_search:
+    note: search the internet right now — only when the user asks to search/google/look up online/check the web for live results
+    examples:
+      - search the web for the price of nvidia rtx 5070
+      - google the release date of python 3.15
+      - search the internet for today's dollar rate in pakistan
+      - look up online who won the cricket world cup final
+      - search web for the latest windows 11 update problems
+      - find out from the web whether CVE-2026-1234 is critical
+      - web se aaj ka news search karke batao
+      - google karke batao iphone 17 ka price
+      - internet se check karo aaj ka dollar rate
 
   image_gen:
     note: draw a picture (photo, illustration, artwork, thumbnail, wallpaper) with the image model
@@ -146,12 +170,16 @@ intents:
       - investigate the files in my project folder and list the TODOs
       - fetch this url and extract the table
 
-  debate:
-    note: a business decision with trade-offs — weigh options, risks, recommendation
+  network_scan:
+    note: actually scan the local private network now and list the devices (IPs, names, MACs, open ports)
     examples:
-      - should we launch our product in Dubai or Karachi first
-      - pros and cons of moving our servers to the cloud
-      - is it a good decision to hire two more developers this quarter
-      - evaluate the risks of expanding to a new market
-      - should I invest in a new office or keep working remotely
-      - which strategy is better for growth, ads or partnerships
+      - scan my network and show all devices in a table
+      - check all the IPs on the LAN and give me only the result
+      - which devices are connected to our office network right now
+      - find the IP address of the new camera on the network
+      - is the NAS and the printer up, scan the network
+      - list every IP that is alive on 192.168.1.0/24
+      - mere network pe kaun kaun se devices hain, table mein dikhao
+      - saare IP check karo aur result table mein do
+      - do an IP scan of the subnet
+

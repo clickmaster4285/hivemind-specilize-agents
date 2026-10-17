@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from src.config import Config
@@ -9,7 +11,7 @@ from src.intent_router import classify_query
 
 
 def _route(text: str):
-    return classify_query(text, requested_mode="auto", config=Config.from_env(), allow_llm=False)
+    return classify_query(text, requested_mode="auto", config=dataclasses.replace(Config.from_env(), assistant_tools=False), allow_llm=False)
 
 
 @pytest.mark.parametrize(

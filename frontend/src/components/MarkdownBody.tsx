@@ -2,6 +2,8 @@
 
 import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
+// tables, strikethrough, task lists: without it a | table | shows as raw text
+import remarkGfm from "remark-gfm";
 
 import { getApiOrigin } from "@/lib/api";
 
@@ -70,7 +72,16 @@ export default function MarkdownBody({ content, pending }: Props) {
   return (
     <div className="md-body">
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
+          // wide tables (network scan, weather) scroll sideways instead of squeezing the chat
+          table: ({ children }) => (
+            <div className="md-table-wrap">
+              <table className="md-table">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => <th className="md-th">{children}</th>,
+          td: ({ children }) => <td className="md-td">{children}</td>,
           h1: ({ children }) => <h3 className="md-h">{children}</h3>,
           h2: ({ children }) => <h3 className="md-h">{children}</h3>,
           h3: ({ children }) => <h4 className="md-h">{children}</h4>,

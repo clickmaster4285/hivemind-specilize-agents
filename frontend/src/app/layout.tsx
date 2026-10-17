@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "MulteAgent — Control Deck",
-  description: "Local multi-agent consensus chat and agent manager",
+  description: "Local AI assistant with IT, Development and Marketing specialists",
 };
 
 export default function RootLayout({

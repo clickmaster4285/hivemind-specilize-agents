@@ -1,6 +1,7 @@
 # Brain evaluation set (doc/BRAIN_DESIGN.md §9). Run: python -m src.brain.evaluate
 # docs: acceptable answer pages, matched against the end of the document URL
 #       (".../networking/dns/aging-scavenging" matches "aging-scavenging").
+# facts: optional key terms the answer must contain (answer_eval.py); "a|b" = either is fine.
 # out_of_scope: the brain must answer "not enough evidence" (nothing in the knowledge base covers it).
 # Source covered so far: ms-windows-server-dns. Add questions whenever a source is added.
 
@@ -14,6 +15,7 @@ questions:
     lang: en
     question: Which network ports does DNS use?
     docs: [network-ports]
+    facts: ["53"]
   - id: en-aging
     lang: en
     question: What is the difference between DNS aging and scavenging?
@@ -26,6 +28,7 @@ questions:
     lang: en
     question: How do I sign a DNS zone with DNSSEC?
     docs: [sign-dnssec-zone]
+    facts: ["Invoke-DnsServerZoneSign|Sign the Zone|zone signing"]
   - id: en-key-master
     lang: en
     question: What does the DNSSEC Key Master do?
@@ -177,34 +180,42 @@ questions:
     lang: en
     question: How do I write Python log messages to a file?
     docs: [logging.html, logging-cookbook.html]
+    facts: ["basicConfig|FileHandler"]
   - id: py-rotating-log
     lang: en
     question: How can I rotate log files when they get too big?
     docs: [logging-cookbook.html, logging.html]
+    facts: ["RotatingFileHandler"]
   - id: py-argparse
     lang: en
     question: How do I add optional command-line arguments to a Python script?
     docs: [argparse.html]
+    facts: ["add_argument"]
   - id: py-sort-key
     lang: en
     question: How do I sort a list of dictionaries by one of their keys?
     docs: [sorting.html]
+    facts: ["key="]
   - id: py-cmp-to-key
     lang: en
     question: What is functools.cmp_to_key for?
     docs: [sorting.html]
+    facts: ["cmp_to_key"]
   - id: py-regex-groups
     lang: en
     question: How do named groups work in Python regular expressions?
     docs: [regex.html]
+    facts: ["(?P<"]
   - id: py-socket-server
     lang: en
     question: How do I create a TCP server socket in Python?
     docs: [sockets.html]
+    facts: ["bind", "listen"]
   - id: py-unicode-error
     lang: en
     question: Why do I get UnicodeDecodeError when reading a text file?
     docs: [unicode.html]
+    facts: ["encoding"]
   - id: py-event-loop
     lang: en
     question: What does the asyncio event loop actually do?
@@ -213,22 +224,27 @@ questions:
     lang: en
     question: How do I give enum members automatic values?
     docs: [enum.html]
+    facts: ["auto"]
   - id: py-ip-in-network
     lang: en
     question: How do I check in Python whether an IP address belongs to a network?
     docs: [ipaddress.html]
+    facts: ["ip_network|ip_address"]
   - id: hi-py-logging
     lang: hi-Latn
     question: Python mein logs ko file mein kaise save karein?
     docs: [logging.html, logging-cookbook.html]
+    facts: ["basicConfig|FileHandler"]
   - id: hi-py-sort
     lang: hi-Latn
     question: list ko kisi key ke hisaab se sort kaise karte hain?
     docs: [sorting.html]
+    facts: ["key"]
   - id: hi-py-argparse
     lang: hi-Latn
     question: script mein command line arguments kaise lein?
     docs: [argparse.html]
+    facts: ["argparse"]
   - id: hi-py-regex
     lang: hi-Latn
     question: regex mein group ka kya matlab hai aur kaise use karein?

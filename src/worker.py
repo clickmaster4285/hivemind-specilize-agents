@@ -7,23 +7,39 @@ import threading
 import time
 from typing import Any
 
-from src.agent_store import AgentStore
 from src.agentic.runtime import run_agentic
 from src.brain.answer import should_use_brain
 from src.conversation import normalize_conversation
 from src.chat_runner import run_chat
 from src.clock import set_time_zone
 from src.diagram_gen import run_diagram
+from src.net_scan import run_network_scan
+from src.assistant import decide
+from src.specialists import resolve as resolve_specialist
+from src.weather import run_weather
 from src import live
 from src.image_gen import run_image_gen
 from src.attachments import load_b64_images
 from src.config import Config
 from src.db import session_scope
 from src.jobs import append_event, claim_next_job, get_job, set_job_status
-from src.runner import run_session
 
 _worker_thread: threading.Thread | None = None
 _stop = threading.Event()
+
+
+# tools that run on their own: (query, job_id, config, on_progress, conversation, **tool_args) -> (output, errors, s)
+DIRECT_TOOLS = {"network_scan": run_network_scan, "weather": run_weather, "diagram": run_diagram}
+
+
+def _finish(config: Config, job_id: str, errors: list[str], *, failed: bool | None = None) -> None:
+    """Final job status (unless the user stopped it): failed when there are errors, else succeeded."""
+    with session_scope(config) as session:
+        current = get_job(session, job_id)
+        if current is None or current.status == "cancelled":
+            return
+        bad = bool(errors) if failed is None else failed
+        set_job_status(session, job_id, "failed" if bad else "succeeded", error="; ".join(errors) if errors else None)
 
 
 def _is_cancelled(job_id: str) -> bool:
@@ -90,16 +106,31 @@ def process_job(job_id: str, config: Config | None = None) -> None:
         # every prompt of this job tells the time in the user's own time zone (sent by the browser)
         set_time_zone(payload.get("client_time_zone"))
 
-        if intent == "diagram":
-            _output, errors, _elapsed = run_diagram(
-                query, job_id=job_id, config=config, on_progress=on_progress, conversation=conversation,
-            )
-            with session_scope(config) as session:
-                current = get_job(session, job_id)
-                if current is None or current.status == "cancelled":
-                    return
-                set_job_status(session, job_id, "failed" if errors else "succeeded",
-                               error="; ".join(errors) if errors else None)
+        tool_args: dict[str, Any] = {}
+        specialist = None
+        if intent == "auto":
+            # which specialist answers (src/specialists.py): pinned in the chat bar, or picked by the model
+            specialist, how = resolve_specialist(payload.get("specialist"), query, config=config,
+                                                 conversation=conversation)
+            if specialist is not None:
+                on_progress({"type": "specialist_chosen", "id": specialist.id, "name": specialist.name,
+                             "accent": specialist.accent, "how": how})
+            # the model answers directly (streamed, done) or picks a tool with its arguments
+            decision = decide(query, job_id=job_id, config=config, conversation=conversation,
+                              on_progress=on_progress, specialist=specialist)
+            if decision.answered:
+                _finish(config, job_id, decision.errors)
+                return
+            intent, tool_args = decision.intent, decision.args
+            on_progress({"type": "tool_chosen", "tool": decision.tool, "args": tool_args})
+            if intent == "doc_gen":
+                mode = "agentic"
+
+        runner = DIRECT_TOOLS.get(intent)
+        if runner is not None:
+            _output, errors, _elapsed = runner(query, job_id=job_id, config=config, on_progress=on_progress,
+                                               conversation=conversation, **tool_args)
+            _finish(config, job_id, errors)
             return
 
         if intent == "image_gen":
@@ -160,12 +191,12 @@ def process_job(job_id: str, config: Config | None = None) -> None:
             return
 
         if mode == "chat":
-            use_brain = config.brain_enabled and should_use_brain(
+            use_brain = config.brain_enabled and (intent == "kb" or should_use_brain(
                 query,
                 intent=intent,
                 reason=(route or {}).get("reason"),
                 has_images=bool(has_images or images),
-            )
+            ))
             result = run_chat(
                 query,
                 config=config,
@@ -177,17 +208,10 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 account_id=str(user_id) if user_id is not None else None,
                 job_id=job_id,
                 about=intent == "about",
+                web_search=intent == "web_search",
+                specialist=specialist,
             )
-            with session_scope(config) as session:
-                if get_job(session, job_id) and get_job(session, job_id).status == "cancelled":
-                    return
-                status = "failed" if result.errors and not result.output else "succeeded"
-                set_job_status(
-                    session,
-                    job_id,
-                    status,
-                    error="; ".join(result.errors) if result.errors else None,
-                )
+            _finish(config, job_id, result.errors, failed=bool(result.errors and not result.output))
             return
 
         if mode == "agentic":
@@ -216,55 +240,8 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 set_job_status(session, job_id, "succeeded")
             return
 
-        if mode == "mixed":
-            agentic = run_agentic(
-                query,
-                job_id=job_id,
-                config=config,
-                model_plan=model_plan,
-                conversation=conversation,
-                on_progress=on_progress,
-            )
-            debate_query = (
-                f"{query}\n\n## Agentic research summary\n{agentic.final_summary[:6000]}\n\n"
-                f"## Critic\n{agentic.critic}"
-            )
-        else:
-            debate_query = query
-
-        if _is_cancelled(job_id):
-            return
-
-        exec_mode = payload.get("execution_mode") or payload.get("mode") or "sequential"
-        if exec_mode not in {"parallel", "sequential"}:
-            exec_mode = "sequential"
-
-        result = run_session(
-            debate_query,
-            mode=exec_mode,
-            agent_ids=payload.get("agent_ids"),
-            config=config,
-            store=AgentStore(),
-            on_progress=on_progress,
-            model_plan=model_plan,
-            should_cancel=lambda: _is_cancelled(job_id),
-        )
-
-        with session_scope(config) as session:
-            current = get_job(session, job_id)
-            if current is None:
-                return
-            if current.status == "cancelled":
-                return
-            # session_done was already appended via on_progress inside run_session.
-            status = "failed" if result.errors and result.consensus is None else "succeeded"
-            set_job_status(
-                session,
-                job_id,
-                status,
-                error="; ".join(result.errors) if result.errors else None,
-                log_path=str(result.log_path) if result.log_path else None,
-            )
+        # jobs queued before the debate was removed (2026-10-17) — they are not run
+        _finish(config, job_id, [f"mode '{mode}' no longer exists — ask again"], failed=True)
     except Exception as exc:  # noqa: BLE001
         with session_scope(config) as session:
             current = get_job(session, job_id)

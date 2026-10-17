@@ -1,13 +1,13 @@
 import type {
-  Agent,
-  AgentInput,
   AuthUser,
-  DebateEvent,
-  ExecutionMode,
+  JobEvent,
   Health,
   Job,
   ModelInfo,
   RunMode,
+  Specialist,
+  SpecialistInput,
+  SpecialistOptions,
 } from "./types";
 
 const API_PORT = process.env.NEXT_PUBLIC_API_PORT || "8787";
@@ -130,27 +130,31 @@ export async function getHealth(): Promise<Health> {
   return request("/api/health");
 }
 
-export async function listAgents(): Promise<Agent[]> {
-  return request("/api/agents");
+export async function listSpecialists(): Promise<Specialist[]> {
+  return request("/api/specialists");
 }
 
-export async function createAgent(payload: AgentInput): Promise<Agent> {
-  return request("/api/agents", { method: "POST", body: JSON.stringify(payload) });
+export async function specialistOptions(): Promise<SpecialistOptions> {
+  return request("/api/specialists/options");
 }
 
-export async function updateAgent(id: string, payload: Partial<AgentInput>): Promise<Agent> {
-  return request(`/api/agents/${encodeURIComponent(id)}`, {
+export async function createSpecialist(payload: SpecialistInput): Promise<Specialist> {
+  return request("/api/specialists", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateSpecialist(id: string, payload: Partial<SpecialistInput>): Promise<Specialist> {
+  return request(`/api/specialists/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
 }
 
-export async function deleteAgent(id: string): Promise<void> {
-  await request(`/api/agents/${encodeURIComponent(id)}`, { method: "DELETE" });
+export async function deleteSpecialist(id: string): Promise<void> {
+  await request(`/api/specialists/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export async function resetAgents(): Promise<Agent[]> {
-  return request("/api/agents/reset", { method: "POST", body: "{}" });
+export async function resetSpecialists(): Promise<Specialist[]> {
+  return request("/api/specialists/reset", { method: "POST", body: "{}" });
 }
 
 export async function listModels(refresh = false): Promise<ModelInfo[]> {
@@ -162,14 +166,15 @@ export type ImageForceIntent =
   | "generate"
   | "edit"
   | "inpaint"
-  | "doc_gen";
+  | "doc_gen"
+  | "web_search";
 export type ImageProfile = "fast" | "quality" | "balanced";
 
 export async function createJob(payload: {
   query: string;
   mode: RunMode;
-  execution_mode: ExecutionMode;
-  agent_ids: string[];
+  /** "auto" = the assistant picks · "none" = no specialist · or a specialist id */
+  specialist?: string;
   model?: string;
   allow_overflow?: boolean;
   images?: { filename: string; mime: string; data: string }[];
@@ -224,14 +229,14 @@ export async function fetchJobAttachment(jobId: string, filename: string): Promi
 
 export async function getJobHistory(jobId: string): Promise<{
   job: Job;
-  events: DebateEvent[];
+  events: JobEvent[];
 }> {
   return request(`/api/jobs/${encodeURIComponent(jobId)}/history`);
 }
 
 export async function streamJobEvents(
   jobId: string,
-  onEvent: (event: DebateEvent) => void,
+  onEvent: (event: JobEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   let response: Response;
@@ -263,7 +268,7 @@ export async function streamJobEvents(
           .map((line) => line.slice(5).trim())
           .join("");
         if (!data) continue;
-        onEvent(JSON.parse(data) as DebateEvent);
+        onEvent(JSON.parse(data) as JobEvent);
       }
     }
   } catch (err) {

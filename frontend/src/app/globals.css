@@ -411,6 +411,61 @@ body {
   color: var(--text);
 }
 
+/* Specialists (Settings): colour dot, name, what it covers */
+.specialist-row {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  min-width: 0;
+  color: var(--text);
+}
+
+.specialist-row > span:last-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.specialist-row small {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.specialist-dot {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-top: 0.3rem;
+  border-radius: 50%;
+}
+
+/* the edit form's tool and collection checkboxes */
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.35rem 0.8rem;
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+}
+
+.check-grid legend {
+  padding: 0 0.3rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.check-grid .check {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
 @media (max-width: 900px) {
   .chat-app {
     grid-template-columns: 1fr;
@@ -989,6 +1044,46 @@ body {
   background: rgba(0, 0, 0, 0.28);
   padding: 0.1rem 0.35rem;
   border-radius: 0.3rem;
+}
+
+.md-body .md-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0.4rem 0 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+}
+
+.md-body .md-table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.8rem;
+}
+
+.md-body .md-th,
+.md-body .md-td {
+  padding: 0.3rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.md-body .md-th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.md-body tbody tr:nth-child(even) .md-td {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.md-body tbody tr:hover .md-td {
+  background: rgba(208, 138, 60, 0.08);
 }
 
 .md-body .md-img {

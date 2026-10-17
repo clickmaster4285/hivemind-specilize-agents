@@ -1,25 +1,23 @@
-export type AgentStage = "panel" | "consensus";
-export type ExecutionMode = "parallel" | "sequential";
-export type RunMode = "auto" | "chat" | "debate" | "agentic" | "mixed";
+export type RunMode = "auto" | "chat" | "agentic";
 
-export type Agent = {
+/** A domain specialist (src/specialists.py): the assistant picks one from `covers`, or the user pins one. */
+export type Specialist = {
   id: string;
   name: string;
-  role: string;
-  system_prompt: string;
-  stage: AgentStage;
+  covers: string;
+  instructions: string;
+  tools: string[];
+  collections: string[];
   enabled: boolean;
   sort_order: number;
   accent: string;
 };
 
-export type AgentInput = {
-  name: string;
-  role: string;
-  system_prompt: string;
-  stage: AgentStage;
-  enabled: boolean;
-  accent: string;
+export type SpecialistInput = Omit<Specialist, "id" | "sort_order">;
+
+export type SpecialistOptions = {
+  tools: { name: string; description: string }[];
+  collections: string[];
 };
 
 export type Health = {
@@ -81,7 +79,7 @@ export type Job = {
   deleted_at?: string | null;
 };
 
-export type DebateEvent = {
+export type JobEvent = {
   type: string;
   [key: string]: unknown;
 };
@@ -113,6 +111,9 @@ export type BrainSource = {
   updated_at?: string | null;
   source: string;
   cited: boolean;
+  /** When the knowledge-base source was last checked for changes; refreshing = being re-checked now */
+  checked_at?: string | null;
+  refreshing?: boolean;
 };
 
 export type FeedItem = {

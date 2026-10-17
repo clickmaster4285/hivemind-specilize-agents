@@ -294,6 +294,7 @@ def run_diagram(
     config: Config | None = None,
     on_progress: ProgressCallback | None = None,
     conversation: list[dict[str, str]] | None = None,
+    **_: object,
 ) -> tuple[str, list[str], float]:
     """Return (markdown reply with a ```mermaid block, errors, seconds)."""
     config = config or Config.from_env()

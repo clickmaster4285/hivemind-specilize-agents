@@ -61,6 +61,14 @@ cases:
   - {text: "make slides from these notes", intent: doc_gen}
   - {text: "pdf report chahiye is topic pe", intent: doc_gen}
 
+  # web_search (only on request)
+  - {text: "search the web for the current price of the nvidia rtx 5070", intent: web_search}
+  - {text: "google who won the football world cup final", intent: web_search}
+  - {text: "search the internet for today's dollar rate in pakistan", intent: web_search}
+  - {text: "look up online when python 3.15 will be released", intent: web_search}
+  - {text: "web se aaj ka news search karke batao", intent: web_search}
+  - {text: "internet se check karo aaj ka dollar rate", intent: web_search}
+
   # creative
   - {text: "write a bedtime story about a brave little cat", intent: creative}
   - {text: "give me a catchy instagram caption for my cafe", intent: creative}
@@ -70,7 +78,15 @@ cases:
   - {text: "open https://docs.python.org/3/whatsnew/ and tell me what changed", intent: agentic}
   - {text: "research three CRM tools online and compare their prices", intent: agentic}
 
-  # debate
-  - {text: "should my startup raise money now or wait a year", intent: debate}
-  - {text: "is it better to build our own app or buy a SaaS product, considering cost and risk", intent: debate}
-  - {text: "Dubai mein branch kholna sahi faisla hai ya nahi", intent: debate}
+  # decision questions: answered in chat since the debate was removed (2026-10-17)
+  - {text: "should my startup raise money now or wait a year", intent: chat}
+  - {text: "is it better to build our own app or buy a SaaS product, considering cost and risk", intent: chat}
+  - {text: "Dubai mein branch kholna sahi faisla hai ya nahi", intent: chat}
+
+  # network_scan (doc/TOOLS_DECISION.md) — the first message is the real one that triggered the tool
+  - {text: "i need to check all the ip nad at the end i only the result in table format", intent: network_scan}
+  - {text: "what devices are on my wifi right now", intent: network_scan}
+  - {text: "ping sweep 10.0.0.0/24 and list who answers", intent: network_scan}
+  - {text: "office ke network mein kitne device online hain", intent: network_scan}
+  # …but questions ABOUT scanning stay normal answers
+  - {text: "how does an IP scanner like Angry IP Scanner work", intent: chat}

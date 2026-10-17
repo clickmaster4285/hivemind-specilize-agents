@@ -77,6 +77,9 @@ def estimate_wait_seconds(session: Session, config: Config) -> float:
     return depth * 45.0 / max(1, config.llm_slots)
 
 
+LEGACY_MODES = frozenset({"debate", "mixed"})
+
+
 def create_job(
     session: Session,
     *,
@@ -89,8 +92,10 @@ def create_job(
 ) -> Job:
     config = config or Config.from_env()
     requested_mode = (mode or "auto").strip().lower()
-    if requested_mode not in {"auto", "debate", "agentic", "mixed", "chat"}:
-        raise ValueError("mode must be auto, chat, debate, agentic, or mixed")
+    if requested_mode in LEGACY_MODES:
+        requested_mode = "auto"           # the Optimist/Cynic/Consensus debate was removed (2026-10-17)
+    if requested_mode not in {"auto", "agentic", "chat"}:
+        raise ValueError("mode must be auto, chat or agentic")
     if count_active_for_user(session, user.id) >= config.max_active_jobs_per_user:
         raise ValueError(
             f"User already has {config.max_active_jobs_per_user} active job(s). Wait or cancel."

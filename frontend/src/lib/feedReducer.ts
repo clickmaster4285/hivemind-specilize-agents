@@ -1,4 +1,4 @@
-import type { BrainSource, ChatImage, DebateEvent, FeedItem, Job, JobArtifact, ToolStep } from "@/lib/types";
+import type { BrainSource, ChatImage, JobEvent, FeedItem, Job, JobArtifact, ToolStep } from "@/lib/types";
 import { formatAgentOutput, formatToolResult, summarizeArgs } from "@/lib/format";
 
 const DOC_KINDS = new Set([
@@ -115,7 +115,7 @@ function lastPendingIndex(prev: FeedItem[], agentId?: string): number {
   return -1;
 }
 
-function attachToolCall(prev: FeedItem[], event: DebateEvent): FeedItem[] {
+function attachToolCall(prev: FeedItem[], event: JobEvent): FeedItem[] {
   const agentId = String(event.agent_id || "");
   const tool = String(event.tool || "tool");
   const step: ToolStep = {
@@ -133,7 +133,7 @@ function attachToolCall(prev: FeedItem[], event: DebateEvent): FeedItem[] {
   return upsertStatus(prev, "Working", `Using ${tool}…`);
 }
 
-function attachToolResult(prev: FeedItem[], event: DebateEvent): FeedItem[] {
+function attachToolResult(prev: FeedItem[], event: JobEvent): FeedItem[] {
   const agentId = String(event.agent_id || "");
   const tool = String(event.tool || "tool");
   const result = formatToolResult(String(event.result || ""));
@@ -161,7 +161,7 @@ function attachToolResult(prev: FeedItem[], event: DebateEvent): FeedItem[] {
 }
 
 /** Pure reducer: apply one backend event onto a feed snapshot. */
-export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
+export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
   const type = String(event.type || "");
 
   if (type === "job_queued") {
@@ -188,6 +188,13 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
       "Route",
       reason ? `${label} · ${intent} · ${reason}` : `${label} · ${intent}`,
     );
+  }
+  if (type === "specialist_chosen") {
+    const how = event.how === "chosen" ? "chosen by you" : "picked automatically";
+    return upsertStatus(prev, "Specialist", `${String(event.name || event.id)} specialist · ${how}`);
+  }
+  if (type === "tool_chosen") {
+    return upsertStatus(prev, "Tool", `${String(event.tool || "tool").replace(/_/g, " ")} …`);
   }
   if (type === "job_started" || type === "session_start" || type === "agentic_start") {
     return upsertStatus(prev, "Working", "Running…");
@@ -362,7 +369,7 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
 }
 
 export function buildFeedFromEvents(
-  events: DebateEvent[],
+  events: JobEvent[],
   userMessage?: string,
   images?: ChatImage[],
 ): FeedItem[] {

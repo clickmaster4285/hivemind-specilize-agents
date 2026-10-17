@@ -9,6 +9,7 @@ logs/*.txt
 logs/*.log
 !logs/.gitkeep
 agents/agents.json
+agents/specialists.json
 data/*
 # Brain source registry + test questions are tracked (doc/BRAIN_DESIGN.md §4.1)
 !data/brain/

@@ -62,9 +62,11 @@ class LLMClient:
         images: list[str] | None = None,
         on_delta: Callable[[str], None] | None = None,
         should_continue: Callable[[], bool] | None = None,
+        max_tokens: int | None = None,
     ) -> str:
         """on_delta / should_continue switch Ollama to streaming: on_delta gets the text so far,
-        and should_continue() returning False stops the model mid-answer (raises LLMStopped)."""
+        and should_continue() returning False stops the model mid-answer (raises LLMStopped).
+        max_tokens caps the reply (Ollama num_predict) — for one-word answers such as a choice."""
         cfg = self.config.with_model(model) if model else self.config
         backend = self._infer_backend(cfg.llm_model)
         temp = cfg.temperature if temperature is None else temperature
@@ -76,7 +78,7 @@ class LLMClient:
             if on_delta is not None or should_continue is not None:
                 return self._chat_ollama_stream(cfg, system, user, temp, max_retries, pics,
                                                 on_delta, should_continue)
-            return self._chat_ollama(cfg, system, user, temp, max_retries, pics)
+            return self._chat_ollama(cfg, system, user, temp, max_retries, pics, max_tokens)
 
     def _chat_ollama(
         self,
@@ -86,6 +88,7 @@ class LLMClient:
         temperature: float,
         max_retries: int,
         images: list[str] | None = None,
+        max_tokens: int | None = None,
     ) -> str:
         url = f"{cfg.llm_base_url}/api/chat"
         user_msg: dict[str, Any] = {"role": "user", "content": user}
@@ -100,6 +103,8 @@ class LLMClient:
                 user_msg,
             ],
         }
+        if max_tokens:
+            payload["options"]["num_predict"] = max_tokens
         if cfg.llm_think is not None:
             payload["think"] = cfg.llm_think
         last_error: Exception | None = None
@@ -130,6 +135,67 @@ class LLMClient:
             f"Failed to reach local LLM at {url} (model={cfg.llm_model}). "
             f"Last error: {_llm_err(last_error)}. Is Ollama running? (ollama serve)"
         )
+
+    def chat_tools(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        model: str | None = None,
+        temperature: float = 0.2,
+        on_delta: Callable[[str], None] | None = None,
+        should_continue: Callable[[], bool] | None = None,
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Ollama native tool calling, streamed. The model either writes an answer (text streams to
+        on_delta) or calls tools. → (text, [{"name": ..., "arguments": {...}}, ...])."""
+        cfg = self.config.with_model(model) if model else self.config
+        payload: dict[str, Any] = {
+            "model": cfg.llm_model, "stream": True, "tools": tools, "messages": messages,
+            "options": {"temperature": temperature, "num_ctx": cfg.llm_num_ctx},
+        }
+        if cfg.llm_think is not None:
+            payload["think"] = cfg.llm_think
+        keep_going = should_continue or (lambda: True)
+        url = f"{cfg.llm_base_url}/api/chat"
+        text, calls = "", []
+        with llm_slot(cfg):
+            try:
+                with requests.post(url, json=payload, stream=True, timeout=(10, cfg.timeout_seconds)) as response:
+                    if response.status_code == 400 and "think" in payload:
+                        payload.pop("think")       # model without thinking support: resend without the flag
+                        response.close()
+                        response = requests.post(url, json=payload, stream=True, timeout=(10, cfg.timeout_seconds))
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if not keep_going():
+                            raise LLMStopped(text)
+                        if not line:
+                            continue
+                        data = json.loads(line)
+                        if data.get("error"):
+                            raise LLMError(str(data["error"]))
+                        message = data.get("message") or {}
+                        for call in message.get("tool_calls") or []:
+                            fn = call.get("function") or {}
+                            args = fn.get("arguments")
+                            if isinstance(args, str):
+                                try:
+                                    args = json.loads(args)
+                                except ValueError:
+                                    args = {}
+                            calls.append({"name": str(fn.get("name") or ""), "arguments": args or {}})
+                        piece = message.get("content") or ""
+                        if piece:
+                            text += piece
+                            if on_delta is not None and not calls:
+                                on_delta(text)
+                        if data.get("done"):
+                            break
+            except (requests.RequestException, ValueError) as exc:
+                raise LLMError(
+                    f"Failed to reach local LLM at {url} (model={cfg.llm_model}). Last error: {_llm_err(exc)}."
+                ) from exc
+        return text.strip(), calls
 
     def _chat_ollama_stream(
         self,

@@ -113,7 +113,10 @@ class SemanticRouter:
             votes[name] = votes.get(name, 0.0) + sim
         ranked = sorted(best, key=lambda n: (best[n] + 0.02 * votes[n]), reverse=True)
         top = ranked[0]
-        runner_up = best[ranked[1]] if len(ranked) > 1 else -1.0
+        # runner-up = the best example of any OTHER intent, over all examples (not only the k nearest:
+        # when all k belong to one intent, the lead was measured against nothing and showed 1.9)
+        others = [float(sims[i]) for i, idx in enumerate(allowed) if self.examples[idx][0] != top]
+        runner_up = max(others) if others else -1.0
         margin = best[top] - runner_up
         if best[top] < MIN_SIMILARITY or margin < MIN_MARGIN:
             return Match(None, best[top], margin, neighbours, guess=top if best[top] >= MIN_GUESS_SIMILARITY else None)
@@ -178,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.eval:
         result = evaluate()
-        print(f"right {result['right']}/{result['total']}  unclear (→ LLM) {result['unclear']}  "
+        print(f"right {result['right']}/{result['total']}  unclear (ask LLM) {result['unclear']}  "
               f"wrong {len(result['wrong'])}")
         for r in result["rows"]:
             if r["got"] != r["intent"]:

@@ -2,11 +2,13 @@
 
 Local-first, framework-free multi-agent system with:
 
-- **Auto** intent router (default) — greetings/stories → chat; decisions → debate; research → agentic
+- **Auto** (default) — the assistant answers directly or picks a tool itself (native tool calling,
+  `src/assistant.py`): knowledge base, web search, weather, network scan, image, diagram, document
+- **Specialists** — IT, Development and Marketing (`src/specialists.py`): picked per message, or pinned
+  in the chat bar; each has its own instructions, allowed tools and knowledge collections. Edit them in
+  Settings → Specialists (admins). They replaced the Optimist / Cynic / Consensus debate (2026-10-17)
 - **Chat** — single fast Assistant reply
-- **Debate** (Optimist / Cynic / Consensus)
 - **Agentic** planner → tools → critic loop
-- **Mixed** (agentic research, then debate)
 - **Vision** — paste/attach images; Auto routes to `MODEL_VISION` (default `llava:7b`)
 - **Job queue**, JWT auth, model registry, GPU fairness for 8–15 users
 - Hybrid path: SQLite/LAN now → Postgres + Caddy + workers for cloud
@@ -52,6 +54,14 @@ pip install -r requirements-image-cu118.txt
 6. Image jobs share `LLM_SLOTS` with chat — unload large Ollama models before generating if VRAM is tight.
 7. First load may download tokenizer/config pieces into the HF cache (online once), then reuse.
 
+## Web search (on request)
+
+Ask Auto to search ("**search the web for** …", "**google** …") or click **Web** in the composer:
+
+- Runs against a **local SearXNG** container (`docker compose up -d searxng`, `127.0.0.1:8888` only) — the question leaves your machine only towards the search engines SearXNG asks (Google, Bing, DuckDuckGo…).
+- The top pages are read with the brain's polite fetcher, the closest passages are picked, and the answer **cites its web sources** under the reply.
+- Nothing found on the web is stored in the knowledge base. Router intent: `web_search` (`data/router/intents.yaml`).
+
 ## Documents (Word / PDF / PPT / Excel / HTML)
 
 Ask Auto for a downloadable file, or click **Document** in the composer:
@@ -67,9 +77,9 @@ Agentic tools write files under `artifacts/{job_id}/files/`; the feed shows **Do
 | Piece | Role |
 |-------|------|
 | FastAPI (`web/server.py`) | Auth, agents, models, jobs, SSE |
-| Intent router (`src/intent_router.py`) | Auto mode: chat vs debate vs agentic |
+| Intent router (`src/intent_router.py`) | Forced intents, attachments; hands Auto to the assistant (tool calling) |
 | Chat (`src/chat_runner.py`) | Single-call Assistant replies |
-| Worker (`src/worker.py` / `worker_main.py`) | Claims jobs, runs chat/debate/agentic |
+| Worker (`src/worker.py` / `worker_main.py`) | Claims jobs: picks the specialist, then chat / tools / agentic |
 | DB (SQLite or Postgres) | Users, jobs, events, model registry |
 | LLM lock (`LLM_SLOTS`) | Fair GPU concurrency |
 | Next.js (`frontend/`) | Team UI |
@@ -101,11 +111,13 @@ python main.py --gui
 
 TLS / reverse proxy starter: [deploy/Caddyfile](deploy/Caddyfile). SSO is gated by `SSO_ENABLED` (hook endpoint `/api/auth/sso/status`).
 
-## CLI (no UI)
+## Quality checks (need Ollama + the brain database)
 
 ```bash
-python main.py "Should we adopt AI route planning in Q3?"
-python main.py --parallel "Your question"
+python -m src.brain.evaluate        # retrieval: is the right page found?          (Recall@8, MRR)
+python -m src.brain.answer_eval     # answers: grounded, right source, no-evidence, latency  (B6)
+python -m src.assistant --eval      # does the assistant pick the right tool?  (--specialists: as real chats do)
+python -m src.specialists --eval    # does the picker choose the right specialist?
 ```
 
 ## Defaults

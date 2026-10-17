@@ -1,4 +1,4 @@
-"""Fast intent router: decide chat vs debate vs agentic vs vision vs image gen."""
+"""Fast intent router: decide chat vs agentic vs vision vs image gen vs diagram vs tools."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ from src.config import Config
 
 logger = logging.getLogger(__name__)
 
-MANUAL_MODES = frozenset({"debate", "agentic", "mixed", "chat"})
-RESOLVED_MODES = frozenset({"chat", "debate", "agentic"})
+MANUAL_MODES = frozenset({"agentic", "chat"})
+RESOLVED_MODES = frozenset({"chat", "agentic"})
 
 GREETING_RE = re.compile(
     r"^(hi|hello|hey|howdy|yo|sup|hiya|good\s*(morning|afternoon|evening)|thanks|thank\s*you|"
@@ -128,7 +128,7 @@ AGENTIC_RE = re.compile(
     r"https?://",
     re.I,
 )
-DEBATE_RE = re.compile(
+DECISION_RE = re.compile(
     r"\b(should\s+we|pros?\s+and\s+cons?|trade[- ]?offs?|risks?|feasib|decide|decision|"
     r"recommend(ation)?|strategy|invest|expand|launch|business|market|compliance|"
     r"consensus|evaluate|go\s*/\s*no[- ]?go|pilot\s+first)\b",
@@ -137,12 +137,11 @@ DEBATE_RE = re.compile(
 
 CLASSIFY_SYSTEM = """You classify user messages for a multi-agent system.
 Reply with ONLY compact JSON, no markdown:
-{"intent":"chat"|"creative"|"debate"|"agentic"|"doc_gen"|"image_gen"|"vision","confidence":0.0-1.0,"image_mode":"txt2img"|"img2img"|null}
+{"intent":"chat"|"creative"|"agentic"|"doc_gen"|"image_gen"|"vision","confidence":0.0-1.0,"image_mode":"txt2img"|"img2img"|null}
 
 Rules:
 - chat: greetings, thanks, chitchat, simple Q&A
 - creative: stories, poems, jokes, fiction
-- debate: business/strategy decisions needing pros/cons/consensus
 - agentic: tools, research, browsing, multi-step repo/file work
 - doc_gen: user wants a downloadable Word/PDF/PPT/Excel/HTML file (even with typos like formate/docx)
 - image_gen: draw/generate/edit a picture (set image_mode=txt2img or img2img)
@@ -278,7 +277,7 @@ def _heuristic(query: str) -> RouteDecision | None:
     if not GREETING_RE.match(text) and len(text) <= 40 and re.search(r"\b(who|what)\s+(are|r)\s+(you|u)\b", text, re.I):
         return RouteDecision("auto", "chat", "about", "question about the assistant -> live facts")
 
-    if GREETING_RE.match(text) or len(text) <= 12 and not DEBATE_RE.search(text):
+    if GREETING_RE.match(text) or len(text) <= 12 and not DECISION_RE.search(text):
         return RouteDecision("auto", "chat", "chat", "greeting / short chitchat -> chat")
 
     if PROMPT_TEXT_RE.search(text) and not ALSO_GENERATE_RE.search(text):
@@ -313,10 +312,7 @@ def _heuristic(query: str) -> RouteDecision | None:
     if AGENTIC_RE.search(text):
         return RouteDecision("auto", "agentic", "agentic", "tools / research signals -> agentic")
 
-    if DEBATE_RE.search(text) and len(text) >= 40:
-        return RouteDecision("auto", "debate", "debate", "decision / business signals -> debate")
-
-    if len(text) < 80 and not DEBATE_RE.search(text) and not AGENTIC_RE.search(text):
+    if len(text) < 80 and not DECISION_RE.search(text) and not AGENTIC_RE.search(text):
         return RouteDecision("auto", "chat", "chat", "short question -> chat")
 
     return None
@@ -461,6 +457,14 @@ def classify_query(
         )
     if forced in {"diagram", "mermaid"}:
         return _diagram_decision(requested, "forced diagram action")
+    if forced in {"web_search", "web", "search_web"}:
+        return RouteDecision(
+            requested_mode=requested,
+            resolved_mode="chat",
+            intent="web_search",
+            reason="forced web search action",
+            confidence=1.0,
+        )
     if forced in {"doc_gen", "document", "docs"}:
         return RouteDecision(
             requested_mode=requested,
@@ -477,13 +481,17 @@ def classify_query(
     if FLAG_RE.search(text):
         return _image_gen_decision(requested, reason="image prompt flags -> txt2img", image_mode="txt2img")
 
+    if config.assistant_tools and requested in {"auto", "chat"}:
+        # the assistant itself picks a tool or answers (src/assistant.py), in the worker
+        return RouteDecision(requested, "chat", "auto", "the assistant chooses (tool calling)")
+
     decision = _semantic_decision(text, requested, config, after_diagram=after_diagram, allow_llm=allow_llm)
     if decision is None:
         # embedding model unreachable: the old word rules (frozen — extend data/router/intents.yaml instead)
         return _legacy_route(query, text, requested, config, after_diagram=after_diagram, allow_llm=allow_llm)
     if requested in MANUAL_MODES and requested != "chat":
         # a mode the user picked wins, except for asks that need their own tool
-        bypass = {"image_gen", "diagram", "doc_gen"} | ({"creative"} if requested in {"debate", "mixed"} else set())
+        bypass = {"image_gen", "diagram", "doc_gen", "web_search", "network_scan"}
         if decision.intent not in bypass:
             return RouteDecision(requested, requested, requested, "manual mode override", confidence=1.0)
     return decision
@@ -518,11 +526,17 @@ def _semantic_decision(
     if intent == "greeting":
         # "greeting" in the reason keeps the knowledge base out of small talk (should_use_brain)
         return RouteDecision(requested, "chat", "chat", f"greeting / small talk -> chat; {reason}", used_llm, conf)
+    if intent == "web_search":
+        # asked to search the internet: own path (src/web_search.py), never the knowledge base
+        return RouteDecision(requested, "chat", "web_search", reason, used_llm, conf)
     if intent in {"diagram", "diagram_edit"}:
         return _diagram_decision(requested, reason)
+    if intent == "network_scan":
+        # a tool that acts (src/net_scan.py): runs directly, no LLM planning, exact table
+        return RouteDecision(requested, "chat", "network_scan", reason, used_llm, conf)
     if intent == "image_gen":
         return _image_gen_decision(requested, reason=reason, image_mode="txt2img", used_llm=used_llm, confidence=conf)
-    resolved = {"doc_gen": "agentic", "agentic": "agentic", "debate": "debate"}.get(intent, "chat")
+    resolved = {"doc_gen": "agentic", "agentic": "agentic"}.get(intent, "chat")
     return RouteDecision(requested, resolved, intent, reason, used_llm, conf)
 
 
@@ -548,11 +562,11 @@ def _legacy_route(
 
     if requested in MANUAL_MODES:
         if DIAGRAM_RE.search(text) and not DOC_GEN_RE.search(text) and not EXPLICIT_IMAGE_RE.search(text):
-            return _diagram_decision(requested, "diagram request bypasses debate board")
+            return _diagram_decision(requested, "diagram request bypasses the chosen mode")
         if IMAGE_GEN_RE.search(text) or IMAGE_EDIT_RE.search(text):
             return _image_gen_decision(
                 requested,
-                reason="image generation bypasses debate board",
+                reason="image generation bypasses the chosen mode",
                 image_mode="txt2img",
             )
         if DOC_GEN_RE.search(text):
@@ -560,16 +574,7 @@ def _legacy_route(
                 requested_mode=requested,
                 resolved_mode="agentic",
                 intent="doc_gen",
-                reason="document generation bypasses debate board",
-                confidence=1.0,
-            )
-        if requested in {"debate", "mixed"} and CREATIVE_RE.search(text):
-            return RouteDecision(
-                requested_mode=requested,
-                resolved_mode="chat",
-                intent="creative",
-                reason="creative ask bypasses debate board",
-                used_llm=False,
+                reason="document generation bypasses the chosen mode",
                 confidence=1.0,
             )
         return RouteDecision(
@@ -589,7 +594,7 @@ def _legacy_route(
     if (
         allow_llm
         and len(text) >= 80
-        and (DEBATE_RE.search(text) or AGENTIC_RE.search(text))
+        and (DECISION_RE.search(text) or AGENTIC_RE.search(text))
         and not IMAGE_GEN_RE.search(text)
         and not IMAGE_EDIT_RE.search(text)
     ):
@@ -597,15 +602,6 @@ def _legacy_route(
         if llm_hit is not None and llm_hit.confidence >= 0.6:
             return llm_hit
 
-    if len(text) >= 160 and DEBATE_RE.search(text):
-        return RouteDecision(
-            "auto",
-            "debate",
-            "debate",
-            "long decision-shaped query -> debate",
-            used_llm=False,
-            confidence=0.45,
-        )
     return RouteDecision(
         "auto",
         "chat",

@@ -101,6 +101,8 @@ class Config:
     brain_scheduler: bool = True
     brain_refresh_window: str = ""      # local hours "01-06" (night only); empty = any time
     brain_scheduler_minutes: int = 30   # how often to look for due sources
+    # on demand: a source used by an answer and not checked for this many hours is refreshed right away
+    brain_fresh_hours: float = 24.0
     # SDXL lives in system RAM (CPU offload): free it after this many idle minutes (0 = keep loaded)
     image_idle_unload_minutes: int = 10
     # SDXL runs in its own process (python -m src.image_service) so the API never holds the model
@@ -118,6 +120,13 @@ class Config:
     image_fast_checkpoint: str = ""
     # Hires-fix scale for text-to-image (set by the profile; 0 = off)
     image_hires: float = 0.0
+    # Web search on request: SearXNG in Docker (127.0.0.1:8888). "" = not configured.
+    web_search_url: str = ""
+    # network_scan tool (src/net_scan.py): private networks only; off switch + size limit
+    network_scan_enabled: bool = True
+    network_scan_max_hosts: int = 1024
+    # The model picks tools itself (native tool calling, src/assistant.py); false = example-based router
+    assistant_tools: bool = True
 
     @classmethod
     def from_env(cls) -> Config:
@@ -213,6 +222,7 @@ class Config:
             brain_scheduler=_bool("BRAIN_SCHEDULER", True),
             brain_refresh_window=(os.getenv("BRAIN_REFRESH_WINDOW") or "").strip(),
             brain_scheduler_minutes=max(5, int(os.getenv("BRAIN_SCHEDULER_MINUTES", "30"))),
+            brain_fresh_hours=max(0.1, float(os.getenv("BRAIN_FRESH_HOURS", "24"))),
             image_idle_unload_minutes=max(0, int(os.getenv("IMAGE_IDLE_UNLOAD_MINUTES", "10"))),
             image_service_port=int(os.getenv("IMAGE_SERVICE_PORT", "8790")),
             image_service_token=os.getenv("IMAGE_SERVICE_TOKEN", ""),
@@ -222,6 +232,11 @@ class Config:
             image_prompt_rewrite=_bool("IMAGE_PROMPT_REWRITE", True),
             image_fast_checkpoint=(os.getenv("IMAGE_FAST_CHECKPOINT") or "").strip(),
             image_hires=float(pdata["hires"]),
+            web_search_url=_loopback((os.getenv("WEB_SEARCH_URL") or "").strip()).rstrip("/"),
+            network_scan_enabled=_bool("NETWORK_SCAN_ENABLED", True),
+            # hard ceiling 4096 (a /20) even if .env asks for more
+            network_scan_max_hosts=min(4096, max(1, int(os.getenv("NETWORK_SCAN_MAX_HOSTS", "1024")))),
+            assistant_tools=_bool("ASSISTANT_TOOLS", True),
         )
 
     def with_model(self, model: str | None) -> Config:

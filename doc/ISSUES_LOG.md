@@ -275,6 +275,20 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*
   (model loading, announced), complete at 22.9 s — previously nothing until the end.
 - **Left:** debate/agentic modes still stop only between steps (they do not stream yet); "pause" not built.
 
+### 37. A new route for every situation — replaced by native tool calling — 2026-10-17
+- **Symptom:** "what is the current weather" needed the Web button; every new need meant new intents and
+  example sentences (`weather`, `current_info`, …). User: *"why should i create the inter route for every single situation"*.
+- **Fix:** the model chooses itself (`src/assistant.py`, Ollama native tool calling). Each tool = one entry
+  (name, one-line description, parameters); the model answers directly (streamed) or calls a tool with
+  arguments (`place: "Lahore"`, `format: "pdf"`). Tools: knowledge base (its description lists the live
+  sources), web search, **weather** (new: Open-Meteo, exact data, no key), network scan, image, diagram,
+  document, about. Worker: one `DIRECT_TOOLS` table + one `_finish` helper instead of five copies.
+  The example-based router stays only as a backup (`ASSISTANT_TOOLS=false`).
+- **Measured:** `python -m src.assistant --eval` — **27/27** right choices, median decision 3.3 s (a direct
+  answer IS that call). Lesson from the misses: say in the description *when* a tool beats the model's memory.
+- **Speed:** weather 39 s (web search) → **6.5 s**; greeting 2.6 s; web search **60 s → 12 s**: shorter answers,
+  4 passages, a 6-s page budget, and BM25 keyword ranking instead of CPU embeddings (14.3 s → milliseconds).
+
 ---
 
 ## Open issues
@@ -287,3 +301,4 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*
 | O4 | Image quality and realism depend on luck and prompt wording | **Mostly solved** — #23, #25. Left: "new variation" button and model picker in the UI |
 | O5 | 9B model sometimes cites a source that does not support the sentence | Citation checker (BACKLOG L5c) |
 | O6 | No streaming, no proper Stop button | BACKLOG L3 |
+| ~~O7~~ | ~~The assistant can only advise, never act ("check all the IPs … table")~~ | **Solved for LAN scans** — `network_scan` tool built (Option A, [TOOLS_DECISION.md](TOOLS_DECISION.md) §7): 25 devices in 9.6 s, table + .xlsx. More tools (networking, security) follow the same pattern |

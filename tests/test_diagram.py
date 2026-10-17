@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 
 from src.config import Config
 from src.diagram_gen import check_mermaid, extract, fix_mermaid, run_diagram, write_diagram
 from src.intent_router import classify_query
 
-CFG = Config.from_env()
+# these test the example-based backup router (the assistant normally picks tools itself)
+CFG = dataclasses.replace(Config.from_env(), assistant_tools=False)
 
 
 @pytest.mark.parametrize(
@@ -34,7 +37,7 @@ def test_routing(query, after, intent):
 
 def test_forced_and_manual_modes():
     assert classify_query("anything", config=CFG, force_intent="diagram").intent == "diagram"
-    assert classify_query("draw a flowchart of CI/CD", requested_mode="debate", config=CFG).intent == "diagram"
+    assert classify_query("draw a flowchart of CI/CD", requested_mode="agentic", config=CFG).intent == "diagram"
 
 
 def test_last_answer_was_diagram():

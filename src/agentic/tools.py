@@ -527,6 +527,18 @@ def run_tool(
                     break
         return "\n\n".join(hits) if hits else "No matching logs."
 
+    if name == "network_scan":
+        # private networks only, size and time limits, Stop honoured (src/net_scan.py)
+        from src import live
+        from src.net_scan import ScanError, markdown_table, scan, summary
+
+        try:
+            result = scan(str(args.get("subnet") or "").strip() or None, config,
+                          should_continue=lambda: not live.is_stopped(job_id))
+        except ScanError as exc:
+            raise ToolError(str(exc)) from exc
+        return f"{summary(result)}\n\n{markdown_table(result)}"[:12000]
+
     raise ToolError(f"Unknown tool: {name}")
 
 

@@ -19,6 +19,11 @@ def set_time_zone(name: str | None) -> None:
     _time_zone.set(name if valid_time_zone(name) else None)
 
 
+def current_time_zone() -> str | None:
+    """The user's IANA time zone for this job (e.g. 'Asia/Karachi'), or None."""
+    return _time_zone.get()
+
+
 def valid_time_zone(name: str | None) -> bool:
     if not name or len(name) > 64:
         return False

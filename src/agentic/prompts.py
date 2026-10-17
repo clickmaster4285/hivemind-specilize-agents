@@ -32,6 +32,7 @@ Available tools:
 - http_get {"url":"https://..."}
 - list_models {}
 - search_logs {"query":"text","limit":5}
+- network_scan {"subnet":"192.168.1.0/24"}   (devices on a private network; omit subnet = this server's LAN)
 
 Document rules (critical — local models truncate long JSON):
 - NEVER put the entire document in one huge "body"/"content" string

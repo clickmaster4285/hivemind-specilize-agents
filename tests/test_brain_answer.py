@@ -200,3 +200,26 @@ def test_retrieval_log_row_is_written_for_the_account(config):
     finally:
         with psycopg.connect(brain_db.owner_url(config), autocommit=True) as conn:
             conn.execute("DELETE FROM brain.retrieval_log WHERE job_id = %s", (job,))
+
+
+def test_stale_sources_are_found():
+    from datetime import datetime, timedelta, timezone
+
+    from src.brain.freshness import stale
+
+    now = datetime(2026, 10, 17, 12, 0, tzinfo=timezone.utc)
+    checked = {"fresh": now - timedelta(hours=2), "old": now - timedelta(hours=30), "never": None}
+    assert stale(checked, 24, now) == ["never", "old"]
+
+
+def test_refresh_runs_once_per_source(monkeypatch):
+    from src.brain import freshness
+
+    started = []
+    monkeypatch.setattr(freshness.threading, "Thread",
+                        lambda target, name, daemon: type("T", (), {"start": lambda self: started.append(name)})())
+    freshness._running.clear()
+    assert freshness.refresh_in_background(None, ["dns", "python"]) == ["dns", "python"]
+    assert freshness.refresh_in_background(None, ["dns"]) == []          # already running: not twice
+    assert len(started) == 1
+    freshness._running.clear()

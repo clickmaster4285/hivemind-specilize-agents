@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 import requests
 
@@ -9,7 +11,8 @@ from src import intent_router
 from src.config import Config
 from src.intent_router import classify_query
 
-CFG = Config.from_env()
+# these test the example-based backup router (the assistant normally picks tools itself)
+CFG = dataclasses.replace(Config.from_env(), assistant_tools=False)
 
 
 def _ollama_up() -> bool:
@@ -47,8 +50,8 @@ def test_flags_mean_an_image_prompt():
 
 @needs_ollama
 def test_a_mode_the_user_picked_wins_except_for_tools():
-    assert classify_query("explain DNS zones", requested_mode="debate", config=CFG, allow_llm=False).intent == "debate"
-    assert classify_query("draw a flowchart of CI/CD", requested_mode="debate", config=CFG,
+    assert classify_query("explain DNS zones", requested_mode="agentic", config=CFG, allow_llm=False).intent == "agentic"
+    assert classify_query("draw a flowchart of CI/CD", requested_mode="agentic", config=CFG,
                           allow_llm=False).intent == "diagram"
 
 

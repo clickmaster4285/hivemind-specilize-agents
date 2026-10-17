@@ -16,37 +16,39 @@ import {
 import {
   getApiOrigin,
   cancelJob,
-  createAgent,
   createJob,
-  deleteAgent,
+  createSpecialist,
+  deleteSpecialist,
   fetchJobAttachment,
   getHealth,
   type ImageForceIntent,
   type ImageProfile,
   getJobHistory,
   getToken,
-  listAgents,
   listJobs,
+  listSpecialists,
   listModels,
   login,
   me,
-  resetAgents,
+  resetSpecialists,
   setToken,
   softDeleteJobs,
+  specialistOptions,
   streamJobEvents,
-  updateAgent,
+  updateSpecialist,
 } from "@/lib/api";
 import type {
-  Agent,
-  AgentInput,
   AuthUser,
-  DebateEvent,
+  JobEvent,
   FeedItem,
   Health,
   Job,
   ModelInfo,
   RunMode,
   ChatImage,
+  Specialist,
+  SpecialistInput,
+  SpecialistOptions,
 } from "@/lib/types";
 import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
@@ -81,14 +83,25 @@ import {
 } from "@/lib/threads";
 import { newId } from "@/lib/id";
 
-const emptyForm: AgentInput = {
+const emptyForm: SpecialistInput = {
   name: "",
-  role: "",
-  system_prompt: "",
-  stage: "panel",
+  covers: "",
+  instructions: "",
+  tools: [],
+  collections: ["general"],
   enabled: true,
   accent: "#6b8cae",
 };
+
+/** The chat bar's specialist choice survives a reload (per browser; storage may be blocked). */
+const SPECIALIST_KEY = "multeagent_specialist";
+function savedSpecialist(): string {
+  try {
+    return localStorage.getItem(SPECIALIST_KEY) || "auto";
+  } catch {
+    return "auto";
+  }
+}
 
 /** Prior user/assistant turns for follow-ups (“write that as a docx”). */
 function conversationFromFeed(
@@ -325,6 +338,14 @@ function ArtifactChips({
 }
 
 /** Knowledge-base sources under a grounded answer; numbers match the [n] citations in the text. */
+/** "3 h ago", "2 days ago" — how fresh a knowledge-base source is. */
+function timeAgo(iso: string): string {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 48 * 60) return `${Math.round(minutes / 60)} h ago`;
+  return `${Math.round(minutes / 1440)} days ago`;
+}
+
 function SourceList({ item }: { item: FeedItem }) {
   const sources = item.sources || [];
   if (item.pending || !item.grounded || !sources.length) return null;
@@ -350,7 +371,13 @@ function SourceList({ item }: { item: FeedItem }) {
               <span className="brain-source-section"> › {s.heading_path.split(" > ").pop()}</span>
             ) : null}
             <span className="brain-source-meta">
-              {[s.publisher, s.updated_at ? `updated ${s.updated_at}` : null].filter(Boolean).join(" · ")}
+              {[
+                s.publisher,
+                s.updated_at ? `updated ${s.updated_at}` : null,
+                s.refreshing ? "re-checking for changes now" : s.checked_at ? `checked ${timeAgo(s.checked_at)}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </span>
           </li>
         ))}
@@ -365,16 +392,17 @@ export default function ControlDeck() {
   const [authPass, setAuthPass] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const [agents, setAgents] = useState<Agent[]>([]);
+  const [specialists, setSpecialists] = useState<Specialist[]>([]);
+  const [specOptions, setSpecOptions] = useState<SpecialistOptions>({ tools: [], collections: [] });
+  // "auto" = the assistant picks per message · "none" = no specialist · or a specialist id
+  const [specialistChoice, setSpecialistChoiceState] = useState<string>("auto");
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [health, setHealth] = useState<Health | null>(null);
   const [healthError, setHealthError] = useState<string | null>(null);
-  const [parallel, setParallel] = useState(false);
   const [runMode, setRunMode] = useState<RunMode>("auto");
   const [modelOverride, setModelOverride] = useState("");
   const [allowOverflow, setAllowOverflow] = useState(true);
@@ -396,15 +424,27 @@ export default function ControlDeck() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<AgentInput>(emptyForm);
+  const [form, setForm] = useState<SpecialistInput>(emptyForm);
 
-  const selectionMeta = useMemo(() => {
-    const panel = agents.filter((a) => a.stage === "panel" && a.enabled && selected.has(a.id)).length;
-    const consensus = agents.filter(
-      (a) => a.stage === "consensus" && a.enabled && selected.has(a.id),
-    ).length;
-    return `${panel} panel · ${consensus} consensus`;
-  }, [agents, selected]);
+  const specialistLabel = useMemo(() => {
+    if (specialistChoice === "auto") return "specialist: auto";
+    if (specialistChoice === "none") return "no specialist";
+    const s = specialists.find((x) => x.id === specialistChoice);
+    return s ? `${s.name} specialist` : "specialist: auto";
+  }, [specialistChoice, specialists]);
+
+  useEffect(() => {
+    setSpecialistChoiceState(savedSpecialist());
+  }, []);
+
+  function setSpecialistChoice(value: string) {
+    setSpecialistChoiceState(value);
+    try {
+      localStorage.setItem(SPECIALIST_KEY, value);
+    } catch {
+      /* storage blocked: the choice lasts until reload */
+    }
+  }
 
   const jobById = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs]);
 
@@ -432,14 +472,13 @@ export default function ControlDeck() {
     return list;
   }, [threads, projectId, projects, historyFilter, jobById]);
 
-  const loadAgents = useCallback(async () => {
-    const data = await listAgents();
-    setAgents(data);
-    setSelected((prev) => {
-      if (prev.size === 0) return new Set(data.filter((a) => a.enabled).map((a) => a.id));
-      const valid = new Set(data.map((a) => a.id));
-      return new Set([...prev].filter((id) => valid.has(id)));
-    });
+  const loadSpecialists = useCallback(async () => {
+    setSpecialists(await listSpecialists());
+    try {
+      setSpecOptions(await specialistOptions());
+    } catch {
+      /* the edit form then shows no tool list; chatting is unaffected */
+    }
   }, []);
 
   const refreshHealth = useCallback(async () => {
@@ -574,7 +613,7 @@ export default function ControlDeck() {
     me()
       .then(async (u) => {
         setUser(u);
-        await loadAgents();
+        await loadSpecialists();
         await refreshModels();
         await refreshJobs();
       })
@@ -582,13 +621,13 @@ export default function ControlDeck() {
         setToken(null);
         setUser(null);
       });
-  }, [loadAgents, refreshModels, refreshJobs]);
+  }, [loadSpecialists, refreshModels, refreshJobs]);
 
   // If a request cleared the token (401), leave the chat shell and show login.
   useEffect(() => {
     if (user && !getToken()) {
       setUser(null);
-      setAgents([]);
+      setSpecialists([]);
       setJobs([]);
       setFeed([]);
     }
@@ -618,7 +657,7 @@ export default function ControlDeck() {
     }
   }
 
-  function applyEvent(event: DebateEvent) {
+  function applyEvent(event: JobEvent) {
     setFeed((prev) => reduceFeed(prev, event));
   }
 
@@ -628,7 +667,7 @@ export default function ControlDeck() {
     try {
       const u = await login(authUser.trim(), authPass);
       setUser(u);
-      await loadAgents();
+      await loadSpecialists();
       await refreshModels(true);
       await refreshJobs();
     } catch (err) {
@@ -639,7 +678,7 @@ export default function ControlDeck() {
   function logout() {
     setToken(null);
     setUser(null);
-    setAgents([]);
+    setSpecialists([]);
     setJobs([]);
     setFeed([]);
     selectThreadId(null);
@@ -734,59 +773,53 @@ export default function ControlDeck() {
     setSidebarTab("history");
   }
 
-  function toggleSelected(id: string, checked: boolean) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }
-
   function openCreate() {
     setEditingId(null);
     setForm(emptyForm);
     setModalOpen(true);
   }
 
-  function openEdit(agent: Agent) {
-    setEditingId(agent.id);
+  function openEdit(s: Specialist) {
+    setEditingId(s.id);
     setForm({
-      name: agent.name,
-      role: agent.role,
-      system_prompt: agent.system_prompt,
-      stage: agent.stage,
-      enabled: agent.enabled,
-      accent: agent.accent || "#6b8cae",
+      name: s.name,
+      covers: s.covers,
+      instructions: s.instructions,
+      tools: [...s.tools],
+      collections: [...s.collections],
+      enabled: s.enabled,
+      accent: s.accent || "#6b8cae",
     });
     setModalOpen(true);
   }
 
-  async function saveAgent(event: FormEvent) {
+  function toggleIn(list: string[], value: string, on: boolean): string[] {
+    return on ? [...new Set([...list, value])] : list.filter((x) => x !== value);
+  }
+
+  async function saveSpecialist(event: FormEvent) {
     event.preventDefault();
     try {
-      if (editingId) await updateAgent(editingId, form);
-      else {
-        const created = await createAgent(form);
-        setSelected((prev) => new Set(prev).add(created.id));
-      }
+      if (editingId) await updateSpecialist(editingId, form);
+      else await createSpecialist(form);
       setModalOpen(false);
-      await loadAgents();
+      await loadSpecialists();
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
     }
   }
 
-  async function removeAgent() {
-    if (!editingId || !confirm("Delete this agent?")) return;
-    await deleteAgent(editingId);
-    setSelected((prev) => {
-      const next = new Set(prev);
-      next.delete(editingId);
-      return next;
-    });
+  async function removeSpecialist() {
+    if (!editingId || !confirm("Delete this specialist?")) return;
+    try {
+      await deleteSpecialist(editingId);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    if (specialistChoice === editingId) setSpecialistChoice("auto");
     setModalOpen(false);
-    await loadAgents();
+    await loadSpecialists();
   }
 
   function addImageFiles(files: File[]) {
@@ -865,14 +898,6 @@ export default function ControlDeck() {
       alert("Attach an image to Edit / Inpaint.");
       return;
     }
-    if (runMode === "debate" || runMode === "mixed") {
-      if (selected.size === 0) {
-        alert("Select at least one agent in Settings.");
-        setSettingsOpen(true);
-        return;
-      }
-    }
-
     let threadId = activeThreadId;
     const titleSeed = trimmed || images[0]?.file.name || "Image";
     if (!threadId) {
@@ -897,7 +922,7 @@ export default function ControlDeck() {
         appendUserMessage(
           prev,
           trimmed || "What's in this image?",
-          `${runMode} · ${parallel ? "parallel" : "sequential"}`,
+          `${runMode} · ${specialistLabel}`,
           chatImages,
         ),
       );
@@ -925,8 +950,7 @@ export default function ControlDeck() {
       const job = await createJob({
         query: trimmed || (force === "describe" ? "What's in this image?" : ""),
         mode: jobMode,
-        execution_mode: parallel ? "parallel" : "sequential",
-        agent_ids: [...selected],
+        specialist: specialistChoice,
         model: modelOverride || undefined,
         allow_overflow: allowOverflow,
         images: payloadImages,
@@ -1171,7 +1195,7 @@ export default function ControlDeck() {
 
         <div className="rail-footer">
           <button type="button" className="btn ghost full" onClick={() => setSettingsOpen(true)}>
-            Settings · agents & models
+            Settings · specialists & models
           </button>
           <div className={`status ${health?.llm_reachable ? "ok" : "bad"}`}>
             <span className="dot" />
@@ -1192,7 +1216,7 @@ export default function ControlDeck() {
           <div>
             <h2>{chatTitle}</h2>
             <p>
-              {runMode} · {selectionMeta}
+              {runMode} · {specialistLabel}
               {activeProject ? ` · ${activeProject.name}` : ""}
             </p>
           </div>
@@ -1200,9 +1224,22 @@ export default function ControlDeck() {
             <select value={runMode} onChange={(e) => setRunMode(e.target.value as RunMode)}>
               <option value="auto">Auto</option>
               <option value="chat">Chat</option>
-              <option value="debate">Debate</option>
               <option value="agentic">Agentic</option>
-              <option value="mixed">Mixed</option>
+            </select>
+            <select
+              value={specialistChoice}
+              onChange={(e) => setSpecialistChoice(e.target.value)}
+              title="Who answers: Auto lets the assistant pick a specialist for each message"
+            >
+              <option value="auto">Specialist: auto</option>
+              {specialists
+                .filter((s) => s.enabled)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              <option value="none">No specialist</option>
             </select>
             <select value={modelOverride} onChange={(e) => setModelOverride(e.target.value)}>
               <option value="">Auto model route</option>
@@ -1214,15 +1251,6 @@ export default function ControlDeck() {
                   </option>
                 ))}
             </select>
-            <label className="mode-switch compact">
-              <input
-                type="checkbox"
-                checked={parallel}
-                onChange={(e) => setParallel(e.target.checked)}
-              />
-              <span className="switch-ui" />
-              <span>{parallel ? "Parallel" : "Sequential"}</span>
-            </label>
             {activeJobId && running ? (
               <button type="button" className="btn danger ghost" onClick={() => void stopActiveJob()}>
                 Stop
@@ -1235,7 +1263,7 @@ export default function ControlDeck() {
           {feed.length === 0 ? (
             <div className="empty hero-empty">
               <strong>Start a conversation</strong>
-              Say hi, ask a question, request a story, or run a full debate — Auto picks the path.
+              Ask anything: IT, development or marketing questions go to the matching specialist automatically.
             </div>
           ) : (
             feed.map((item, index) => {
@@ -1426,9 +1454,7 @@ export default function ControlDeck() {
                   ? "Ask about the image… (optional)"
                   : runMode === "agentic"
                     ? "Describe a goal for the agentic loop…"
-                    : runMode === "debate" || runMode === "mixed"
-                      ? "Ask a decision / business question…"
-                      : "Message MulteAgent — paste or attach an image"
+                    : "Message MulteAgent — paste or attach an image"
               }
               required={pendingImages.length === 0}
             />
@@ -1457,7 +1483,7 @@ export default function ControlDeck() {
           </div>
           <div className="composer-row image-actions">
             <button type="button" className="btn ghost sm" onClick={() => setSettingsOpen(true)}>
-              {selectionMeta}
+              {specialistLabel}
             </button>
             <label className="image-preset">
               Profile
@@ -1523,6 +1549,17 @@ export default function ControlDeck() {
               type="button"
               className="btn ghost sm"
               disabled={running || !query.trim()}
+              title="Search the web with our local SearXNG and answer with sources"
+              onClick={() =>
+                void submitMessage(query.trim(), pendingImages, { forceIntent: "web_search" })
+              }
+            >
+              Web
+            </button>
+            <button
+              type="button"
+              className="btn ghost sm"
+              disabled={running || !query.trim()}
               title="Create downloadable Word/PDF/PPT/HTML/Excel via agentic tools"
               onClick={() =>
                 void submitMessage(query.trim(), pendingImages, { forceIntent: "doc_gen" })
@@ -1551,30 +1588,32 @@ export default function ControlDeck() {
 
             <section>
               <div className="rail-section-head">
-                <h4>Agents</h4>
-                <button type="button" className="btn ghost sm" onClick={openCreate}>
-                  New agent
-                </button>
+                <h4>Specialists</h4>
+                {user.role === "admin" ? (
+                  <button type="button" className="btn ghost sm" onClick={openCreate}>
+                    New specialist
+                  </button>
+                ) : null}
               </div>
+              <p className="hint">
+                With &ldquo;Specialist: auto&rdquo; the assistant reads each specialist&rsquo;s &ldquo;covers&rdquo;
+                line and picks one per message (or none for small talk and general questions).
+              </p>
               <ul className="settings-agents">
-                {agents.map((agent) => (
-                  <li key={agent.id}>
-                    <label className="check">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(agent.id)}
-                        disabled={!agent.enabled}
-                        onChange={(e) => toggleSelected(agent.id, e.target.checked)}
-                      />
+                {specialists.map((s) => (
+                  <li key={s.id}>
+                    <span className="specialist-row">
+                      <span className="specialist-dot" style={{ background: s.accent }} />
                       <span>
-                        <strong>{agent.name}</strong>
-                        <small>
-                          {agent.role} · {agent.stage}
-                        </small>
+                        <strong>
+                          {s.name}
+                          {s.enabled ? "" : " (off)"}
+                        </strong>
+                        <small>{s.covers}</small>
                       </span>
-                    </label>
-                    <button type="button" className="btn ghost sm" onClick={() => openEdit(agent)}>
-                      Edit
+                    </span>
+                    <button type="button" className="btn ghost sm" onClick={() => openEdit(s)}>
+                      {user.role === "admin" ? "Edit" : "View"}
                     </button>
                   </li>
                 ))}
@@ -1584,10 +1623,9 @@ export default function ControlDeck() {
                   type="button"
                   className="btn ghost full"
                   onClick={async () => {
-                    if (!confirm("Restore default agents?")) return;
-                    await resetAgents();
-                    setSelected(new Set());
-                    await loadAgents();
+                    if (!confirm("Restore the default IT, Development and Marketing specialists?")) return;
+                    await resetSpecialists();
+                    await loadSpecialists();
                   }}
                 >
                   Restore defaults
@@ -1620,9 +1658,9 @@ export default function ControlDeck() {
 
       {modalOpen ? (
         <div className="modal-backdrop" onClick={() => setModalOpen(false)}>
-          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={saveAgent}>
+          <form className="modal" onClick={(e) => e.stopPropagation()} onSubmit={saveSpecialist}>
             <header>
-              <h3>{editingId ? "Edit agent" : "New agent"}</h3>
+              <h3>{editingId ? `${form.name || "Specialist"}` : "New specialist"}</h3>
               <button type="button" className="icon-btn" onClick={() => setModalOpen(false)}>
                 ×
               </button>
@@ -1636,39 +1674,58 @@ export default function ControlDeck() {
               />
             </label>
             <label>
-              Role
-              <input
-                value={form.role}
-                onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+              Covers — the assistant picks this specialist from this line
+              <textarea
+                required
+                rows={3}
+                value={form.covers}
+                onChange={(e) => setForm((f) => ({ ...f, covers: e.target.value }))}
               />
             </label>
             <label>
-              Stage
-              <select
-                value={form.stage}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, stage: e.target.value as AgentInput["stage"] }))
-                }
-              >
-                <option value="panel">Panel</option>
-                <option value="consensus">Consensus</option>
-              </select>
+              Instructions — how it answers
+              <textarea
+                rows={8}
+                value={form.instructions}
+                onChange={(e) => setForm((f) => ({ ...f, instructions: e.target.value }))}
+              />
             </label>
+            <fieldset className="check-grid">
+              <legend>Tools it may use</legend>
+              {specOptions.tools.map((tool) => (
+                <label key={tool.name} className="check" title={tool.description}>
+                  <input
+                    type="checkbox"
+                    checked={form.tools.includes(tool.name)}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, tools: toggleIn(f.tools, tool.name, e.target.checked) }))
+                    }
+                  />
+                  {tool.name.replace(/_/g, " ")}
+                </label>
+              ))}
+            </fieldset>
+            <fieldset className="check-grid">
+              <legend>Knowledge collections searched first</legend>
+              {specOptions.collections.map((c) => (
+                <label key={c} className="check">
+                  <input
+                    type="checkbox"
+                    checked={form.collections.includes(c)}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, collections: toggleIn(f.collections, c, e.target.checked) }))
+                    }
+                  />
+                  {c}
+                </label>
+              ))}
+            </fieldset>
             <label>
-              Accent
+              Colour
               <input
                 type="color"
                 value={form.accent}
                 onChange={(e) => setForm((f) => ({ ...f, accent: e.target.value }))}
-              />
-            </label>
-            <label>
-              System prompt
-              <textarea
-                required
-                rows={10}
-                value={form.system_prompt}
-                onChange={(e) => setForm((f) => ({ ...f, system_prompt: e.target.value }))}
               />
             </label>
             <label className="check">
@@ -1681,7 +1738,7 @@ export default function ControlDeck() {
             </label>
             <footer>
               {editingId ? (
-                <button type="button" className="btn danger ghost" onClick={removeAgent}>
+                <button type="button" className="btn danger ghost" onClick={removeSpecialist}>
                   Delete
                 </button>
               ) : (
@@ -1692,7 +1749,7 @@ export default function ControlDeck() {
                   Cancel
                 </button>
                 <button type="submit" className="btn primary">
-                  Save agent
+                  Save specialist
                 </button>
               </div>
             </footer>

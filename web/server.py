@@ -1,4 +1,4 @@
-"""FastAPI gateway: auth, agents, models, jobs, legacy debate."""
+"""FastAPI gateway: auth, agents, models, jobs."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.agent_store import AgentStore
+from src.specialists import COLLECTIONS, SpecialistStore
 from src.attachments import image_path
 from src.artifacts import resolve_job_file
 from src.auth import (
@@ -47,7 +47,7 @@ from src.worker import start_inprocess_worker
 from web.brain_routes import router as brain_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-store = AgentStore()
+store = SpecialistStore()
 
 
 @asynccontextmanager
@@ -92,21 +92,23 @@ class LoginPayload(BaseModel):
     password: str
 
 
-class AgentPayload(BaseModel):
+class SpecialistPayload(BaseModel):
     name: str
-    role: str = ""
-    system_prompt: str
-    stage: Literal["panel", "consensus"] = "panel"
+    covers: str
+    instructions: str = ""
+    tools: list[str] = Field(default_factory=list)
+    collections: list[str] = Field(default_factory=list)
     enabled: bool = True
     sort_order: int | None = None
     accent: str = "#6b8cae"
 
 
-class AgentUpdatePayload(BaseModel):
+class SpecialistUpdatePayload(BaseModel):
     name: str | None = None
-    role: str | None = None
-    system_prompt: str | None = None
-    stage: Literal["panel", "consensus"] | None = None
+    covers: str | None = None
+    instructions: str | None = None
+    tools: list[str] | None = None
+    collections: list[str] | None = None
     enabled: bool | None = None
     sort_order: int | None = None
     accent: str | None = None
@@ -129,9 +131,10 @@ class ConversationTurnIn(BaseModel):
 
 class JobCreatePayload(BaseModel):
     query: str = ""
-    mode: Literal["auto", "chat", "debate", "agentic", "mixed"] = "auto"
-    execution_mode: Literal["parallel", "sequential"] = "sequential"
-    agent_ids: list[str] | None = None
+    # auto | chat | agentic (older clients may still send debate/mixed: treated as auto, see create_job)
+    mode: str = "auto"
+    # auto = the assistant picks a specialist · none = no specialist · or a specialist id (src/specialists.py)
+    specialist: str = "auto"
     model: str | None = None
     allow_overflow: bool = True
     priority: int = 100
@@ -149,12 +152,6 @@ class ModelUpdatePayload(BaseModel):
     role: Literal["fast", "strong", "cloud", "general"] | None = None
     vram_class: Literal["small", "medium", "large"] | None = None
     max_concurrency: int | None = None
-
-
-class DebateRequest(BaseModel):
-    query: str = Field(min_length=1)
-    mode: Literal["parallel", "sequential"] = "sequential"
-    agent_ids: list[str] | None = None
 
 
 @app.get("/api/health")
@@ -224,49 +221,56 @@ def me(user: User = Depends(get_current_user)) -> dict[str, Any]:
     }
 
 
-@app.get("/api/agents")
-def list_agents(_user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
-    return [a.to_dict() for a in store.load_all()]
+# Specialists (src/specialists.py): everyone may read them; only admins change them — they are
+# shared by all users and decide which tools (network_scan) a specialist may run.
+@app.get("/api/specialists")
+def list_specialists(_user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
+    return [s.to_dict() for s in store.load_all()]
 
 
-@app.post("/api/agents")
-def create_agent(
-    payload: AgentPayload, _user: User = Depends(get_current_user)
-) -> dict[str, Any]:
+@app.get("/api/specialists/options")
+def specialist_options(_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """What the edit form offers: the assistant's tools and the knowledge-base collections."""
+    from src.assistant import TOOLS
+
+    return {"tools": [{"name": t.name, "description": t.description.split(". ")[0]} for t in TOOLS],
+            "collections": list(COLLECTIONS)}
+
+
+@app.post("/api/specialists")
+def create_specialist(payload: SpecialistPayload, _user: User = Depends(require_admin)) -> dict[str, Any]:
     try:
-        agent = store.create(payload.model_dump(exclude_none=True))
+        specialist = store.create(payload.model_dump(exclude_none=True))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return agent.to_dict()
+    return specialist.to_dict()
 
 
-@app.put("/api/agents/{agent_id}")
-def update_agent(
-    agent_id: str,
-    payload: AgentUpdatePayload,
-    _user: User = Depends(get_current_user),
+@app.put("/api/specialists/{specialist_id}")
+def update_specialist(
+    specialist_id: str, payload: SpecialistUpdatePayload, _user: User = Depends(require_admin)
 ) -> dict[str, Any]:
     try:
-        agent = store.update(agent_id, payload.model_dump(exclude_none=True))
+        specialist = store.update(specialist_id, payload.model_dump(exclude_none=True))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return agent.to_dict()
+    return specialist.to_dict()
 
 
-@app.delete("/api/agents/{agent_id}")
-def delete_agent(agent_id: str, _user: User = Depends(get_current_user)) -> dict[str, str]:
+@app.delete("/api/specialists/{specialist_id}")
+def delete_specialist(specialist_id: str, _user: User = Depends(require_admin)) -> dict[str, str]:
     try:
-        store.delete(agent_id)
+        store.delete(specialist_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"status": "deleted", "id": agent_id}
+    return {"status": "deleted", "id": specialist_id}
 
 
-@app.post("/api/agents/reset")
-def reset_agents(_user: User = Depends(require_admin)) -> list[dict[str, Any]]:
-    return [a.to_dict() for a in store.reset_defaults()]
+@app.post("/api/specialists/reset")
+def reset_specialists(_user: User = Depends(require_admin)) -> list[dict[str, Any]]:
+    return [s.to_dict() for s in store.reset_defaults()]
 
 
 @app.get("/api/models")
@@ -322,9 +326,8 @@ def create_job_endpoint(
             query=payload.query,
             mode=payload.mode,
             payload={
-                "execution_mode": payload.execution_mode,
-                "agent_ids": payload.agent_ids,
                 "model": payload.model,
+                "specialist": payload.specialist,
                 "allow_overflow": payload.allow_overflow,
                 "images": [img.model_dump() for img in payload.images],
                 "conversation": [t.model_dump() for t in payload.conversation],
@@ -555,33 +558,6 @@ async def job_events_stream(
             "X-Accel-Buffering": "no",
         },
     )
-
-
-@app.post("/api/debate")
-def debate_compat(
-    payload: DebateRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Backward-compatible: enqueue a debate job instead of inline streaming."""
-    try:
-        job = create_job(
-            db,
-            user=user,
-            query=payload.query,
-            mode="debate",
-            payload={
-                "execution_mode": payload.mode,
-                "agent_ids": payload.agent_ids,
-                "allow_overflow": True,
-            },
-            config=Config.from_env(),
-        )
-        db.commit()
-        db.refresh(job)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return job_to_dict(job)
 
 
 @app.get("/")

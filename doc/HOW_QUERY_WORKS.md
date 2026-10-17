@@ -107,6 +107,7 @@ This layer answers:
 | `creative` | Story/poem-style chat |
 | `vision` | Look at an attached image (needs Ollama vision model) |
 | `image_gen` | Draw or edit a picture with local SDXL |
+| `web_search` | Search the internet **on request** (local SearXNG → top pages → cited answer) |
 | `debate` | Optimist / Cynic / Consensus board |
 | `agentic` | Planner + tools loop |
 
@@ -185,9 +186,13 @@ Same checkpoint file for both pipelines (`MODEL_IMAGE_PATH` / default under `mod
 
 **Honesty check:** img2img re-draws from a noisy version of the photo. It is **not** surgical inpainting (e.g. changing one UI label with zero other changes). That would be a later feature.
 
-### C) Debate — `src/runner.py`
+### C) Debate — removed 2026-10-17
 
-Runs selected agents (Optimist, Cynic, …) then Consensus. Used for decisions / trade-offs, not for “draw a seahorse”.
+The Optimist / Cynic / Consensus board was replaced by domain specialists (IT, Development, Marketing —
+`src/specialists.py`). Decision questions are answered in chat; jobs that still say `debate` / `mixed`
+are treated as Auto. Specialist flow: `resolve()` (pinned in the chat bar, or one short model call that
+reads each specialist's "covers" line) → `decide()` with the specialist's instructions and tools →
+knowledge-base answers search its collections first, then the whole knowledge base.
 
 ### D) Agentic / documents — `src/agentic/runtime.py` + `src/agentic/tools.py`
 
