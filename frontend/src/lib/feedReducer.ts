@@ -107,6 +107,14 @@ export function upsertStatus(
   return copy;
 }
 
+/** The newest running bubble (of this agent, if given). */
+function lastPendingIndex(prev: FeedItem[], agentId?: string): number {
+  for (let i = prev.length - 1; i >= 0; i -= 1) {
+    if (prev[i].pending && (!agentId || prev[i].agentId === agentId)) return i;
+  }
+  return -1;
+}
+
 function attachToolCall(prev: FeedItem[], event: DebateEvent): FeedItem[] {
   const agentId = String(event.agent_id || "");
   const tool = String(event.tool || "tool");
@@ -119,7 +127,7 @@ function attachToolCall(prev: FeedItem[], event: DebateEvent): FeedItem[] {
   const mapped = prev.map((item) => {
     if (!item.pending || item.agentId !== agentId) return item;
     attached = true;
-    return { ...item, body: `Using ${tool}…`, tools: [...(item.tools || []), step] };
+    return { ...item, statusText: `Using ${tool}…`, tools: [...(item.tools || []), step] };
   });
   if (attached) return mapped;
   return upsertStatus(prev, "Working", `Using ${tool}…`);
@@ -192,13 +200,32 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
         kind: "agent",
         title: String(event.name || "Agent"),
         meta: String(event.role || "thinking"),
-        body: "Working…",
+        body: "",
         accent: String(event.accent || "#3aa89a"),
         pending: true,
         agentId: String(event.agent_id || ""),
         tools: [],
+        startedAt: Date.now(),
+        statusText: "Starting…",
       },
     ];
+  }
+  // "Searching the knowledge base…", "Loading the model…", "Writing…" — shown in the running bubble
+  if (type === "status") {
+    const message = String(event.message || "");
+    const idx = lastPendingIndex(prev, event.agent_id ? String(event.agent_id) : undefined);
+    if (idx === -1) return message ? upsertStatus(prev, "Working", message) : prev;
+    const next = [...prev];
+    next[idx] = { ...next[idx], statusText: message };
+    return next;
+  }
+  // the answer as it is being written (sent a few times per second, always the full text so far)
+  if (type === "agent_stream") {
+    const idx = lastPendingIndex(prev, String(event.agent_id || ""));
+    if (idx === -1) return prev; // already finished: the final text wins
+    const next = [...prev];
+    next[idx] = { ...next[idx], body: String(event.text || ""), streaming: true };
+    return next;
   }
   if (type === "tool_call") return attachToolCall(prev, event);
   if (type === "tool_result") return attachToolResult(prev, event);
@@ -223,7 +250,7 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
         ...next[i],
         artifacts,
         jobId: next[i].jobId || art.jobId,
-        body: next[i].pending ? `Created ${filename}…` : next[i].body,
+        statusText: next[i].pending ? `Created ${filename}…` : next[i].statusText,
       };
       attached = true;
       break;
@@ -287,6 +314,8 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
         ? {
             ...item,
             pending: false,
+            streaming: false,
+            statusText: undefined,
             meta: `${event.role || item.meta || ""} · ${Number(event.elapsed_seconds || 0).toFixed(1)}s`,
             body,
             jobId: jobId || item.jobId,
@@ -299,12 +328,26 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
     );
   }
   if (type === "agent_error" || type === "fatal" || type === "job_cancelled") {
-    return upsertStatus(
-      prev,
-      type === "job_cancelled" ? "Cancelled" : "Error",
-      String(event.error || "cancelled").slice(0, 180),
-      true,
+    const cancelled = type === "job_cancelled";
+    const message = String(event.error || "cancelled");
+    // close the running bubble(s): keep text already written, show the reason
+    const closed = prev.map((item) =>
+      item.pending && (cancelled || !event.agent_id || item.agentId === event.agent_id)
+        ? {
+            ...item,
+            pending: false,
+            streaming: false,
+            statusText: undefined,
+            meta: cancelled ? "Stopped" : "Error",
+            body: cancelled
+              ? item.body || "_Stopped before the answer started._"
+              : item.body
+                ? `${item.body}\n\n> ${message}`
+                : `> ${message}`,
+          }
+        : item,
     );
+    return upsertStatus(closed, cancelled ? "Stopped" : "Error", message.slice(0, 180), !cancelled);
   }
   if (type === "session_done" || type === "agentic_done") {
     const errors = Array.isArray(event.errors) ? event.errors.join("; ") : "";

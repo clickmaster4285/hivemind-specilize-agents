@@ -133,4 +133,8 @@ export type FeedItem = {
   /** Knowledge-base answers: true = built from sources; false = brain had nothing relevant */
   grounded?: boolean;
   sources?: BrainSource[];
+  /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */
+  startedAt?: number;
+  statusText?: string;
+  streaming?: boolean;
 };

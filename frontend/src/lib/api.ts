@@ -179,7 +179,14 @@ export async function createJob(payload: {
   image_profile?: ImageProfile;
   image_strength?: number;
 }): Promise<Job> {
-  return request("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
+  // the user's own time zone (e.g. "Asia/Karachi"): answers tell their local time, no location permission
+  let client_time_zone: string | undefined;
+  try {
+    client_time_zone = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    client_time_zone = undefined;
+  }
+  return request("/api/jobs", { method: "POST", body: JSON.stringify({ ...payload, client_time_zone }) });
 }
 
 export async function listJobs(limit = 100): Promise<Job[]> {

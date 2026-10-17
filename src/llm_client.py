@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import time
+from collections.abc import Callable
 from typing import Any
 
 import requests
@@ -13,6 +15,14 @@ from src.llm_lock import llm_slot
 
 class LLMError(RuntimeError):
     """Raised when the LLM cannot complete a request."""
+
+
+class LLMStopped(LLMError):
+    """The user pressed Stop while the model was writing; `partial` holds the text so far."""
+
+    def __init__(self, partial: str = "") -> None:
+        super().__init__("Stopped by the user.")
+        self.partial = partial
 
 
 def _llm_err(exc: BaseException | None) -> str:
@@ -50,7 +60,11 @@ class LLMClient:
         max_retries: int = 2,
         model: str | None = None,
         images: list[str] | None = None,
+        on_delta: Callable[[str], None] | None = None,
+        should_continue: Callable[[], bool] | None = None,
     ) -> str:
+        """on_delta / should_continue switch Ollama to streaming: on_delta gets the text so far,
+        and should_continue() returning False stops the model mid-answer (raises LLMStopped)."""
         cfg = self.config.with_model(model) if model else self.config
         backend = self._infer_backend(cfg.llm_model)
         temp = cfg.temperature if temperature is None else temperature
@@ -59,6 +73,9 @@ class LLMClient:
         with llm_slot(cfg):
             if backend == "remote_openai_compatible":
                 return self._chat_openai_compatible(cfg, system, user, temp, max_retries, pics)
+            if on_delta is not None or should_continue is not None:
+                return self._chat_ollama_stream(cfg, system, user, temp, max_retries, pics,
+                                                on_delta, should_continue)
             return self._chat_ollama(cfg, system, user, temp, max_retries, pics)
 
     def _chat_ollama(
@@ -107,6 +124,78 @@ class LLMClient:
                 last_error = exc
                 if attempt < max_retries:
                     time.sleep(1.5 * (attempt + 1))
+                    continue
+                break
+        raise LLMError(
+            f"Failed to reach local LLM at {url} (model={cfg.llm_model}). "
+            f"Last error: {_llm_err(last_error)}. Is Ollama running? (ollama serve)"
+        )
+
+    def _chat_ollama_stream(
+        self,
+        cfg: Config,
+        system: str,
+        user: str,
+        temperature: float,
+        max_retries: int,
+        images: list[str] | None,
+        on_delta: Callable[[str], None] | None,
+        should_continue: Callable[[], bool] | None,
+    ) -> str:
+        """Streaming /api/chat. Closing the response makes Ollama stop generating."""
+        url = f"{cfg.llm_base_url}/api/chat"
+        user_msg: dict[str, Any] = {"role": "user", "content": user}
+        if images:
+            user_msg["images"] = images
+        payload: dict[str, Any] = {
+            "model": cfg.llm_model,
+            "stream": True,
+            "options": {"temperature": temperature, "num_ctx": cfg.llm_num_ctx},
+            "messages": [{"role": "system", "content": system}, user_msg],
+        }
+        if cfg.llm_think is not None:
+            payload["think"] = cfg.llm_think
+        keep_going = should_continue or (lambda: True)
+        last_error: Exception | None = None
+        attempt = 0
+        while attempt <= max_retries:
+            if not keep_going():
+                raise LLMStopped("")
+            text = ""
+            try:
+                # (connect timeout, timeout between two pieces of text) — a stuck model fails, a slow one does not
+                with requests.post(url, json=payload, stream=True, timeout=(10, cfg.timeout_seconds)) as response:
+                    if response.status_code == 400 and "think" in payload and "thinking" in (response.text or "").lower():
+                        payload.pop("think")          # model without thinking support: resend (not a retry)
+                        continue
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if not keep_going():
+                            raise LLMStopped(text)    # leaving the with-block closes the connection
+                        if not line:
+                            continue
+                        data = json.loads(line)
+                        if data.get("error"):
+                            raise LLMError(str(data["error"]))
+                        piece = (data.get("message") or {}).get("content") or ""
+                        if piece:
+                            text += piece
+                            if on_delta is not None:
+                                on_delta(text)
+                        if data.get("done"):
+                            break
+                if not text.strip():
+                    raise LLMError("Local LLM returned an empty response.")
+                return text.strip()
+            except LLMStopped:
+                raise
+            except (requests.RequestException, ValueError, LLMError) as exc:
+                last_error = exc
+                if text:                 # part of the answer was already shown: do not start over
+                    break
+                attempt += 1
+                if attempt <= max_retries:
+                    time.sleep(1.5 * attempt)
                     continue
                 break
         raise LLMError(

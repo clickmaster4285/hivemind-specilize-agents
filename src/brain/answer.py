@@ -10,9 +10,10 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
 from typing import Any
 
+from src.about import identity_line
+from src.clock import current_time_text as _clock_current_time_text
 from src.brain.db import connect
 from src.brain.retrieve import Passage, SearchResult, search
 from src.config import Config
@@ -82,9 +83,8 @@ class GroundedAnswer:
         return [asdict(s) for s in self.sources]
 
 
-def current_time_text(now: datetime | None = None) -> str:
-    now = (now or datetime.now()).astimezone()
-    return f"{now:%A, %d %B %Y, %H:%M} ({now.tzname()})"
+# the user's local time (their browser's time zone) lives in src/clock.py; kept importable from here
+current_time_text = _clock_current_time_text
 
 
 def should_use_brain(query: str, *, intent: str | None, reason: str | None, has_images: bool) -> bool:
@@ -172,7 +172,8 @@ def answer_question(
     if result.enough_evidence:
         user = f"{prior}## Sources\n\n{format_sources(result.passages)}\n\n## Question\n{question}"
         text = chat(
-            system=GROUNDED_SYSTEM.format(now=now), user=user, model=model, temperature=GROUNDED_TEMPERATURE
+            system=f"{identity_line(config, model)}\n\n{GROUNDED_SYSTEM.format(now=now)}",
+            user=user, model=model, temperature=GROUNDED_TEMPERATURE
         )
         cited = cited_numbers(text, len(result.passages))
         sources = [
@@ -189,5 +190,6 @@ def answer_question(
     _log_retrieval(result, config=config, account_id=account_id, job_id=job_id, answered=False)
     if config.brain_no_evidence == "refuse":
         return GroundedAnswer(text=REFUSE_MESSAGE, grounded=False, search=result)
-    text = chat(system=GENERAL_SYSTEM.format(now=now), user=f"{prior}{question}", model=model)
+    text = chat(system=f"{identity_line(config, model)}\n\n{GENERAL_SYSTEM.format(now=now)}",
+                user=f"{prior}{question}", model=model)
     return GroundedAnswer(text=f"{NO_EVIDENCE_NOTICE}\n\n{text}", grounded=False, search=result)

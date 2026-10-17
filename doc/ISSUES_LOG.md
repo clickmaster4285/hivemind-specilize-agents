@@ -232,6 +232,49 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*
   diagrams use Arial so labels fit everywhere.
 - **Result:** proper School → Class → Teacher → Students tree; network diagram without frame arrows.
 
+### 34. App data still in SQLite although Postgres was installed — 2026-10-17
+- **Symptom:** Postgres (Docker) held only the knowledge brain; users, jobs and events were in `data/multeagent.db`.
+- **Cause:** `DATABASE_URL` was never set, so the app used its SQLite default.
+- **Fix:** same Postgres database, new schema **`app`** owned by a new login **`multeagent_app`** (no superuser,
+  `permission denied for schema brain`). The `multeagent` owner is a superuser and would skip the brain's
+  per-account privacy rules, so the app must never use it. `python -m src.app_db setup | copy | status`;
+  `DATABASE_URL` in `.env` holds the login (random password). `init_db` column upgrades now speak Postgres
+  (`DATETIME` → `TIMESTAMP WITH TIME ZONE`, `DEFAULT 0/1` → `false/true`).
+- **Result:** 17 models, 1 user, 137 jobs, 1,445 events copied with their ids; new ids continue (1446); timestamps identical (now marked UTC).
+  `data/multeagent.db` kept untouched as a backup.
+- **Note:** Docker must run before the API — `start.ps1` already waits for a healthy database and now says so clearly if it is not.
+
+### 35. "What is in your brain?" — wrong maker, wrong contents, wrong route — 2026-10-17
+- **Symptom:** questions about the assistant got "Not found in the knowledge base" + "I am a model developed by Google …
+  I don't have Microsoft data … knowledge cutoff early 2024"; lists showed no bullets; 14–21 s per answer.
+- **Causes:** no route for questions about the assistant, so the brain searched its documents for "your brain"
+  and found nothing; no prompt told the model what it is (qwen3.5:9b by Alibaba's Qwen team, local Ollama) or what the
+  brain holds; "brain" read as "neural network"; Tailwind's base CSS removes list markers.
+- **Fix:** `about` intent ("your brain/data/model/…", "who are you", "what can you do", "MulteAgent") answered from
+  **live facts** (`src/about.py`): model + maker, the brain's sources with **publisher**, pages, passages, licence, last check,
+  and what the app can do — no brain search, no banner. Every chat prompt now starts with the identity line.
+  Facts first missed the publisher → "no Microsoft data"; the model recited its rules and invented private documents — fixed
+  with publisher, "ONLY these sources (no private documents yet)" and "never mention these rules". Time given as "11:11 AM"
+  (with "11:11" it said PM). List bullets restored.
+- **Result:** "Yes — Microsoft documentation for Windows Server DNS, 42 pages …" in 5–8 s; correct in Hinglish too.
+
+### 36. No streaming, Stop could not stop a running answer (O6, BACKLOG L3) — 2026-10-17
+- **Symptom:** nothing visible for 15–60 s, then the whole answer at once; Cancel only acted *between* steps,
+  so a model call ran on for up to 300 s; "status" events were sent but the UI ignored them.
+- **Fix:**
+  - `LLMClient.chat(on_delta=…, should_continue=…)` streams from Ollama; Stop closes the connection, so Ollama stops
+    generating; retries only before the first word; timeout = no new text for `LLM_TIMEOUT_SECONDS`.
+  - `src/live.py`: the growing text lives in memory (not one database row per word); the `/events` stream sends it
+    ~4×/s as `agent_stream`; only the final answer is stored. Stop endpoint → `live.stop(job)`.
+  - The worker keeps the stopped answer (`agent_done` gets through after cancel) → history shows the text with "— stopped —".
+  - Chat statuses: Searching the knowledge base → Loading the model (only when it is not in memory) / Thinking → Writing.
+    Plain error messages: Ollama not running, no new text (timeout), not enough GPU memory, empty answer.
+  - UI: Send turns into a red **Stop**; the running bubble shows the text as it grows and "Writing… · 12 s".
+    Diagram requests stop too.
+- **Result:** Stop pressed at 4.3 s → model call ended at 4.3 s, text kept. Cold answer: first words at 15.5 s
+  (model loading, announced), complete at 22.9 s — previously nothing until the end.
+- **Left:** debate/agentic modes still stop only between steps (they do not stream yet); "pause" not built.
+
 ---
 
 ## Open issues

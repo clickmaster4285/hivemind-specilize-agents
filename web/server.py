@@ -420,6 +420,10 @@ def cancel_job_endpoint(
         db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # ends a model call that is writing right now, instead of waiting for the whole answer
+    from src import live
+
+    live.stop(job.id)
     return job_to_dict(job)
 
 
@@ -495,12 +499,18 @@ async def job_events_stream(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     async def event_generator():
+        from src import live
         from src.db import session_scope
 
         last_seq = 0
         terminal = {"succeeded", "failed", "cancelled"}
         idle_rounds = 0
+        sent_live: dict[str, str] = {}      # agent_id → text already streamed
+        finished: set[str] = set()          # agents whose final answer was sent: no more live text
         while True:
+            # read the live text BEFORE the stored events: text cleared just before a final event
+            # then cannot be sent after it
+            live_now = live.snapshot(job_id)
             payloads: list[tuple[int, str]] = []
             status = "queued"
             with session_scope() as session:
@@ -514,7 +524,16 @@ async def job_events_stream(
                 payloads = [(row.seq, row.event_json) for row in rows]
             for seq, event_json in payloads:
                 last_seq = seq
+                if '"agent_done"' in event_json:
+                    try:
+                        finished.add(str(json.loads(event_json).get("agent_id") or ""))
+                    except json.JSONDecodeError:
+                        pass
                 yield f"data: {event_json}\n\n"
+            for agent_id, text in live_now.items():
+                if agent_id not in finished and sent_live.get(agent_id) != text:
+                    sent_live[agent_id] = text
+                    yield f"data: {json.dumps({'type': 'agent_stream', 'agent_id': agent_id, 'text': text})}\n\n"
             if status in terminal:
                 # Keep draining until events stop arriving (avoid cutting off last msgs).
                 idle_rounds = idle_rounds + 1 if not payloads else 0

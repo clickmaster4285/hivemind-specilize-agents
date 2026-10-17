@@ -48,6 +48,7 @@ import type {
   RunMode,
   ChatImage,
 } from "@/lib/types";
+import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
 import MessageAvatar from "@/components/MessageAvatar";
 import {
@@ -182,6 +183,14 @@ function IconPaperclip() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  );
+}
+
+function IconStop() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <rect x="5" y="5" width="14" height="14" rx="2" />
     </svg>
   );
 }
@@ -598,6 +607,16 @@ export default function ControlDeck() {
     window.addEventListener("multeagent:ask", onAsk);
     return () => window.removeEventListener("multeagent:ask", onAsk);
   }, []);
+
+  /** Stop button: the server ends the model call at its next word; the stream then reports "Stopped". */
+  async function stopActiveJob() {
+    if (!activeJobId) return;
+    try {
+      await cancelJob(activeJobId);
+    } catch {
+      // the job finished in the same moment: nothing to stop
+    }
+  }
 
   function applyEvent(event: DebateEvent) {
     setFeed((prev) => reduceFeed(prev, event));
@@ -1205,12 +1224,8 @@ export default function ControlDeck() {
               <span>{parallel ? "Parallel" : "Sequential"}</span>
             </label>
             {activeJobId && running ? (
-              <button
-                type="button"
-                className="btn danger ghost"
-                onClick={() => cancelJob(activeJobId)}
-              >
-                Cancel
+              <button type="button" className="btn danger ghost" onClick={() => void stopActiveJob()}>
+                Stop
               </button>
             ) : null}
           </div>
@@ -1281,7 +1296,11 @@ export default function ControlDeck() {
                           <>
                             <AgentThumbs item={item} fallbackJobId={activeJobId} />
                             <ArtifactChips item={item} fallbackJobId={activeJobId} />
-                            <MarkdownBody content={item.body} pending={item.pending} />
+                            {item.body ? (
+                              // streamed text renders as Markdown while it grows
+                              <MarkdownBody content={item.body} pending={item.pending && !item.streaming} />
+                            ) : null}
+                            {item.pending ? <LiveStatus text={item.statusText} startedAt={item.startedAt} /> : null}
                             <SourceList item={item} />
                           </>
                         )}
@@ -1413,15 +1432,28 @@ export default function ControlDeck() {
               }
               required={pendingImages.length === 0}
             />
-            <button
-              type="submit"
-              className="composer-send"
-              disabled={running}
-              title={running ? "Running…" : "Send (Enter)"}
-              aria-label={running ? "Running" : "Send"}
-            >
-              <IconSend />
-            </button>
+            {running && activeJobId ? (
+              // Send turns into Stop: ends the model mid-answer and keeps what was written
+              <button
+                type="button"
+                className="composer-send stop"
+                title="Stop"
+                aria-label="Stop"
+                onClick={() => void stopActiveJob()}
+              >
+                <IconStop />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                className="composer-send"
+                disabled={running}
+                title={running ? "Running…" : "Send (Enter)"}
+                aria-label={running ? "Running" : "Send"}
+              >
+                <IconSend />
+              </button>
+            )}
           </div>
           <div className="composer-row image-actions">
             <button type="button" className="btn ghost sm" onClick={() => setSettingsOpen(true)}>

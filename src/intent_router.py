@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
 
 from src.config import Config
+
+logger = logging.getLogger(__name__)
 
 MANUAL_MODES = frozenset({"debate", "agentic", "mixed", "chat"})
 RESOLVED_MODES = frozenset({"chat", "debate", "agentic"})
@@ -63,6 +66,16 @@ EXPLICIT_IMAGE_RE = re.compile(
     r"\b(image|picture|photo|photograph|rendering|render|illustration|artwork|wallpaper|thumbnail)\s+(of|for)\b|"
     r"\b(create|generate|make|draw|render|give\s+me)\s+(me\s+)?(an?\s+)?"
     r"(image|picture|photo|illustration|thumbnail|wallpaper)\b",
+    re.I,
+)
+# Questions about the assistant itself: answered from live facts (src/about.py), not the knowledge
+# base — "what is in your brain?" searched the documents, found nothing and then guessed "made by Google"
+ABOUT_RE = re.compile(
+    r"\b(you|your|yours|yourself|u|ur)\b.{0,50}\b(brain|knowledge(\s*base)?|data|database|sources?|documents?|"
+    r"model|llm|trained|training|speciali[sz]\w*|capabilit\w*|features?|working|generat\w*\s+(the\s+)?(answer|response)s?|"
+    r"using|made|built|created|developed|memory|remember|cutoff)\b|"
+    r"\b(who|what)\s+(are|r)\s+(you|u)\b|\bwhat\s+can\s+(you|u)\s+do\b|\bhow\s+do\s+(you|u)\s+work\b|"
+    r"\bmulte\s*-?\s*agent\b",
     re.I,
 )
 # Follow-up on a diagram the assistant just drew ("add a cache", "move the db to the right")
@@ -262,6 +275,9 @@ def _heuristic(query: str) -> RouteDecision | None:
     if not text:
         return RouteDecision("auto", "chat", "chat", "empty message -> chat")
 
+    if not GREETING_RE.match(text) and len(text) <= 40 and re.search(r"\b(who|what)\s+(are|r)\s+(you|u)\b", text, re.I):
+        return RouteDecision("auto", "chat", "about", "question about the assistant -> live facts")
+
     if GREETING_RE.match(text) or len(text) <= 12 and not DEBATE_RE.search(text):
         return RouteDecision("auto", "chat", "chat", "greeting / short chitchat -> chat")
 
@@ -287,6 +303,9 @@ def _heuristic(query: str) -> RouteDecision | None:
             "doc_gen",
             "document/file generation -> agentic tools",
         )
+
+    if ABOUT_RE.search(text) and len(text) < 200:
+        return RouteDecision("auto", "chat", "about", "question about the assistant -> live facts")
 
     if CREATIVE_RE.search(text):
         return RouteDecision("auto", "chat", "creative", "creative writing -> chat")
@@ -454,6 +473,64 @@ def classify_query(
     if has_images:
         return _route_with_images(text, requested, config)
 
+    # Midjourney-style flags (--ar 16:9, --v 6) are a sign of an image prompt, not a meaning
+    if FLAG_RE.search(text):
+        return _image_gen_decision(requested, reason="image prompt flags -> txt2img", image_mode="txt2img")
+
+    decision = _semantic_decision(text, requested, config, after_diagram=after_diagram, allow_llm=allow_llm)
+    if decision is None:
+        # embedding model unreachable: the old word rules (frozen — extend data/router/intents.yaml instead)
+        return _legacy_route(query, text, requested, config, after_diagram=after_diagram, allow_llm=allow_llm)
+    if requested in MANUAL_MODES and requested != "chat":
+        # a mode the user picked wins, except for asks that need their own tool
+        bypass = {"image_gen", "diagram", "doc_gen"} | ({"creative"} if requested in {"debate", "mixed"} else set())
+        if decision.intent not in bypass:
+            return RouteDecision(requested, requested, requested, "manual mode override", confidence=1.0)
+    return decision
+
+
+FLAG_RE = re.compile(r"(^|\s)--(ar|aspect|v|seed|no|style|stylize|chaos|niji)\b", re.I)
+
+
+def _semantic_decision(
+    text: str, requested: str, config: Config, *, after_diagram: bool, allow_llm: bool
+) -> RouteDecision | None:
+    """Intent by meaning (src/semantic_router.py, examples in data/router/intents.yaml); close calls
+    are settled by the chat model. None only when the embedding model cannot be reached."""
+    from src.semantic_router import get_router
+
+    context = {"after_diagram"} if after_diagram else set()
+    try:
+        router = get_router(config)
+        match = router.classify(text, context=context)
+    except Exception:  # noqa: BLE001 — Ollama down / file problem: caller uses the offline rules
+        logger.exception("semantic router unavailable")
+        return None
+    intent, used_llm = match.intent, False
+    if intent is None and allow_llm:
+        intent = router.ask_llm(text, match, context=context)
+        used_llm = intent is not None
+    if intent is None:
+        intent = match.guess or "chat"       # the closest examples' intent, else a normal answer
+    how = "LLM, close call" if used_llm else f"similarity {match.score:.2f}, lead {match.margin:.2f}"
+    reason = f"semantic: {intent} ({how})"
+    conf = match.score if not used_llm else 0.6
+    if intent == "greeting":
+        # "greeting" in the reason keeps the knowledge base out of small talk (should_use_brain)
+        return RouteDecision(requested, "chat", "chat", f"greeting / small talk -> chat; {reason}", used_llm, conf)
+    if intent in {"diagram", "diagram_edit"}:
+        return _diagram_decision(requested, reason)
+    if intent == "image_gen":
+        return _image_gen_decision(requested, reason=reason, image_mode="txt2img", used_llm=used_llm, confidence=conf)
+    resolved = {"doc_gen": "agentic", "agentic": "agentic", "debate": "debate"}.get(intent, "chat")
+    return RouteDecision(requested, resolved, intent, reason, used_llm, conf)
+
+
+def _legacy_route(
+    query: str, text: str, requested: str, config: Config, *, after_diagram: bool, allow_llm: bool
+) -> RouteDecision:
+    """The word rules used before the semantic router — only when embeddings are unavailable.
+    Frozen: new phrasings and intents go into data/router/intents.yaml, not here."""
     if GREETING_RE.match(text) or (len(text) <= 8 and text.isalpha()):
         return RouteDecision(
             requested_mode=requested,

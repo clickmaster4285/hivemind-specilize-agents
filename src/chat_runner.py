@@ -6,12 +6,15 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from src.about import about_system, identity_line
 from src.brain.answer import answer_question, current_time_text
 from src.brain.db import BrainDBError
 from src.brain.embed import EmbedError
 from src.config import Config
+from src import live
 from src.conversation import format_conversation_block, normalize_conversation
-from src.llm_client import LLMClient
+from src.llm_client import LLMClient, LLMStopped
+from src.ollama_mgmt import model_loaded
 
 BRAIN_DOWN_NOTICE = (
     "> **Knowledge base unavailable right now** — this answer is from the model's general knowledge, "
@@ -49,6 +52,22 @@ class ChatResult:
     output: str = ""
     errors: list[str] = field(default_factory=list)
     total_seconds: float = 0.0
+    stopped: bool = False
+
+
+def friendly_error(exc: BaseException, config: Config) -> str:
+    """What went wrong, in words a user can act on (the raw error stays in the log)."""
+    text = str(exc).lower()
+    if "not reachable" in text or "connection refused" in text or "failed to establish" in text:
+        return "The language model is not running (Ollama is not reachable). Start Ollama or run start.ps1, then retry."
+    if "timeout" in text or "timed out" in text:
+        return (f"The model stopped answering (no new text for {config.timeout_seconds} s). "
+                "It may be overloaded: retry, or ask a shorter question.")
+    if "out of memory" in text or "cuda" in text or "insufficient" in text:
+        return "Not enough GPU memory for the model right now (an image job may be running). Retry in a moment."
+    if "empty response" in text:
+        return "The model returned an empty answer. Please retry."
+    return f"The answer failed: {exc}"
 
 
 def _emit(cb: ProgressCallback | None, event: dict[str, Any]) -> None:
@@ -67,11 +86,18 @@ def run_chat(
     use_brain: bool = False,
     account_id: str | None = None,
     job_id: str | None = None,
+    about: bool = False,
+    should_continue: Callable[[], bool] | None = None,
 ) -> ChatResult:
+    """about=True: a question about MulteAgent itself, answered from live facts with no brain search.
+
+    The answer streams into src/live.py (shown in the browser as it is written); the Stop button
+    (live.stop / should_continue) ends the model call mid-answer and keeps what was written so far.
+    """
     config = config or Config.from_env()
     model_plan = model_plan or {}
     pics = [img for img in (images or []) if img]
-    use_brain = use_brain and not pics
+    use_brain = use_brain and not pics and not about
     if pics:
         model = model_plan.get("vision") or config.model_vision or config.llm_model
         system = VISION_SYSTEM
@@ -81,7 +107,12 @@ def run_chat(
         system = CHAT_SYSTEM
         role = "Searching knowledge base" if use_brain else "Direct reply"
     # The model has no clock: always tell it the current date and time.
-    system = f"{system}\n\nCurrent date and time: {current_time_text()}."
+    if about and not pics:
+        system = about_system(config, current_time_text(), model)
+        role = "About MulteAgent"
+    else:
+        # Who it is (else it says "made by Google"), and the date: the model has no clock.
+        system = f"{identity_line(config, model)}\n\n{system}\n\nCurrent date and time: {current_time_text()}."
     client = LLMClient(config)
     result = ChatResult()
     started = time.perf_counter()
@@ -107,29 +138,48 @@ def run_chat(
         },
     )
 
+    keep_going = should_continue or (lambda: not live.is_stopped(job_id))
+    first_piece = {"seen": False}
+
+    def on_delta(text: str) -> None:
+        if not first_piece["seen"]:
+            first_piece["seen"] = True
+            _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Writing…"})
+        live.set_text(job_id, "assistant", text)
+
+    def chat(**kwargs: Any) -> str:
+        """client.chat, streamed, with a status that says whether the model must load first."""
+        target = kwargs.get("model") or model
+        _emit(on_progress, {"type": "status", "agent_id": "assistant",
+                            "message": "Thinking…" if model_loaded(config, target)
+                            else f"Loading {target} into memory (about 10 s)…"})
+        return client.chat(on_delta=on_delta, should_continue=keep_going, **kwargs)
+
     try:
         history = normalize_conversation(conversation)
         prior = format_conversation_block(history)
         user_msg = f"{prior}\n\n## Current message\n{query}" if prior else query
         extra: dict[str, Any] = {}
         if use_brain:
+            _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Searching the knowledge base…"})
             try:
                 answer = answer_question(
                     query, config=config, account_id=account_id, job_id=job_id, model=model,
-                    conversation=history, conversation_block=prior, chat=client.chat,
+                    conversation=history, conversation_block=prior, chat=chat,
                 )
                 output = answer.text
                 role = "Knowledge base" if answer.grounded else "General knowledge"
                 extra = {"grounded": answer.grounded, "sources": answer.sources_payload()}
             except (BrainDBError, EmbedError) as exc:
                 result.errors.append(f"knowledge base unavailable: {exc}")
-                output = f"{BRAIN_DOWN_NOTICE}\n\n" + client.chat(system=system, user=user_msg, model=model)
+                output = f"{BRAIN_DOWN_NOTICE}\n\n" + chat(system=system, user=user_msg, model=model)
                 role = "General knowledge"
                 extra = {"grounded": False, "sources": []}
         else:
-            output = client.chat(system=system, user=user_msg, model=model, images=pics or None)
+            output = chat(system=system, user=user_msg, model=model, images=pics or None)
         result.output = output
         elapsed = time.perf_counter() - started
+        live.finish_agent(job_id, "assistant")       # the final text replaces the streamed one
         _emit(
             on_progress,
             {
@@ -144,15 +194,24 @@ def run_chat(
                 **extra,
             },
         )
+    except LLMStopped as exc:
+        # keep what was already written; the job itself is marked cancelled by the Stop endpoint
+        result.stopped = True
+        result.output = (exc.partial + "\n\n_— stopped —_").strip() if exc.partial else "_Stopped before the answer started._"
+        live.finish_agent(job_id, "assistant")
+        _emit(on_progress, {"type": "agent_done", "agent_id": "assistant", "name": "Assistant", "role": "Stopped",
+                            "stage": "chat", "accent": "#c4a35a",
+                            "elapsed_seconds": time.perf_counter() - started, "output": result.output})
     except Exception as exc:  # noqa: BLE001
         result.errors.append(str(exc))
+        live.finish_agent(job_id, "assistant")
         _emit(
             on_progress,
             {
                 "type": "agent_error",
                 "agent_id": "assistant",
                 "name": "Assistant",
-                "error": str(exc),
+                "error": friendly_error(exc, config),
             },
         )
 

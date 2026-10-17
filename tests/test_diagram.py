@@ -103,7 +103,7 @@ def test_retry_when_first_answer_is_broken():
 def test_run_diagram_reply_and_events(monkeypatch):
     import src.diagram_gen as dg
 
-    monkeypatch.setattr(dg, "write_diagram", lambda q, c, conv: ("Arch", "flowchart LR\n a --> b", "- note", []))
+    monkeypatch.setattr(dg, "write_diagram", lambda q, c, conv, chat=None: ("Arch", "flowchart LR\n a --> b", "- note", []))
     events = []
     output, errors, _ = run_diagram("draw arch diagram", job_id="j", config=CFG, on_progress=events.append)
     assert output == "**Arch**\n\n```mermaid\nflowchart LR\n a --> b\n```\n\n- note" and errors == []
@@ -184,3 +184,34 @@ def test_arrow_into_own_subgraph_is_a_problem():
     assert any('subgraph "school" and "A"' in p for p in check_mermaid(bad))
     ok = 'flowchart TD\n  school["School"] --> A["Class A"]\n  subgraph g["Grade 1"]\n    A\n  end\n  other["Office"] --> g'
     assert check_mermaid(ok) == []
+
+
+@pytest.mark.parametrize("query, intent", [
+    ("what is in your brain", "about"),
+    ("in your brain you have any microsoft data?", "about"),
+    ("tell me how you're working and how you're generating the response", "about"),
+    ("in which field your specialized", "about"),
+    ("who are you", "about"),
+    ("what is MulteAgent", "about"),
+    ("hello", "chat"),
+    ("how do I configure DNS scavenging", "chat"),
+    ("do you know how DNS forwarders work", "chat"),
+    ("can you explain python decorators", "chat"),
+    ("can you generate an image of a cat", "image_gen"),
+])
+def test_questions_about_the_assistant(query, intent):
+    assert classify_query(query, config=CFG, allow_llm=False).intent == intent
+
+
+def test_stop_ends_a_diagram(monkeypatch):
+    import src.diagram_gen as dg
+    from src.llm_client import LLMStopped
+
+    def stopped(*a, **k):
+        raise LLMStopped("")
+
+    monkeypatch.setattr(dg, "write_diagram", stopped)
+    events = []
+    output, errors, _ = run_diagram("draw arch diagram", job_id="j-stop", config=CFG, on_progress=events.append)
+    assert "Stopped" in output and errors == []
+    assert [e for e in events if e["type"] == "agent_done"][0]["role"] == "Stopped"

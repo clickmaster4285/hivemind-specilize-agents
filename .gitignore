@@ -14,6 +14,9 @@ data/*
 !data/brain/
 !data/brain_eval/
 data/brain_eval/results/
+# Semantic router examples + test set are tracked; their computed vectors are not
+!data/router/
+data/router/.cache/
 artifacts/
 models/checkpoints/*.safetensors
 models/checkpoints/*.ckpt

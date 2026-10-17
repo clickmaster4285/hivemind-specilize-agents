@@ -1,0 +1,76 @@
+# Router test set — NOT used as examples. Different wording from intents.yaml, plus every real
+# message that was routed wrong before. Run:  python -m src.semantic_router --eval
+# after_diagram: true = the previous answer was a diagram.
+
+cases:
+  # real messages from the chat history
+  - {text: "what is in you brain\\]", intent: about}
+  - {text: "in your brain you have any microsoft data?", intent: about}
+  - {text: "what you're using?", intent: about}
+  - {text: "tell me how you're working and how you're generating the response", intent: about}
+  - {text: "in which field your specialized", intent: about}
+  - {text: "diagram of school connected to classes, each class with a teacher, each teacher with students, clean white background, isometric perspective, blueprint style, precise labels", intent: diagram}
+  - {text: "create the diagram of school connect to classes and eac class with a teacher", intent: diagram}
+  - {text: "create an image of Technical engineering schematic of a compact security room (500 sq ft) with 10-foot high walls. Floor plan view", intent: image_gen}
+  - {text: "YouTube thumbnail design for GTA V streaming. Style: Hyper-realistic, vibrant 8k, dynamic angle", intent: image_gen}
+  - {text: "improve this prompt: a cinematic photo of a rose, highly detailed, 8k", intent: creative}
+
+  # chat
+  - {text: "how can I check which DNS server my PC is using", intent: chat}
+  - {text: "what's the difference between an A record and a CNAME", intent: chat}
+  - {text: "python list comprehension samjhao example ke saath", intent: chat}
+  - {text: "my laptop is very slow after the windows update, what should I check", intent: chat}
+  - {text: "explain how HTTPS certificates are verified", intent: chat}
+  - {text: "do you know how DNS forwarders work", intent: chat}
+  - {text: "can you explain python decorators", intent: chat}
+  - {text: "what is a sequence diagram used for", intent: chat}
+
+  # greeting
+  - {text: "hey!", intent: greeting}
+  - {text: "thanks bro", intent: greeting}
+  - {text: "assalam o alaikum", intent: greeting}
+  - {text: "good night", intent: greeting}
+
+  # about
+  - {text: "what do you know about yourself", intent: about}
+  - {text: "kis model pe chal rahe ho", intent: about}
+  - {text: "do you send my data to the internet", intent: about}
+  - {text: "what topics does your knowledge base cover", intent: about}
+
+  # image_gen
+  - {text: "draw me a dragon flying over a castle", intent: image_gen}
+  - {text: "photo of a cup of chai on a rainy window, cinematic", intent: image_gen}
+  - {text: "can you generate an image of a cat", intent: image_gen}
+  - {text: "Instagram post picture for a bakery sale", intent: image_gen}
+  - {text: "anime style illustration of a girl with an umbrella", intent: image_gen}
+
+  # diagram
+  - {text: "flowchart for password reset", intent: diagram}
+  - {text: "visualize the microservices of an online shop as boxes and arrows", intent: diagram}
+  - {text: "hamare office network ka schematic bana do", intent: diagram}
+  - {text: "sequence diagram for OAuth login", intent: diagram}
+  - {text: "show the hierarchy of a hospital: departments, doctors, nurses", intent: diagram}
+
+  # diagram_edit (only right after a diagram)
+  - {text: "add a firewall before the router", intent: diagram_edit, after_diagram: true}
+  - {text: "remove the NAS", intent: diagram_edit, after_diagram: true}
+  - {text: "printer ko hata do", intent: diagram_edit, after_diagram: true}
+
+  # doc_gen
+  - {text: "save this answer as a word file", intent: doc_gen}
+  - {text: "make slides from these notes", intent: doc_gen}
+  - {text: "pdf report chahiye is topic pe", intent: doc_gen}
+
+  # creative
+  - {text: "write a bedtime story about a brave little cat", intent: creative}
+  - {text: "give me a catchy instagram caption for my cafe", intent: creative}
+  - {text: "rewrite my image prompt so it looks more realistic", intent: creative}
+
+  # agentic
+  - {text: "open https://docs.python.org/3/whatsnew/ and tell me what changed", intent: agentic}
+  - {text: "research three CRM tools online and compare their prices", intent: agentic}
+
+  # debate
+  - {text: "should my startup raise money now or wait a year", intent: debate}
+  - {text: "is it better to build our own app or buy a SaaS product, considering cost and risk", intent: debate}
+  - {text: "Dubai mein branch kholna sahi faisla hai ya nahi", intent: debate}

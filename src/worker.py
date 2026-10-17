@@ -12,7 +12,9 @@ from src.agentic.runtime import run_agentic
 from src.brain.answer import should_use_brain
 from src.conversation import normalize_conversation
 from src.chat_runner import run_chat
+from src.clock import set_time_zone
 from src.diagram_gen import run_diagram
+from src import live
 from src.image_gen import run_image_gen
 from src.attachments import load_b64_images
 from src.config import Config
@@ -42,12 +44,17 @@ def process_job(job_id: str, config: Config | None = None) -> None:
         payload = json.loads(job.payload_json or "{}")
         model_plan = json.loads(job.model_plan_json or "{}")
 
+    # After Stop the job is "cancelled", but the partly written answer must still be saved
+    # (chat history), so the closing events get through; everything else is dropped.
+    keep_after_stop = {"agent_done", "session_done"}
+
     def on_progress(event: dict[str, Any]) -> None:
-        if _is_cancelled(job_id):
+        closing = event.get("type") in keep_after_stop
+        if not closing and _is_cancelled(job_id):
             return
         with session_scope(config) as session:
             current = get_job(session, job_id)
-            if current is None or current.status == "cancelled":
+            if current is None or (current.status == "cancelled" and not closing):
                 return
             if event.get("type") == "artifact_ready":
                 payload_now = json.loads(current.payload_json or "{}")
@@ -80,6 +87,8 @@ def process_job(job_id: str, config: Config | None = None) -> None:
         images = load_b64_images(config, attachments) if attachments else []
         conversation = normalize_conversation(payload.get("conversation"))
         intent = (route or {}).get("intent")
+        # every prompt of this job tells the time in the user's own time zone (sent by the browser)
+        set_time_zone(payload.get("client_time_zone"))
 
         if intent == "diagram":
             _output, errors, _elapsed = run_diagram(
@@ -167,6 +176,7 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 use_brain=use_brain,
                 account_id=str(user_id) if user_id is not None else None,
                 job_id=job_id,
+                about=intent == "about",
             )
             with session_scope(config) as session:
                 if get_job(session, job_id) and get_job(session, job_id).status == "cancelled":
@@ -261,6 +271,8 @@ def process_job(job_id: str, config: Config | None = None) -> None:
             if current and current.status != "cancelled":
                 set_job_status(session, job_id, "failed", error=str(exc))
                 append_event(session, job_id, {"type": "fatal", "error": str(exc)})
+    finally:
+        live.clear(job_id)
 
 
 def worker_loop(config: Config | None = None, poll_seconds: float = 1.0) -> None:

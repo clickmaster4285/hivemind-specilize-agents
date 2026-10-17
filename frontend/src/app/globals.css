@@ -957,6 +957,19 @@ body {
   padding-left: 1.05rem;
 }
 
+/* Tailwind's base styles remove list markers: answers need them back */
+.md-body .md-ul {
+  list-style: disc;
+}
+
+.md-body .md-ul .md-ul {
+  list-style: circle;
+}
+
+.md-body .md-ol {
+  list-style: decimal;
+}
+
 .md-body .md-li {
   margin: 0.05rem 0;
 }
@@ -1157,6 +1170,42 @@ body {
 
 .composer-send:hover:not(:disabled) {
   filter: brightness(1.06);
+}
+
+.composer-send.stop {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* "Writing… · 12 s" under a running answer */
+.live-status {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--copper);
+  animation: live-pulse 1.2s ease-in-out infinite;
+}
+
+.live-time {
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
 }
 
 .composer-send:disabled {

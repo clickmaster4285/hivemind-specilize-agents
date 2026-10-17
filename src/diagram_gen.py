@@ -304,8 +304,15 @@ def run_diagram(
     _emit(on_progress, {"type": "session_start", "mode": "chat", "query": query})
     _emit(on_progress, {"type": "agent_start", **agent, "model": config.llm_model})
     _emit(on_progress, {"type": "status", "message": "Drawing the diagram…"})
+    from functools import partial
+
+    from src import live
+    from src.llm_client import LLMClient, LLMStopped
+
+    # Stop works here too: every model call (draft, retry, review) ends at its next word
+    chat = partial(LLMClient(config).chat, should_continue=lambda: not live.is_stopped(job_id))
     try:
-        title, code, notes, problems = write_diagram(query, config, conversation)
+        title, code, notes, problems = write_diagram(query, config, conversation, chat=chat)
         if code is None:
             errors.append("the model did not return a diagram")
             output = "I could not draw this diagram. Please describe the parts and how they connect, and try again."
@@ -316,6 +323,9 @@ def run_diagram(
             if problems:
                 output += ("\n\n_The diagram may not render: " + "; ".join(problems)
                            + ". Ask me to fix it, or copy the code into https://mermaid.live._")
+    except LLMStopped:
+        output = "_Stopped before the diagram was finished._"
+        agent["role"] = "Stopped"
     except Exception as exc:  # noqa: BLE001 — report instead of failing the job silently
         errors.append(str(exc))
         output = f"Diagram failed: {exc}"

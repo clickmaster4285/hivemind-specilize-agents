@@ -66,6 +66,19 @@ def unload_ollama_models(config: Config | None = None) -> list[str]:
     return unloaded
 
 
+def model_loaded(config: Config, model: str) -> bool:
+    """Is the model already in (GPU) memory? A cold model needs ~10 s before the first word.
+    When Ollama cannot be asked, answer True: better no "loading" notice than a wrong one."""
+    base = (config.llm_base_url or "").rstrip("/")
+    try:
+        resp = requests.get(f"{base}/api/ps", timeout=2)
+        resp.raise_for_status()
+        names = {m.get("name") or m.get("model") for m in resp.json().get("models") or []}
+    except Exception:  # noqa: BLE001
+        return True
+    return model in names or f"{model}:latest" in names
+
+
 def ollama_reachable(config: Config | None = None) -> bool:
     config = config or Config.from_env()
     try:
