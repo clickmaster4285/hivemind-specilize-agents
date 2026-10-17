@@ -3,7 +3,7 @@
   Start MulteAgent for local development, in the right order, skipping whatever already runs.
 
 .DESCRIPTION
-  1. Docker Desktop (if not running) -> brain database container (Postgres + pgvector)
+  1. Docker Desktop (if not running) -> database container (Postgres + pgvector: app data + brain)
   2. Ollama (tray app)
   3. API  (python main.py --gui)  in its own window
   4. UI   (npm run dev)          in its own window
@@ -59,7 +59,7 @@ function Wait-Until([scriptblock]$Check, [int]$Seconds, [string]$What) {
 }
 
 # ── 1. Docker + database ──────────────────────────────────────────────
-Write-Step "Docker and the brain database"
+Write-Step "Docker and the database"
 if (Test-Docker) {
     Write-Skip "Docker already running"
 } else {
@@ -79,6 +79,7 @@ if ($Tools) { docker compose --profile tools up -d pgadmin *> $null }
 Pop-Location
 $dbReady = Wait-Until { (docker inspect -f "{{.State.Health.Status}}" multeagent-db-1 2>$null) -eq "healthy" } 90 "Database"
 if ($dbReady) { Write-Ok "database healthy (127.0.0.1:5432)" }
+else { Write-Bad "database not healthy - the API keeps users and jobs there, so it will not work until it is up" }
 if ($Tools) { Write-Ok "pgAdmin: http://localhost:5050" }
 
 # ── 2. Ollama ─────────────────────────────────────────────────────────

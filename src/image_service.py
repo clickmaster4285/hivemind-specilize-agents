@@ -63,6 +63,8 @@ class GenerateRequest(BaseModel):
     mask_b64: str | None = Field(default=None, max_length=MAX_IMAGE_B64_CHARS)
     seed: int | None = Field(default=None, ge=0, lt=2**32)            # None = random
     checkpoint: str | None = Field(default=None, max_length=200)      # file name in models/checkpoints
+    hires: float | None = Field(default=None, ge=1.0, le=2.0)         # txt2img: hires-fix scale
+    hires_checkpoint: str | None = Field(default=None, max_length=200)  # model for the hires redraw
 
 
 def _decode_image(b64: str, what: str) -> Any:
@@ -90,10 +92,15 @@ def health() -> dict[str, Any]:
 
 
 @app.post("/warm", dependencies=[Depends(_check_token)])
-def warm() -> dict[str, str]:
-    """Load the model in the background (used when IMAGE_WARM_ON_START=true)."""
+def warm(checkpoint: str | None = None) -> dict[str, str]:
+    """Load a model in the background: at API start (IMAGE_WARM_ON_START) or while the API is
+    still rewriting the prompt of an image job. Loading uses RAM only, not the GPU."""
     _touch()
-    sdxl.warm_pipeline_async(dataclasses.replace(_config, image_warm_on_start=True))
+    try:
+        path = resolve_checkpoint(checkpoint, _config.model_image_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    sdxl.warm_pipeline_async(dataclasses.replace(_config, image_warm_on_start=True), path)
     return {"status": "warming"}
 
 
@@ -123,13 +130,20 @@ def generate(req: GenerateRequest) -> dict[str, Any]:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
             if req.checkpoint and not (checkpoint and checkpoint.is_file()):
                 raise HTTPException(status_code=400, detail=f"checkpoint not found: models/checkpoints/{req.checkpoint}")
+            try:
+                refiner = resolve_checkpoint(req.hires_checkpoint, None)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if refiner is not None and not refiner.is_file():
+                refiner = None              # missing refiner: redraw with the main model instead
             seed = req.seed if req.seed is not None else secrets.randbelow(2**32)
             common = dict(
                 config=_config, negative_prompt=req.negative_prompt, steps=req.steps,
                 guidance=req.guidance, should_continue=keep_going, seed=seed, checkpoint=checkpoint,
             )
             if req.mode == "txt2img":
-                image = sdxl.generate(req.prompt, width=req.width, height=req.height, **common)
+                image = sdxl.generate(req.prompt, width=req.width, height=req.height, hires=req.hires,
+                                      hires_checkpoint=refiner, **common)
             else:
                 if not req.init_image_b64:
                     raise HTTPException(status_code=400, detail=f"{req.mode} needs init_image_b64")

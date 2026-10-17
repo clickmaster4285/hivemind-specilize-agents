@@ -110,10 +110,24 @@ class ImageServiceClient:
         )
         log.close()  # the child has its own handle
 
-    def warm(self) -> None:
-        """Start the service and load the model now (IMAGE_WARM_ON_START)."""
+    def warm(self, checkpoint: str | None = None) -> None:
+        """Start the service and load a model now (default: MODEL_IMAGE_PATH)."""
         self.ensure_running()
-        requests.post(f"{self.base_url}/warm", headers=self.headers, timeout=10)
+        params = {"checkpoint": checkpoint} if checkpoint else None
+        requests.post(f"{self.base_url}/warm", headers=self.headers, params=params, timeout=10)
+
+    def warm_in_background(self, checkpoint: str | None = None) -> threading.Thread:
+        """Start the service and load the model while the caller does other work (prompt rewrite)."""
+
+        def run() -> None:
+            try:
+                self.warm(checkpoint)
+            except (ImageServiceError, requests.RequestException):
+                pass  # generate() reports the problem properly
+
+        thread = threading.Thread(target=run, name="image-warm", daemon=True)
+        thread.start()
+        return thread
 
     # ── generation ──────────────────────────────────────────────────
     def generate(
@@ -132,6 +146,8 @@ class ImageServiceClient:
         should_continue: Callable[[], bool] | None = None,
         seed: int | None = None,
         checkpoint: str | None = None,
+        hires: float | None = None,
+        hires_checkpoint: str | None = None,
     ) -> Any:
         """Generate one image (PIL.Image). Raises ImageCancelled / ImageServiceError.
 
@@ -146,7 +162,8 @@ class ImageServiceClient:
             "width": width, "height": height, "steps": steps, "guidance": guidance, "strength": strength,
             "init_image_b64": _b64_png(init_image) if init_image is not None else None,
             "mask_b64": _b64_png(mask) if mask is not None else None,
-            "seed": seed, "checkpoint": checkpoint,
+            "seed": seed, "checkpoint": checkpoint, "hires": hires,
+            "hires_checkpoint": hires_checkpoint,
         }
 
         done = threading.Event()

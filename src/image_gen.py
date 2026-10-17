@@ -13,10 +13,10 @@ import time
 from typing import Any, Callable
 
 from src.attachments import load_mask_image, load_pil_images, save_images
-from src.config import Config
+from src.config import FAST_CHECKPOINT_PROFILES, Config
 from src.image_client import ImageCancelled, ImageServiceClient, ImageServiceError
 from src.image_models import CHECKPOINT_DIR, parse_image_flags, preset_for, size_for_aspect
-from src.image_prompt import polish_prompt, rewrite_prompt, should_polish
+from src.image_prompt import TEXT_REQUEST_RE, needs_rewrite, polish_prompt, rewrite_prompt, should_polish
 from src.llm_lock import image_slot
 from src.ollama_mgmt import unload_ollama_models
 
@@ -135,10 +135,18 @@ def run_image_gen(
     flags = parse_image_flags(query)
     raw_query = flags.prompt
     needs_edit_polish = use_img2img or use_inpaint
+    if not checkpoint and config.image_profile in FAST_CHECKPOINT_PROFILES and config.image_fast_checkpoint:
+        checkpoint = config.image_fast_checkpoint
+    path = CHECKPOINT_DIR / checkpoint if checkpoint else config.model_image_path
+    preset = preset_for(path)
+    ckpt_name = path.name if path is not None and path.parent.resolve() == CHECKPOINT_DIR.resolve() else None
+    if path is not None and path.is_file():
+        # load the image model (RAM only) while the chat model rewrites the prompt
+        ImageServiceClient(config).warm_in_background(ckpt_name)
+
     aspect = flags.aspect
     rewritten = None
-    if (not needs_edit_polish and config.image_prompt_rewrite
-            and should_polish(raw_query, img2img=False)):
+    if not needs_edit_polish and config.image_prompt_rewrite and needs_rewrite(raw_query):
         _emit(on_progress, {"type": "status", "message": "Writing a detailed image prompt…"})
         rewritten = rewrite_prompt(raw_query, config)
     if rewritten is not None:
@@ -149,10 +157,6 @@ def run_image_gen(
     else:
         prompt = raw_query
 
-    if not checkpoint and config.image_profile == "fast" and config.image_fast_checkpoint:
-        checkpoint = config.image_fast_checkpoint
-    path = CHECKPOINT_DIR / checkpoint if checkpoint else config.model_image_path
-    preset = preset_for(path)
     base_w, base_h = (preset.size, preset.size) if preset.size else (config.image_width, config.image_height)
     width, height = size_for_aspect(aspect, base_w, base_h)
     steps = preset.steps or config.image_steps
@@ -168,7 +172,6 @@ def run_image_gen(
     negative = preset.negative_prompt or config.image_negative_prompt or ""
     if flags.negative:
         negative = f"{negative}, {flags.negative}" if negative else flags.negative
-    ckpt_name = path.name if path is not None and path.parent.resolve() == CHECKPOINT_DIR.resolve() else None
 
     output = NO_CHECKPOINT
     if path is not None and path.is_file():
@@ -217,7 +220,9 @@ def run_image_gen(
                         "img2img", prompt, init_image=init_images[0], strength=config.image_strength, **settings,
                     )
                 else:
-                    image = client.generate("txt2img", prompt, width=width, height=height, **settings)
+                    image = client.generate("txt2img", prompt, width=width, height=height,
+                                            hires=config.image_hires or None,
+                                            hires_checkpoint=config.image_fast_checkpoint or None, **settings)
             if should_continue is not None and not should_continue():
                 raise ImageCancelled("Image generation cancelled.")
             seed = image.info.get("seed")
@@ -250,15 +255,23 @@ def run_image_gen(
                 )
             else:
                 output = (
-                    f"Generated with **{preset.label}** (profile {config.image_profile}) at {width}×{height}, "
-                    f"{steps} steps, guidance {guidance:g}, seed {seed}."
+                    f"Generated with **{preset.label}** (profile {config.image_profile}) at "
+                    f"{image.width}×{image.height}, {steps} steps, guidance {guidance:g}, seed {seed}."
                 )
+                if config.image_hires and image.width > width:
+                    output += f" Hires fix: drawn at {width}×{height}, then refined at {config.image_hires:g}×."
             if prompt != raw_query:
                 output += f"\n\nPrompt used: `{prompt}`"
             if seed is not None:
                 output += (
                     f"\n\nSame image again: add `--seed {seed}` to your request. "
                     "Without it every request gives a new variation."
+                )
+            if TEXT_REQUEST_RE.search(raw_query):
+                output += (
+                    "\n\nNote: the image model (RealVisXL, an SDXL model) cannot write readable text or real "
+                    "logos, or draw exact sizes and angles — any lettering will be fake. Add text and logos "
+                    "afterwards in an editor; for labelled layouts ask for a diagram instead."
                 )
             if flags.ignored:
                 output += f"\n\nIgnored (Midjourney-only): `{' '.join(flags.ignored)}`"

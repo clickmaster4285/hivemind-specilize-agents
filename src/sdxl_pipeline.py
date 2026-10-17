@@ -10,6 +10,7 @@ from __future__ import annotations
 import functools
 import gc
 import logging
+import math
 import threading
 import time
 from collections.abc import Iterator
@@ -66,6 +67,19 @@ def _using() -> Iterator[None]:
         with _lock:
             _in_use -= 1
             _last_used = time.monotonic()
+        _release_vram()
+
+
+def _release_vram() -> None:
+    """Give cached GPU memory back after an image: the weights stay in RAM (CPU offload), and the
+    chat model (Ollama) needs the room to load fully on the GPU (doc/ISSUES_LOG.md #27)."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception:  # noqa: BLE001 — freeing memory must never raise
+        pass
 
 
 def _tracked(fn: Any) -> Any:
@@ -277,13 +291,14 @@ def get_pipeline(config: Config | None = None) -> Any:
     return get_pipelines(config)[0]
 
 
-def warm_pipeline_async(config: Config | None = None) -> None:
+def warm_pipeline_async(config: Config | None = None, checkpoint: Path | None = None) -> None:
     """Background warm-load so the first chat image is not cold."""
     global _warm_state, _warm_error
     config = config or Config.from_env()
     if not config.image_warm_on_start:
         return
-    if config.model_image_path is None or not Path(config.model_image_path).is_file():
+    target = checkpoint or config.model_image_path
+    if target is None or not Path(target).is_file():
         logger.info("SDXL warm skipped: no checkpoint configured")
         return
 
@@ -291,7 +306,7 @@ def warm_pipeline_async(config: Config | None = None) -> None:
         global _warm_state, _warm_error
         _warm_state = "warming"
         try:
-            get_pipelines(config)
+            get_pipelines(config, checkpoint)
             logger.info("SDXL warm-load complete — image model ready")
         except Exception as exc:  # noqa: BLE001
             _warm_state = "error"
@@ -339,8 +354,15 @@ def generate(
     should_continue: Any | None = None,
     seed: int | None = None,
     checkpoint: Path | None = None,
+    hires: float | None = None,
+    hires_checkpoint: Path | None = None,
 ) -> Any:
-    """Run text-to-image; returns a PIL.Image.Image."""
+    """Run text-to-image; returns a PIL.Image.Image.
+
+    hires > 1: "hires fix" — enlarge the image and redraw it lightly, which sharpens faces and
+    small details (doc/ISSUES_LOG.md #28). `hires_checkpoint` does the redraw (a fast Lightning
+    model: ~1 min instead of ~2.5 min); default = the same model.
+    """
     config = config or Config.from_env()
     pipe, _ = get_pipelines(config, checkpoint)
     w, h = _dims(config, width, height)
@@ -363,8 +385,46 @@ def generate(
     cb = _step_callback(should_continue)
     if cb is not None:
         kwargs["callback_on_step_end"] = cb
-    result = pipe(**kwargs)
-    return result.images[0]
+    started = time.perf_counter()
+    image = pipe(**kwargs).images[0]
+    logger.info("txt2img %dx%d, %d steps: %.1fs", w, h, n_steps, time.perf_counter() - started)
+    if hires and hires > 1 and not getattr(pipe, "_interrupt", False):
+        started = time.perf_counter()
+        image = _hires_fix(image, kwargs, scale=hires, steps=n_steps, guidance=guide,
+                           checkpoint=hires_checkpoint or checkpoint, config=config)
+        logger.info("hires fix to %dx%d: %.1fs", image.width, image.height, time.perf_counter() - started)
+    return image
+
+
+HIRES_STRENGTH = 0.35      # enough to add detail, too little to change the picture
+HIRES_MAX_STEPS = 12       # real denoising steps at the large size (~8 s each on a P4000)
+
+
+def _hires_fix(image: Any, kwargs: dict[str, Any], *, scale: float, steps: int, guidance: float,
+               checkpoint: Path | None, config: Config) -> Any:
+    from PIL import Image
+
+    _, img2img = get_pipelines(config, checkpoint)
+    preset = preset_for(checkpoint or config.model_image_path)
+    if preset.steps:                       # distilled refiner: its own steps and guidance
+        steps, guidance = preset.steps, preset.guidance if preset.guidance is not None else guidance
+    w = max(64, round(image.width * scale / 64) * 64)
+    h = max(64, round(image.height * scale / 64) * 64)
+    big = image.resize((w, h), Image.Resampling.LANCZOS)
+    real_steps = min(steps, HIRES_MAX_STEPS)
+    args = {k: v for k, v in kwargs.items() if k not in {"width", "height", "num_inference_steps"}}
+    args.update(
+        image=big, strength=HIRES_STRENGTH, guidance_scale=guidance,
+        num_inference_steps=math.ceil(real_steps / HIRES_STRENGTH),
+        # same seed again, so the redraw is as repeatable as the first image
+        generator=_generator(kwargs["generator"].initial_seed()) if kwargs.get("generator") else None,
+    )
+    vae = img2img.vae
+    vae.enable_tiling()            # decoding ~2.3 MP at once would not fit in 8 GB
+    try:
+        return img2img(**args).images[0]
+    finally:
+        vae.disable_tiling()
 
 
 @_tracked

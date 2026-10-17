@@ -217,3 +217,16 @@ def test_seed_is_returned_and_repeatable(api, fake_sdxl):
 def test_checkpoint_must_be_a_file_in_models_checkpoints(api, name, message):
     resp = api.post("/generate", json=_req(checkpoint=name), headers=AUTH)
     assert resp.status_code == 400 and message in resp.json()["detail"]
+
+
+def test_hires_is_passed_to_txt2img(api, monkeypatch):
+    seen = {}
+
+    def fake_generate(prompt, *, width=None, height=None, hires=None, **kw):
+        seen["hires"] = hires
+        return Image.new("RGB", (64, 64))
+
+    monkeypatch.setattr(sdxl, "generate", fake_generate)
+    assert api.post("/generate", json=_req(hires=1.5), headers=AUTH).status_code == 200
+    assert seen["hires"] == 1.5
+    assert api.post("/generate", json=_req(hires=3.0), headers=AUTH).status_code == 422   # max 2×

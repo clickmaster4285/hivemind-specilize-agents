@@ -12,6 +12,7 @@ from src.agentic.runtime import run_agentic
 from src.brain.answer import should_use_brain
 from src.conversation import normalize_conversation
 from src.chat_runner import run_chat
+from src.diagram_gen import run_diagram
 from src.image_gen import run_image_gen
 from src.attachments import load_b64_images
 from src.config import Config
@@ -79,6 +80,18 @@ def process_job(job_id: str, config: Config | None = None) -> None:
         images = load_b64_images(config, attachments) if attachments else []
         conversation = normalize_conversation(payload.get("conversation"))
         intent = (route or {}).get("intent")
+
+        if intent == "diagram":
+            _output, errors, _elapsed = run_diagram(
+                query, job_id=job_id, config=config, on_progress=on_progress, conversation=conversation,
+            )
+            with session_scope(config) as session:
+                current = get_job(session, job_id)
+                if current is None or current.status == "cancelled":
+                    return
+                set_job_status(session, job_id, "failed" if errors else "succeeded",
+                               error="; ".join(errors) if errors else None)
+            return
 
         if intent == "image_gen":
             img_cfg = config

@@ -36,7 +36,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--base-url",
-        help="Override LLM base URL (default: http://localhost:11434).",
+        help="Override LLM base URL (default: http://127.0.0.1:11434).",
     )
     parser.add_argument(
         "--log-dir",

@@ -121,12 +121,16 @@ def test_long_prompts_are_cut_at_phrase_boundaries():
 
 class FakeClient:
     calls: list[dict] = []
+    warmed: list = []
 
     def __init__(self, config):
         pass
 
     def health(self):
         return {"ok": True}
+
+    def warm_in_background(self, checkpoint=None):
+        FakeClient.warmed.append(checkpoint)
 
     def generate(self, mode, prompt, **kw):
         from PIL import Image
@@ -140,6 +144,7 @@ class FakeClient:
 @pytest.fixture
 def fake_run(monkeypatch, tmp_path):
     FakeClient.calls = []
+    FakeClient.warmed = []
     monkeypatch.setattr(image_gen, "ImageServiceClient", FakeClient)
     monkeypatch.setattr(image_gen, "unload_ollama_models", lambda config: [])
     monkeypatch.setattr(image_gen, "save_images", lambda config, job_id, rows: [{"filename": "generated.png"}])
@@ -161,6 +166,7 @@ def test_run_uses_rewrite_preset_aspect_and_seed(monkeypatch, fake_run):
     assert call["guidance"] == 5.0                                  # Juggernaut caps the quality profile's 7.0
     assert call["negative_prompt"] == "lowres, blurry, watermark, deformed"
     assert "Juggernaut XL v9" in output and "--seed 5" in output and "--v 6" in output
+    assert FakeClient.warmed == [None]      # loading started before the rewrite (None = the service default)
 
 
 def test_user_aspect_wins_and_rewrite_failure_falls_back(monkeypatch, fake_run):
@@ -184,3 +190,58 @@ def test_fast_profile_uses_the_fast_checkpoint(monkeypatch, fake_run, tmp_path):
     assert "Lightning" in output
     image_gen.run_image_gen("a red fox", job_id="j4", config=cfg)                 # quality profile
     assert FakeClient.calls[-1]["checkpoint"] == "Juggernaut-XL_v9.safetensors"       # quality: the default model
+
+
+@pytest.mark.parametrize("url, expected", [
+    ("http://localhost:11434", "http://127.0.0.1:11434"),
+    ("http://localhost", "http://127.0.0.1"),
+    ("https://localhost/api", "https://127.0.0.1/api"),
+    ("http://localhostish:1", "http://localhostish:1"),
+    ("http://192.168.1.5:11434", "http://192.168.1.5:11434"),
+])
+def test_localhost_becomes_ipv4(url, expected):
+    from src.config import _loopback
+
+    assert _loopback(url) == expected
+
+
+def test_profiles_choose_model_size_and_hires(monkeypatch, fake_run, tmp_path):
+    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c: None)
+    monkeypatch.setattr(image_gen, "CHECKPOINT_DIR", tmp_path)
+    (tmp_path / "RealVisXL_V5.0_Lightning_fp16.safetensors").write_bytes(b"x")
+    cfg = dataclasses.replace(fake_run, image_fast_checkpoint="RealVisXL_V5.0_Lightning_fp16.safetensors")
+    expected = {"fast": ("RealVisXL_V5.0_Lightning_fp16.safetensors", None),
+                "balanced": ("RealVisXL_V5.0_Lightning_fp16.safetensors", 1.5),
+                "quality": ("Juggernaut-XL_v9.safetensors", 1.5)}
+    for profile, (ckpt, hires) in expected.items():
+        image_gen.run_image_gen("a red fox", job_id=profile, config=cfg.with_image_overrides(profile=profile))
+        call = FakeClient.calls[-1]
+        assert (call["checkpoint"], call["hires"]) == (ckpt, hires), profile
+        assert call["hires_checkpoint"] == "RealVisXL_V5.0_Lightning_fp16.safetensors"   # Lightning redraws
+
+
+def test_long_prompts_are_condensed_not_cut():
+    from src.image_prompt import needs_rewrite
+
+    gta = ("YouTube thumbnail design for GTA V streaming. Style: Hyper-realistic, vibrant 8k, dynamic angle. "
+           "Main subject: A muscular character in a luxury sports car speeding through a neon-lit city at night "
+           "with rain effects. Text overlay area: Leave space on the right side for bold text like 'EASY PISA "
+           "WITHDRAWAL'. Visual cues: A glowing green arrow pointing to a phone screen showing an 'EasyPaisa' logo "
+           "and a JazzCash balance increasing rapidly. Color palette: Neon blues, purples, and bright gold accents.")
+    assert len(gta.split()) > 55 and needs_rewrite(gta)
+    assert needs_rewrite("a red fox")                                   # short: add detail
+    rich = ("cinematic photo of a lighthouse at dusk, highly detailed, sharp focus, volumetric fog, "
+            "8k, long exposure waves")
+    assert not needs_rewrite(rich)                                      # already a good SDXL prompt
+
+
+@pytest.mark.parametrize("query, warned", [
+    ("thumbnail with bold text like 'EASY PAISA WITHDRAWAL'", True),
+    ("an EasyPaisa logo on a phone screen", True),
+    ("security room 500 sq ft with 10-foot walls, cameras angled at 45 degrees", True),
+    ("a red sports car at night in the rain", False),
+])
+def test_text_and_logo_requests_get_a_note(monkeypatch, fake_run, query, warned):
+    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c: None)
+    output, *_ = image_gen.run_image_gen(query, job_id="t", config=fake_run)
+    assert ("cannot write readable text" in output) is warned

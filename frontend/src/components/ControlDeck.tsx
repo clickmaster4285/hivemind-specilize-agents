@@ -585,6 +585,20 @@ export default function ControlDeck() {
     }
   }, [user, feed.length, running]);
 
+  // A diagram that failed to draw asks the assistant to fix it (MermaidDiagram sends "multeagent:ask").
+  const submitRef = useRef(submitMessage);
+  useEffect(() => {
+    submitRef.current = submitMessage;
+  });
+  useEffect(() => {
+    const onAsk = (e: Event) => {
+      const text = (e as CustomEvent<string>).detail;
+      if (text) void submitRef.current(text, []);
+    };
+    window.addEventListener("multeagent:ask", onAsk);
+    return () => window.removeEventListener("multeagent:ask", onAsk);
+  }, []);
+
   function applyEvent(event: DebateEvent) {
     setFeed((prev) => reduceFeed(prev, event));
   }
@@ -1419,9 +1433,9 @@ export default function ControlDeck() {
                 value={imageProfile}
                 onChange={(e) => setImageProfile(e.target.value as ImageProfile)}
               >
-                <option value="fast">Fast</option>
-                <option value="balanced">Balanced</option>
-                <option value="quality">Quality</option>
+                <option value="fast">Fast (~30 s)</option>
+                <option value="balanced">Balanced, sharper (~1.5 min)</option>
+                <option value="quality">Quality (~3 min)</option>
               </select>
             </label>
             <label className="image-preset">

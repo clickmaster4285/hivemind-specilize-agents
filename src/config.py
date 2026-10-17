@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -19,6 +20,12 @@ def _bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _loopback(url: str) -> str:
+    """Use 127.0.0.1 instead of localhost: on Windows "localhost" tries IPv6 (::1) first and every
+    request waits ~2 s before falling back to IPv4 (doc/ISSUES_LOG.md #27)."""
+    return re.sub(r"^(\w+://)localhost(?=[:/]|$)", r"\g<1>127.0.0.1", url.strip())
+
+
 def _optional_bool(name: str) -> bool | None:
     """Unset or blank -> None (leave the backend default); otherwise parse like _bool."""
     raw = (os.getenv(name) or "").strip()
@@ -28,11 +35,13 @@ def _optional_bool(name: str) -> bool | None:
 
 
 # size = side of a square image; other aspect ratios keep the same pixel count (src/image_models.py)
+# hires = hires-fix scale (0 = off). fast and balanced use IMAGE_FAST_CHECKPOINT when it is set.
 _PROFILE_DEFAULTS = {
-    "fast": {"steps": 16, "guidance": 5.5, "strength": 0.42, "size": 768},
-    "quality": {"steps": 28, "guidance": 7.0, "strength": 0.35, "size": 1024},
-    "balanced": {"steps": 20, "guidance": 6.5, "strength": 0.4, "size": 896},
+    "fast": {"steps": 16, "guidance": 5.5, "strength": 0.42, "size": 768, "hires": 0.0},
+    "balanced": {"steps": 20, "guidance": 6.5, "strength": 0.4, "size": 896, "hires": 1.5},
+    "quality": {"steps": 28, "guidance": 7.0, "strength": 0.35, "size": 1024, "hires": 1.5},
 }
+FAST_CHECKPOINT_PROFILES = {"fast", "balanced"}
 
 
 @dataclass(frozen=True)
@@ -107,6 +116,8 @@ class Config:
     image_prompt_rewrite: bool = True
     # Checkpoint (file name in models/checkpoints) the "fast" profile uses; "" = MODEL_IMAGE_PATH
     image_fast_checkpoint: str = ""
+    # Hires-fix scale for text-to-image (set by the profile; 0 = off)
+    image_hires: float = 0.0
 
     @classmethod
     def from_env(cls) -> Config:
@@ -131,7 +142,7 @@ class Config:
         strength_raw = os.getenv("IMAGE_STRENGTH")
 
         return cls(
-            llm_base_url=os.getenv("LLM_BASE_URL", "http://localhost:11434").rstrip("/"),
+            llm_base_url=_loopback(os.getenv("LLM_BASE_URL", "http://127.0.0.1:11434")).rstrip("/"),
             llm_model=os.getenv("LLM_MODEL", "qwen3.5:9b"),
             temperature=float(os.getenv("LLM_TEMPERATURE", "0.4")),
             timeout_seconds=int(os.getenv("LLM_TIMEOUT_SECONDS", "300")),
@@ -210,6 +221,7 @@ class Config:
             image_vae=(os.getenv("IMAGE_VAE") or "").strip(),
             image_prompt_rewrite=_bool("IMAGE_PROMPT_REWRITE", True),
             image_fast_checkpoint=(os.getenv("IMAGE_FAST_CHECKPOINT") or "").strip(),
+            image_hires=float(pdata["hires"]),
         )
 
     def with_model(self, model: str | None) -> Config:
@@ -234,6 +246,7 @@ class Config:
             image_profile=prof or self.image_profile,
             image_width=size or self.image_width,
             image_height=size or self.image_height,
+            image_hires=float(pdata["hires"]) if pdata else self.image_hires,
             image_steps=max(
                 1,
                 int(

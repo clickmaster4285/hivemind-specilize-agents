@@ -21,6 +21,14 @@ from src.models_db import Job, JobEvent, User
 ACTIVE = ("queued", "running")
 
 
+
+def _last_answer_was_diagram(conversation: Any) -> bool:
+    """True when the assistant's latest reply contains a Mermaid diagram (follow-up edits stay diagrams)."""
+    for turn in reversed(normalize_conversation(conversation)):
+        if turn["role"] == "assistant":
+            return "```mermaid" in turn["content"]
+    return False
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -111,6 +119,7 @@ def create_job(
         config=config,
         has_images=has_images,
         force_intent=force_intent,
+        after_diagram=_last_answer_was_diagram(payload.get("conversation")),
     )
     resolved_mode = route.resolved_mode
     payload_clean = {k: v for k, v in payload.items() if k != "images"}

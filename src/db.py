@@ -31,6 +31,10 @@ def get_engine(config: Config | None = None):
         (ROOT / "data").mkdir(parents=True, exist_ok=True)
         connect_args["check_same_thread"] = False
 
+    elif url.startswith("postgresql"):
+        # fail fast when Docker/Postgres is down instead of hanging (see doc/ISSUES_LOG.md #8)
+        connect_args["connect_timeout"] = 10
+
     _engine = create_engine(url, future=True, pool_pre_ping=True, connect_args=connect_args)
 
     if url.startswith("sqlite"):
@@ -58,16 +62,25 @@ def _ensure_column(engine, table: str, column: str, ddl: str) -> None:
             if column not in names:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
         else:
-            # Postgres / others: check information_schema
+            # Postgres: look only in our own schema (the brain lives in the same database)
             exists = conn.execute(
                 text(
                     "SELECT 1 FROM information_schema.columns "
-                    "WHERE table_name = :table AND column_name = :column"
+                    "WHERE table_schema = current_schema() AND table_name = :table AND column_name = :column"
                 ),
                 {"table": table, "column": column},
             ).fetchone()
             if not exists:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {ddl}"))
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {_postgres_ddl(ddl)}"))
+
+
+def _postgres_ddl(ddl: str) -> str:
+    """The column DDL below is written for SQLite; Postgres has no DATETIME and wants true/false."""
+    import re
+
+    ddl = re.sub(r"\bDATETIME\b", "TIMESTAMP WITH TIME ZONE", ddl, flags=re.I)
+    return re.sub(r"\b(BOOLEAN\s+DEFAULT\s+)([01])\b", lambda m: m.group(1) + ("true" if m.group(2) == "1" else "false"),
+                  ddl, flags=re.I)
 
 
 def init_db(config: Config | None = None) -> None:

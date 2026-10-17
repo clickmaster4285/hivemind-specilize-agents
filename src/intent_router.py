@@ -45,6 +45,32 @@ ALSO_GENERATE_RE = re.compile(
     r"\b(and|then|&)\s+(generate|create|draw|render|make|paint)\b(?!\s+(a\s+)?(better|new)\s+prompt)",
     re.I,
 )
+# Diagrams need exact labels, boxes and arrows: SDXL cannot do that, Mermaid can (src/diagram_gen.py).
+_DIAGRAM_NOUN = (
+    r"(diagram|flow\s*-?chart|schematic|mind\s*-?map|org(anization(al)?)?\s*chart|uml|"
+    r"sequence\s+diagram|er\s+diagram|entity[- ]relationship|state\s+machine|gantt(\s+chart)?|"
+    r"network\s+(topology|map|layout)|topology|data\s*flow|process\s+flow|workflow\s+chart)"
+)
+DIAGRAM_RE = re.compile(
+    r"\b(create|generate|draw|make|design|build|sketch|show|give|prepare|render|visuali[sz]e|plot|map\s+out|"
+    r"banao|bana\s+do|banaye)\b.{0,80}\b" + _DIAGRAM_NOUN + r"s?\b|"
+    r"\b" + _DIAGRAM_NOUN + r"s?\s+(of|for|showing|banao|bana\s+do)\b|"
+    r"^\s*" + _DIAGRAM_NOUN + r"s?\b",
+    re.I,
+)
+# "create an image of … schematic": the user asked for a picture, so it stays an image
+EXPLICIT_IMAGE_RE = re.compile(
+    r"\b(image|picture|photo|photograph|rendering|render|illustration|artwork|wallpaper|thumbnail)\s+(of|for)\b|"
+    r"\b(create|generate|make|draw|render|give\s+me)\s+(me\s+)?(an?\s+)?"
+    r"(image|picture|photo|illustration|thumbnail|wallpaper)\b",
+    re.I,
+)
+# Follow-up on a diagram the assistant just drew ("add a cache", "move the db to the right")
+DIAGRAM_FOLLOWUP_RE = re.compile(
+    r"\b(add|remove|delete|rename|change|move|connect|link|include|split|merge|replace|swap|update|fix|"
+    r"redraw|instead|also|more\s+detail|simplify|label|arrow|box|node|layer|left|right|top|bottom)\b",
+    re.I,
+)
 IMAGE_EDIT_RE = re.compile(
     r"\b(regenerate|remix|restyle|img2img|image[- ]to[- ]image|inpaint)\b|"
     r"\b(edit|modify|change|replace|swap|update)\b.{0,80}\b"
@@ -227,6 +253,10 @@ def _route_with_images(text: str, requested: str, config: Config) -> RouteDecisi
     )
 
 
+def _diagram_decision(requested: str, reason: str) -> RouteDecision:
+    return RouteDecision(requested, "chat", "diagram", reason)
+
+
 def _heuristic(query: str) -> RouteDecision | None:
     text = query.strip()
     if not text:
@@ -239,7 +269,11 @@ def _heuristic(query: str) -> RouteDecision | None:
         # creative (not "chat"): prompt writing should not go through the knowledge brain
         return RouteDecision("auto", "chat", "creative", "asks for prompt text, not an image -> chat")
 
-    if IMAGE_GEN_RE.search(text) or IMAGE_EDIT_RE.search(text):
+    if DIAGRAM_RE.search(text) and not DOC_GEN_RE.search(text) and not EXPLICIT_IMAGE_RE.search(text):
+        # before the image rules: "draw a flowchart" must not go to SDXL
+        return _diagram_decision("auto", "diagram request -> Mermaid")
+
+    if IMAGE_GEN_RE.search(text) or IMAGE_EDIT_RE.search(text) or EXPLICIT_IMAGE_RE.search(text):
         return _image_gen_decision(
             "auto",
             reason="image generation request -> txt2img",
@@ -369,6 +403,7 @@ def classify_query(
     allow_llm: bool = True,
     has_images: bool = False,
     force_intent: str | None = None,
+    after_diagram: bool = False,
 ) -> RouteDecision:
     """Resolve execution mode and optional image_mode (txt2img/img2img)."""
     config = config or Config.from_env()
@@ -405,6 +440,8 @@ def classify_query(
             reason="forced inpaint action",
             image_mode="inpaint",
         )
+    if forced in {"diagram", "mermaid"}:
+        return _diagram_decision(requested, "forced diagram action")
     if forced in {"doc_gen", "document", "docs"}:
         return RouteDecision(
             requested_mode=requested,
@@ -427,7 +464,14 @@ def classify_query(
             confidence=1.0,
         )
 
+    if after_diagram and DIAGRAM_FOLLOWUP_RE.search(text) and not (
+        IMAGE_GEN_RE.search(text) or DOC_GEN_RE.search(text)
+    ):
+        return _diagram_decision(requested, "change to the diagram just drawn -> Mermaid")
+
     if requested in MANUAL_MODES:
+        if DIAGRAM_RE.search(text) and not DOC_GEN_RE.search(text) and not EXPLICIT_IMAGE_RE.search(text):
+            return _diagram_decision(requested, "diagram request bypasses debate board")
         if IMAGE_GEN_RE.search(text) or IMAGE_EDIT_RE.search(text):
             return _image_gen_decision(
                 requested,

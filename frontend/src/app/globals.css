@@ -978,6 +978,16 @@ body {
   border-radius: 0.3rem;
 }
 
+.md-body .md-img {
+  max-width: 100%;
+  border-radius: 0.45rem;
+}
+
+.md-body .md-external-img {
+  font-size: 0.82em;
+  color: var(--muted);
+}
+
 .md-body .md-pre {
   margin: 0 0 0.35rem;
   padding: 0.45rem 0.55rem;
@@ -1222,6 +1232,57 @@ body {
 
 .artifact-chip:hover {
   filter: brightness(1.08);
+}
+
+/* Mermaid diagrams in answers: a light "paper" card, so diagrams also export cleanly */
+.mermaid-card {
+  margin: 0.4rem 0 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7f5f0;
+  color: #1d232c;
+}
+
+.mermaid-svg {
+  overflow-x: auto;
+  text-align: center;
+}
+
+.mermaid-svg svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-loading,
+.mermaid-error {
+  padding: 0.6rem;
+  font-size: 0.85rem;
+}
+
+.mermaid-error {
+  color: #9b2c1f;
+}
+
+.mermaid-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #ddd8cc;
+}
+
+.mermaid-actions .btn {
+  color: #1d232c;
+  border-color: #c9c2b3;
+}
+
+.mermaid-code {
+  margin-top: 0.5rem;
+  background: #1d232c;
+  color: var(--text);
+  white-space: pre;
 }
 
 /* Knowledge-base sources under a grounded answer */

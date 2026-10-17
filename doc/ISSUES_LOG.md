@@ -157,15 +157,90 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*
   Models kept: **RealVisXL V5.0** (Quality) and **RealVisXL V5.0 Lightning** (Fast).
 - *Lesson:* "runs on 8 GB" in guides means 8 GB **on a modern GPU** (FP8/bf16 support); Pascal is a different story.
 
+### 27. Every Ollama call waited 2 s; image jobs spent 20 s before drawing — 2026-10-16
+- **Symptom:** Fast image = 38–71 s although drawing takes ~19 s; "Writing a detailed image prompt" took 18–24 s.
+- **Causes (measured one by one):**
+  1. `LLM_BASE_URL=http://localhost:11434`: on Windows `localhost` tries IPv6 first → **+2.07 s on every request**
+     (127.0.0.1: 0.03 s). This slowed *everything* that talks to Ollama — chat, brain answers, rewrite, unload (3 requests = 6 s). Same root cause as #8.
+  2. The image service kept ~1.4 GB of GPU memory cached after an image, crowding the chat model.
+  3. The image model only started loading after the prompt rewrite finished.
+- **Fix:** `localhost` is turned into `127.0.0.1` in code (`_loopback` in `src/config.py`), `.env` updated;
+  the service returns cached GPU memory after each image; the image model loads (RAM only) **while** the prompt is rewritten.
+- **Result:** Fast first image 71.5 → **32.6 s**, next images 38–45 → **29–34 s**; rewrite 18–24 → 10–13 s.
+- *Lesson:* never use `localhost` for local services on Windows — use `127.0.0.1`. Time each step before optimising.
+
+### 28. Hires fix — sharper faces and real skin texture — 2026-10-16
+- **Problem:** at ~1 MP, faces in full-body shots are small, so SDXL draws them smooth/"plastic".
+- **Fix:** after the image is drawn, enlarge it 1.5× and redraw lightly (strength 0.35) with **Lightning**
+  (CFG 1.0 skips the negative pass, ~1 min instead of ~2.5 min with RealVisXL at CFG 6). Tiled VAE decode keeps it under 8 GB (peak 7.4 GB).
+- **Profiles:** Fast = Lightning (~30 s) · Balanced = Lightning + hires (1280×1792, ~80 s) · Quality = RealVisXL 28 steps + hires (~190 s).
+
+### 29. Architecture diagrams came out as unreadable pictures (O1, O3) — 2026-10-17
+- **Symptom:** "create an architecture diagram / schematic …" gave an SDXL picture with fake, unreadable text;
+  without the word "image" it went to plain chat.
+- **Cause:** SDXL draws pixels — it cannot write exact labels, boxes and arrows. The router had no "diagram" intent.
+- **Fix:**
+  - Router: new `diagram` intent (diagram, flowchart, schematic, sequence/ER/UML, mind map, org chart, topology,
+    Hinglish "… banao"), checked **before** the image rules; a follow-up like "add a Redis cache" right after a
+    diagram stays a diagram.
+  - `src/diagram_gen.py`: qwen3.5:9b writes **Mermaid**; code quotes labels the model leaves unsafe
+    (`web[Web (Next.js)]` → `web["Web (Next.js)"]`), checks subgraph/end, quotes, `end` as id; one retry with the problems listed.
+  - UI: ```` ```mermaid ```` blocks render as an SVG on a light card, with Download SVG / Download PNG / Copy code / Show code (mermaid 11.17.2, MIT).
+- **Result:** 5/5 test diagrams (architecture, login flowchart, office network, RAG sequence, Hinglish shop) rendered without errors, 14–28 s each.
+- **Left:** floor plans with measurements need a different tool (Mermaid has no room layout).
+
+### 30. Diagrams invented parts and had wrong logic — 2026-10-17
+- **Symptom:** "online shop: website, payment gateway, order DB, email" came back with a Redis cache, CDN and FastAPI;
+  the login flowchart sent "fewer than 3 failures" to **Login Successful**; 10 PCs drawn as 10 boxes.
+- **Cause:** the instructions' own examples used `FastAPI`, `PostgreSQL`, and the rule text named "Redis cache" — a 9B model
+  copies what it sees in the prompt. Decision exits were not described.
+- **Fix:** neutral examples (`svc["Order Service (v2)"]`), "draw ONLY the parts the user names", decision exits must go
+  where that answer leads, "10 × PC"; a **review pass** (the model checks its diagram against the request — invented/missing
+  parts, wrong arrows) whose correction is used only if it still passes the syntax checks; `style` colour lines removed.
+  UI: **Fix diagram** (sends the browser's exact Mermaid error back) and **Open full size**.
+- **Result:** shop = exactly the 4 parts; login logic correct; network = one "10 × PC" node; all render. 15–37 s per diagram.
+- *Lesson:* examples in a prompt are instructions too — never put names in them you don't want copied.
+
+### 31. A chat answer loaded a cloud image with the user's prompt in the URL — 2026-10-17
+- **Symptom:** "diagram of school …" (sent 29 s before the API restart, so on old routing) went to chat; the answer
+  showed a picture — not ours: the 9B model wrote `![…](https://image.pollinations.ai/prompt/<the user's prompt>)`.
+  The browser loaded it, **sending the prompt to a cloud service** (against the no-cloud rule).
+- **Fix:** answers only load images from our own app (same origin / API); any other image becomes a link marked
+  "external image not loaded". Chat and brain prompts: never output images or image links.
+- *Lesson:* treat model output like user input — never let it make the browser contact other sites.
+
+### 32. Long image prompts were cut off; "image of … schematic" went to Mermaid — 2026-10-17
+- **Symptom:** 100-word GTA thumbnail prompt → only a car (arrow, phone, logos, text space ignored), square instead of 16:9.
+- **Cause:** prompts over ~220 characters skipped the rewrite, and SDXL/RealVisXL reads only 77 tokens.
+  (RealVisXL is an SDXL fine-tune: same text encoder, same limits, same inability to spell.)
+- **Fix:** prompts longer than 55 words are **condensed** by the chat model (main subject and key visuals first, 16:9 chosen) —
+  100 → 51 words in 12 s. Requests for text, logos, labels, sizes or angles get a note that the model cannot draw them.
+  "image / picture / photo / thumbnail of …" always means an image, even with "schematic" or "diagram" in it.
+- **Left (backlog):** floor plans with real measurements; thumbnails with real text/logos (draw the picture, then add text in code).
+
+### 33. School hierarchy drawn as a flat mindmap with "style …" boxes — 2026-10-17
+- **Symptom:** school → classes → teachers → students came out as one star (everything attached to School),
+  plus boxes reading "style Class_1 fill:#e1f5fe…"; labels clipped in "Open full size"; notes said "added missing connections".
+- **Causes:** the model picked a *mindmap* and did not indent (no hierarchy); `style` lines were only removed from
+  flowcharts, and in a mindmap every line is a node; diagrams were measured with the app's web font but the
+  full-size tab / PNG have no such font; the review's notes described its own changes.
+  Second try: the model framed everything in a "School" subgraph and drew arrows from the frame to its contents → stray arrowheads
+  (same mistake as `isp --> modem` in the network diagram).
+- **Fix:** hierarchies → flowchart TD with parent → child arrows; "each X has Y" → a small complete example;
+  colour lines removed from every diagram type; a flat mindmap and an arrow between a subgraph and its own content are
+  problems that trigger the retry; picture-style words (isometric, blueprint, colours) ignored; notes explain, never self-praise;
+  diagrams use Arial so labels fit everywhere.
+- **Result:** proper School → Class → Teacher → Students tree; network diagram without frame arrows.
+
 ---
 
 ## Open issues
 
 | # | Issue | Plan |
 |---|-------|------|
-| O1 | SDXL cannot write readable text, exact counts, sizes or angles (schematics, floor plans) | Diagram tool: LLM writes SVG/draw.io with exact labels and measurements |
+| O1 | SDXL cannot write readable text, exact counts, sizes or angles | **Diagrams solved** (#29, Mermaid). Left: floor plans with measurements |
 | ~~O2~~ | ~~Midjourney flags ignored~~ | **Solved** — #23 |
-| O3 | "create a schematic …" (without "image") goes to chat | Route diagram/schematic/floor-plan requests to the diagram tool |
+| ~~O3~~ | ~~"create a schematic …" goes to chat~~ | **Solved** — #29 |
 | O4 | Image quality and realism depend on luck and prompt wording | **Mostly solved** — #23, #25. Left: "new variation" button and model picker in the UI |
 | O5 | 9B model sometimes cites a source that does not support the sentence | Citation checker (BACKLOG L5c) |
 | O6 | No streaming, no proper Stop button | BACKLOG L3 |

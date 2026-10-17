@@ -95,6 +95,9 @@ Rewrite the user's request as ONE image prompt.
 
 Rules:
 - Keep every subject, detail and constraint the user asked for. Do not add new main subjects.
+- A long request will not fit: keep the main subject and the most important visible elements first,
+  drop minor ones, and drop words about text, logos, labels, dimensions and angles (the model cannot
+  draw them; leave empty space instead if the user wants room for text).
 - Be concrete and visual: subject and appearance, action or pose, setting, lighting, camera and
   framing, style. Describe what is VISIBLE, not names of ideas or meanings.
 - Replace vague or ambiguous references with what they look like (a character's "iconic look",
@@ -118,6 +121,18 @@ _TRAILING_RATIO_RE = re.compile(
     r"[,\s]*\b(?:aspect(?:\s+ratio)?\s*)?\d{1,2}\s*:\s*\d{1,2}(?:\s+aspect(?:\s+ratio)?)?\s*$", re.I,
 )
 MAX_PROMPT_WORDS = 55   # SDXL's text encoder reads 77 tokens; ~55 English words fit
+
+# Things SDXL-family models (RealVisXL included) cannot draw: readable text, real logos, exact sizes
+TEXT_REQUEST_RE = re.compile(
+    r"\b(text|logos?|labels?|captions?|titles?|written|lettering|font|words?|dimensions?|measurements?|"
+    r"\d+\s*(ft|feet|foot|m|cm|mm|sq\s*ft)\b|\d+\s*degrees?|angled\s+at)\b|'[^']{3,}'|\"[^\"]{3,}\"",
+    re.I,
+)
+
+
+def needs_rewrite(prompt: str) -> bool:
+    """Short or plain prompts get detail; long ones get condensed (else SDXL silently cuts them)."""
+    return should_polish(prompt) or len(prompt.split()) > MAX_PROMPT_WORDS
 
 
 def fit_prompt(prompt: str, max_words: int = MAX_PROMPT_WORDS) -> str:
