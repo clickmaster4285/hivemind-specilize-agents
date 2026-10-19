@@ -413,7 +413,7 @@ Run with `python -m src.brain.evaluate` before and after **every** change to mod
 | B3   | Hybrid search + `/api/brain/search`              | Test set Recall@8 measured                                                               |
 | B4   | Grounded answers with citations in chat            | Answers show sources; out-of-scope → "not enough evidence"                              |
 | B5   | Web sources + scheduled refresh + change detection | A changed page creates version 2; unchanged pages are skipped                            |
-| B6   | Evaluation report                                  | All §9 targets met, or a list of what to fix                                            |
+| B6   | Evaluation report                                  | All §9 targets met, or a list of what to fix — ✅ 2026-10-19: refusals 5/5, latency 19 s, grounded 89% (target 90%); fix list in ISSUES_LOG #38, next = BACKLOG L5c |
 
 **Phase 1 complete** = all six done, matching the checklist in `raw-data.md` (answers with sources, admits missing evidence, updates without retraining, tracks stale content, repeatable test results).
 

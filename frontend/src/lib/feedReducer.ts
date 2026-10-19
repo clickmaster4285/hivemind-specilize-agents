@@ -1,4 +1,13 @@
-import type { BrainSource, ChatImage, JobEvent, FeedItem, Job, JobArtifact, ToolStep } from "@/lib/types";
+import type {
+  AnswerVerification,
+  BrainSource,
+  ChatImage,
+  JobEvent,
+  FeedItem,
+  Job,
+  JobArtifact,
+  ToolStep,
+} from "@/lib/types";
 import { formatAgentOutput, formatToolResult, summarizeArgs } from "@/lib/format";
 
 const DOC_KINDS = new Set([
@@ -200,8 +209,12 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
     return upsertStatus(prev, "Working", "Running…");
   }
   if (type === "agent_start") {
+    const agentId = String(event.agent_id || "");
     return [
-      ...prev.filter((item) => item.id !== STATUS_ID),
+      // A new start replaces an unfinished bubble of the same agent: when the model writes a few words
+      // and then calls a tool (src/assistant.py), its bubble is never closed — without this, the tool's
+      // answer filled both bubbles (saved chats showed every diagram twice).
+      ...prev.filter((item) => item.id !== STATUS_ID && !(item.pending && agentId && item.agentId === agentId)),
       {
         id: uid(),
         kind: "agent",
@@ -210,7 +223,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
         body: "",
         accent: String(event.accent || "#3aa89a"),
         pending: true,
-        agentId: String(event.agent_id || ""),
+        agentId,
         tools: [],
         startedAt: Date.now(),
         statusText: "Starting…",
@@ -296,6 +309,11 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
       ? (event.sources as BrainSource[]).filter((s) => s && typeof s.n === "number" && s.title)
       : undefined;
     const grounded = typeof event.grounded === "boolean" ? event.grounded : undefined;
+    const v = event.verification as AnswerVerification | undefined;
+    const verification =
+      v && typeof v.checked === "number" && typeof v.supported === "number"
+        ? { ...v, unsupported: v.unsupported || [], unclear: v.unclear || [] }
+        : undefined;
     const hasPending = prev.some((item) => item.agentId === event.agent_id && item.pending);
     if (!hasPending) {
       return [
@@ -313,6 +331,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           imageFiles,
           sources,
           grounded,
+          verification,
         },
       ];
     }
@@ -330,6 +349,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
             artifacts: item.artifacts,
             sources: sources || item.sources,
             grounded: grounded ?? item.grounded,
+            verification: verification || item.verification,
           }
         : item,
     );

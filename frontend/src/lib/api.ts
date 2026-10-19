@@ -5,6 +5,8 @@ import type {
   Job,
   ModelInfo,
   RunMode,
+  ServerInfo,
+  ServerLoginInput,
   Specialist,
   SpecialistInput,
   SpecialistOptions,
@@ -54,6 +56,9 @@ export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
+/** Sent on window when the API refused the saved login (401): the session is over. */
+export const SESSION_EXPIRED_EVENT = "multeagent:session-expired";
+
 export function setToken(token: string | null) {
   if (typeof window === "undefined") return;
   if (token) localStorage.setItem(TOKEN_KEY, token);
@@ -100,6 +105,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       // Drop stale session so the login screen returns instead of a half-authed UI.
       if (response.status === 401 && !path.includes("/api/auth/login")) {
         setToken(null);
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT)); // useAuth shows the login again
       }
       throw new Error(await readError(response));
     }
@@ -155,6 +161,24 @@ export async function deleteSpecialist(id: string): Promise<void> {
 
 export async function resetSpecialists(): Promise<Specialist[]> {
   return request("/api/specialists/reset", { method: "POST", body: "{}" });
+}
+
+/** Server logins live in the API's memory for this session only (admins). */
+export async function listServers(): Promise<ServerInfo[]> {
+  return request("/api/servers");
+}
+
+export async function addServer(payload: ServerLoginInput): Promise<ServerInfo> {
+  return request("/api/servers", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function removeServer(id: string): Promise<void> {
+  await request(`/api/servers/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** Logout: the API forgets every server login of this user. */
+export async function forgetServers(): Promise<void> {
+  await request("/api/servers", { method: "DELETE" });
 }
 
 export async function listModels(refresh = false): Promise<ModelInfo[]> {

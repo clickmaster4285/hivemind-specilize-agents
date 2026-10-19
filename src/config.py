@@ -103,6 +103,10 @@ class Config:
     brain_scheduler_minutes: int = 30   # how often to look for due sources
     # on demand: a source used by an answer and not checked for this many hours is refreshed right away
     brain_fresh_hours: float = 24.0
+    # after a knowledge-base answer, check each cited sentence against its source (src/brain/verify.py)
+    verify_answers: bool = True
+    # security_check tool (src/security_scan.py): ports, services, certificates, this PC's firewall — admins only
+    security_scan_enabled: bool = True
     # SDXL lives in system RAM (CPU offload): free it after this many idle minutes (0 = keep loaded)
     image_idle_unload_minutes: int = 10
     # SDXL runs in its own process (python -m src.image_service) so the API never holds the model
@@ -223,6 +227,9 @@ class Config:
             brain_refresh_window=(os.getenv("BRAIN_REFRESH_WINDOW") or "").strip(),
             brain_scheduler_minutes=max(5, int(os.getenv("BRAIN_SCHEDULER_MINUTES", "30"))),
             brain_fresh_hours=max(0.1, float(os.getenv("BRAIN_FRESH_HOURS", "24"))),
+            verify_answers=os.getenv("VERIFY_ANSWERS", "true").strip().lower() not in {"0", "false", "no", "off"},
+            security_scan_enabled=os.getenv("SECURITY_SCAN_ENABLED", "true").strip().lower()
+            not in {"0", "false", "no", "off"},
             image_idle_unload_minutes=max(0, int(os.getenv("IMAGE_IDLE_UNLOAD_MINUTES", "10"))),
             image_service_port=int(os.getenv("IMAGE_SERVICE_PORT", "8790")),
             image_service_token=os.getenv("IMAGE_SERVICE_TOKEN", ""),

@@ -14,6 +14,8 @@ from src.chat_runner import run_chat
 from src.clock import set_time_zone
 from src.diagram_gen import run_diagram
 from src.net_scan import run_network_scan
+from src.security_scan import run_security_check
+from src.linux_audit import run_server_audit
 from src.assistant import decide
 from src.specialists import resolve as resolve_specialist
 from src.weather import run_weather
@@ -29,7 +31,32 @@ _stop = threading.Event()
 
 
 # tools that run on their own: (query, job_id, config, on_progress, conversation, **tool_args) -> (output, errors, s)
-DIRECT_TOOLS = {"network_scan": run_network_scan, "weather": run_weather, "diagram": run_diagram}
+DIRECT_TOOLS = {"network_scan": run_network_scan, "security_check": run_security_check,
+                "server_audit": run_server_audit, "weather": run_weather, "diagram": run_diagram}
+# tools only admins may run (doc/SECURITY_TOOLS_DECISION.md §2): they probe or log in to other machines
+ADMIN_TOOLS = frozenset({"security_check", "server_audit"})
+
+
+def _is_admin(config: Config, user_id: int | None) -> bool:
+    from src.models_db import User
+
+    if user_id is None:
+        return False
+    with session_scope(config) as session:
+        user = session.get(User, user_id)
+        return bool(user and user.role == "admin")
+
+
+def _refuse(config: Config, job_id: str, query: str, on_progress, tool: str) -> None:
+    """A non-admin asked for an admin-only tool: say so in the chat, run nothing."""
+    text = (f"The **{tool.replace('_', ' ')}** tool can only be run by an administrator, because it probes "
+            "other machines in depth. Ask an admin to run it, or use the network scan to list devices.")
+    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Not allowed", "stage": "chat", "accent": "#c4a35a"}
+    on_progress({"type": "session_start", "mode": "chat", "query": query})
+    on_progress({"type": "agent_start", **agent})
+    on_progress({"type": "agent_done", **agent, "elapsed_seconds": 0, "output": text})
+    on_progress({"type": "session_done", "total_seconds": 0, "errors": [], "mode": "chat"})
+    _finish(config, job_id, [])
 
 
 def _finish(config: Config, job_id: str, errors: list[str], *, failed: bool | None = None) -> None:
@@ -127,9 +154,14 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 mode = "agentic"
 
         runner = DIRECT_TOOLS.get(intent)
+        if runner is not None and intent in ADMIN_TOOLS and not _is_admin(config, user_id):
+            _refuse(config, job_id, query, on_progress, intent)
+            return
         if runner is not None:
+            # user_id: tools that use the session's server logins (src/server_vault.py) find this user's only
+            tool_args = {k: v for k, v in tool_args.items() if k != "user_id"}     # never from the model
             _output, errors, _elapsed = runner(query, job_id=job_id, config=config, on_progress=on_progress,
-                                               conversation=conversation, **tool_args)
+                                               conversation=conversation, user_id=user_id, **tool_args)
             _finish(config, job_id, errors)
             return
 

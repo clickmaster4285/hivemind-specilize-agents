@@ -273,6 +273,62 @@ def reset_specialists(_user: User = Depends(require_admin)) -> list[dict[str, An
     return [s.to_dict() for s in store.reset_defaults()]
 
 
+# Server logins for the session (src/server_vault.py): kept in this process's memory only — never on
+# disk, in the database, a log or a job. Admins only; each admin sees only the servers they added.
+class ServerLoginPayload(BaseModel):
+    label: str = ""
+    host: str
+    port: int = 22
+    username: str
+    password: str | None = None
+    private_key: str | None = None
+    key_passphrase: str | None = None
+
+
+@app.get("/api/servers")
+def list_servers(user: User = Depends(require_admin)) -> list[dict[str, Any]]:
+    from src import server_vault
+
+    return [s.public() for s in server_vault.list_servers(user.id)]
+
+
+@app.post("/api/servers")
+def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin)) -> dict[str, Any]:
+    """Log in once (learn the server's host key and access level), then keep the login for the session."""
+    from src import linux_audit, server_vault
+
+    try:
+        server_vault.check_host(payload.host)
+        trial = server_vault.ServerLogin(id="trial", label=payload.label or payload.host, host=payload.host.strip(),
+                                         port=payload.port, username=payload.username.strip(),
+                                         password=payload.password or None, private_key=payload.private_key or None,
+                                         key_passphrase=payload.key_passphrase or None)
+        info = linux_audit.test_login(trial)
+        login = server_vault.add(user.id, label=trial.label, host=trial.host, port=trial.port,
+                                 username=trial.username, password=trial.password, private_key=trial.private_key,
+                                 key_passphrase=trial.key_passphrase, host_key=info["host_key"])
+    except (server_vault.VaultError, linux_audit.AuditError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {**login.public(), "os": info["os"], "access": info["access"]}
+
+
+@app.delete("/api/servers/{server_id}")
+def remove_server(server_id: str, user: User = Depends(require_admin)) -> dict[str, str]:
+    from src import server_vault
+
+    if not server_vault.remove(user.id, server_id):
+        raise HTTPException(status_code=404, detail="server not found (the session may have ended)")
+    return {"status": "removed", "id": server_id}
+
+
+@app.delete("/api/servers")
+def forget_servers(user: User = Depends(get_current_user)) -> dict[str, int]:
+    """Logout: forget every server login of this user."""
+    from src import server_vault
+
+    return {"forgotten": server_vault.clear(user.id)}
+
+
 @app.get("/api/models")
 def get_models(
     refresh: bool = False,

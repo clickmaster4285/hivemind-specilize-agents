@@ -33,3 +33,6 @@ python-pptx>=1.0.0
 openpyxl>=3.1.0
 fpdf2>=2.7.0
 Jinja2>=3.1.0
+
+# Linux server audit over SSH (src/linux_audit.py) — LGPL-2.1
+paramiko>=3.5,<4

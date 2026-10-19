@@ -37,7 +37,10 @@ STORE_FILE = ROOT / "agents" / "specialists.json"
 EVAL_FILE = ROOT / "data" / "specialists" / "eval.yaml"
 COLLECTIONS = ("it", "development", "marketing", "general")      # brain.collections slugs
 GENERAL = "general"                                                # the picker's "no specialist"
-ACTION_TOOLS = frozenset({"network_scan"})                         # tools that act, not only read
+# tools that probe or act on machines, not only read text — the IT specialist only
+ACTION_TOOLS = frozenset({"network_scan", "security_check", "server_audit"})
+# tools added after agents/specialists.json files already existed (files saved before "seen_tools")
+ADDED_LATER = frozenset({"security_check", "server_audit"})
 PICK_MAX_TOKENS = 6
 
 PICK_SYSTEM = """Pick the specialist for the user's message. Specialists:
@@ -60,17 +63,28 @@ class Specialist:
     accent: str = "#6b8cae"
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        # seen_tools: the tools that existed when this was saved — a tool added to the code later is new
+        return {**asdict(self), "seen_tools": tool_names()}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Specialist:
-        known = set(tool_names())
+        names = tool_names()
+        known = set(names)
+        tools = [str(t) for t in data.get("tools") or [] if str(t) in known]
+        # tools that did not exist when this specialist was saved: a built-in specialist gets them when its
+        # defaults include them (the IT specialist gets each new IT tool); a tool an admin unchecked stays off
+        seen = data.get("seen_tools")
+        seen = set(seen) if isinstance(seen, list) else known - ADDED_LATER
+        default = next((d for d in _defaults_by_id() if d.id == str(data["id"])), None)
+        for name in names:
+            if name not in seen and name not in tools and default is not None and name in default.tools:
+                tools.append(name)
         return cls(
             id=str(data["id"]),
             name=str(data.get("name", "")).strip(),
             covers=str(data.get("covers", "")).strip(),
             instructions=str(data.get("instructions", "")).strip(),
-            tools=[str(t) for t in data.get("tools") or [] if str(t) in known],
+            tools=tools,
             collections=[str(c) for c in data.get("collections") or [] if str(c) in COLLECTIONS],
             enabled=bool(data.get("enabled", True)),
             sort_order=int(data.get("sort_order", 0)),
@@ -86,6 +100,11 @@ def tool_names() -> list[str]:
     from src.assistant import TOOLS
 
     return [t.name for t in TOOLS]
+
+
+def _defaults_by_id() -> list[Specialist]:
+    """The built-in specialists' tool lists, for granting tools added after a file was saved."""
+    return default_specialists()
 
 
 def default_specialists() -> list[Specialist]:

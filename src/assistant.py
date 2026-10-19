@@ -63,6 +63,20 @@ TOOLS: tuple[Tool, ...] = (
     Tool("network_scan", "network_scan",
          "Actually scan the local private network now and list the devices (IP, name, MAC, open ports) as a table.",
          {"subnet": "e.g. 192.168.1.0/24; empty = this computer's network"}, (), lambda c: c.network_scan_enabled),
+    Tool("security_check", "security_check",
+         "Actually check security now: open ports and the services/versions behind them, HTTPS certificates, "
+         "risky services (RDP, Telnet, databases, SMB), and for this PC its Windows Firewall, Remote Desktop and "
+         "SMBv1. Returns findings with risk and fixes. Use for 'is this PC/server secure', 'which ports are open "
+         "on X', 'find risky ports' — not for just listing devices (network_scan).",
+         {"target": "an IP (192.168.1.10), a network (192.168.1.0/24), 'this pc', or empty = the whole local network"},
+         (), lambda c: c.security_scan_enabled),
+    Tool("server_audit", "server_audit",
+         "Log in to one of the user's Linux servers (added this session in Settings → Servers) and audit it "
+         "read-only: ufw / iptables firewall, open ports with programs, SSH settings (root and password login), "
+         "missing security updates, failed SSH logins and fail2ban. Use for 'audit my server', 'check ufw on "
+         "web01', 'is my Linux server hardened'.",
+         {"server": "the server's name or IP as the user added it; empty = the only one added"},
+         (), lambda c: c.security_scan_enabled),
     Tool("generate_image", "image_gen", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
          {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None),
     Tool("draw_diagram", "diagram",

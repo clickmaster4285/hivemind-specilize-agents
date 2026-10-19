@@ -443,6 +443,39 @@ body {
   border-radius: 50%;
 }
 
+/* Settings → Servers: a login kept for the session only */
+.server-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+}
+
+.server-form-row {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.server-form-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.server-form .server-port {
+  flex: 0 0 5rem;
+}
+
+.server-form .server-key {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.75rem;
+}
+
+.server-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 0.8rem;
+}
+
 /* the edit form's tool and collection checkboxes */
 .check-grid {
   display: grid;
@@ -1430,6 +1463,52 @@ body {
 }
 
 /* Knowledge-base sources under a grounded answer */
+/* the check after a knowledge-base answer (src/brain/verify.py) */
+.answer-check {
+  margin: 0.6rem 0 0.2rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.answer-check.ok {
+  border: 1px solid color-mix(in srgb, var(--teal) 35%, var(--line));
+}
+
+.answer-check.warn {
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line));
+  background: color-mix(in srgb, var(--danger) 7%, var(--panel-2));
+}
+
+.answer-check summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.answer-check.warn summary {
+  color: var(--text);
+}
+
+.answer-check-head {
+  margin: 0.45rem 0 0.2rem;
+  font-weight: 600;
+}
+
+.answer-check ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.answer-check li {
+  margin: 0.15rem 0;
+  color: var(--text);
+}
+
+.answer-check-cites {
+  color: var(--muted);
+}
+
 .brain-sources {
   margin: 0.6rem 0 0.2rem;
   padding: 0.45rem 0.7rem;

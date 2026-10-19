@@ -15,6 +15,30 @@ export type Specialist = {
 
 export type SpecialistInput = Omit<Specialist, "id" | "sort_order">;
 
+/** A Linux server login kept in the API's memory for this session (src/server_vault.py) — never the secret. */
+export type ServerInfo = {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  username: string;
+  auth: "password" | "key";
+  host_key: string;
+  expires_at: number;
+  os?: string;
+  access?: string;
+};
+
+export type ServerLoginInput = {
+  label: string;
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  private_key?: string;
+  key_passphrase?: string;
+};
+
 export type SpecialistOptions = {
   tools: { name: string; description: string }[];
   collections: string[];
@@ -116,6 +140,15 @@ export type BrainSource = {
   refreshing?: boolean;
 };
 
+/** The check after a knowledge-base answer (src/brain/verify.py): which cited sentences the sources confirm. */
+export type AnswerVerification = {
+  checked: number;
+  supported: number;
+  unsupported: { text: string; cites: number[] }[];
+  unclear: { text: string; cites: number[]; verdict: string }[];
+  seconds?: number;
+};
+
 export type FeedItem = {
   id: string;
   kind: "user" | "agent" | "system";
@@ -134,6 +167,7 @@ export type FeedItem = {
   /** Knowledge-base answers: true = built from sources; false = brain had nothing relevant */
   grounded?: boolean;
   sources?: BrainSource[];
+  verification?: AnswerVerification;
   /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */
   startedAt?: number;
   statusText?: string;

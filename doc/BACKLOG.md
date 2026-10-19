@@ -60,7 +60,11 @@ Decide whether to keep both or only one. Compare on the same prompts:
 Rule: keep `gemma4:12b` only if it **clearly** wins somewhere that matters (likely vision) at acceptable speed. It is 8GB and does not fit fully in VRAM, so using it means swapping out the 9b. Otherwise remove it.
 Run this after the brain exists, so the "grounded answers" test uses real retrieval.
 
-### L2. Domain specialist agents (replace the debate)
+### L2. Domain specialist agents (replace the debate) — ✅ first version 2026-10-17 (ISSUES_LOG #39)
+
+Decided: picked per message by one short model call reading each specialist's "covers" line (37/38), or
+pinned in the chat bar; tools per specialist (network_scan IT-only); collections searched first, then all;
+debate mode removed. Still open: specialists working together on one question, more eval questions per field.
 
 Replace Optimist / Cynic / Consensus with specialists for fields within the industry, e.g.:
 
@@ -100,8 +104,20 @@ To build:
 - Rule-based routing sent a clear decision question ("…would a self-service portal be worth it compared to hiring two more agents?") to plain chat before the model was asked
 - Revisit once specialists exist — routing will become "which specialist", not "chat vs debate"
 
-### L5c. Citation checker (answer quality)
+### L5c. Citation checker (answer quality) — ✅ built 2026-10-19
 
+- **Built:** after each knowledge-base answer, one more model call (`src/brain/verify.py`, the same
+  quote-first judge as the B6 test) checks every cited sentence; the chat shows "✓ 6 of 7 statements
+  confirmed by the sources" and lists the unsupported ones. The answer is readable meanwhile; nothing is
+  deleted; a failed check only hides the line. Off switch: `VERIFY_ANSWERS=false`. Not yet: web-search answers.
+
+Earlier notes:
+
+- **Done:** commands are checked against the sources with no model call (`src/brain/command_check.py`)
+- **Measured (B6):** 89% grounded; prompt rules no longer help (two runs at 89%). Left: closing filler
+  ("This command helps…") and the model's own examples cited as if from the source
+- **To decide:** a second model pass per answer costs ~8 s — over the 20 s target if the user waits for it.
+  Option: show the answer at once, run the check after it, then mark unsupported sentences ("✓ verified")
 - After the model answers, check each cited sentence against its passage (cheap: keyword/embedding overlap; stronger: a second short LLM pass) and drop or flag unsupported claims
 - Seen in B4: "Scavenging tab hota hai jab record ki TTL expire ho chuki ho [5]" — passage [5] does not say that
 

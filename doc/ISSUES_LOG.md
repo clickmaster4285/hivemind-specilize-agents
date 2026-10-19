@@ -289,6 +289,32 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*
 - **Speed:** weather 39 s (web search) → **6.5 s**; greeting 2.6 s; web search **60 s → 12 s**: shorter answers,
   4 passages, a 6-s page budget, and BM25 keyword ranking instead of CPU embeddings (14.3 s → milliseconds).
 
+### 38. B6 — answer quality measured; slow answers, made-up commands, filler — 2026-10-17 → 19
+- **New test:** `python -m src.brain.answer_eval` runs the 60 questions through the real answer path; a local
+  judge must **quote** the source words that back each cited claim, and the code checks the quote is really
+  in that passage. A "no" with a real supporting quote is listed as UNSURE for a person to decide.
+- **Found and fixed:** (1) answers took 32 s — writing 650 tokens at 21 tok/s → "about 150 words" rule:
+  **18–19 s**; (2) filler ("make sure the path is writable") and dropped conditions → prompt rules;
+  (3) **wrong commands** (`Set-DnsServerConditionalForwarderZone`, `-Type`, `Get-DnsServerZoneDnssec`) →
+  `src/brain/command_check.py` flags every cmdlet / parameter / call not found in the sources under the
+  answer ("⚠️ Check before use"), in milliseconds, no model call; (4) the first judge was itself wrong half
+  the time (said "no" with the supporting text in hand) → quote-first judge, quotes verified 66% → 90%;
+  (5) a Hinglish answer came in Devanagari script → rule added.
+- **Result (runs of 2026-10-19):** refusals **5/5**, latency **19 s** median, right source cited 96–100%,
+  grounded answers **89%** (strict 84% counting UNSURE as wrong) — target 90% not reached; two runs in a row
+  at 89% = what prompt rules can do with the 9B model. Remaining: closing filler sentences ("This command
+  helps…"), the model's own examples cited as source, the judge too strict on true general statements
+  (en-aging). Next step: check each answer after it is written (BACKLOG L5c).
+
+### 39. Debate agents replaced by IT / Development / Marketing specialists (L2) — 2026-10-17
+- Optimist / Cynic / Consensus, the Debate and Mixed modes, `/api/debate` and the debate CLI are removed;
+  decision questions are answered in chat, old `debate`/`mixed` jobs run as Auto.
+- Specialists (`src/specialists.py`, `agents/specialists.json`, Settings → Specialists, admins only):
+  instructions + allowed tools + knowledge collections; `network_scan` is IT-only. Picked per message by one
+  short model call that reads each "covers" line — **37/38** right, 0.8 s (embedding similarity: 20/37) — or
+  pinned in the chat bar. Tool choice with specialists **27/27** after putting the persona *before* the tool
+  rules (after them, the persona made the model explain instead of acting: 25/27).
+
 ---
 
 ## Open issues
@@ -299,6 +325,6 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*
 | ~~O2~~ | ~~Midjourney flags ignored~~ | **Solved** — #23 |
 | ~~O3~~ | ~~"create a schematic …" goes to chat~~ | **Solved** — #29 |
 | O4 | Image quality and realism depend on luck and prompt wording | **Mostly solved** — #23, #25. Left: "new variation" button and model picker in the UI |
-| O5 | 9B model sometimes cites a source that does not support the sentence | Citation checker (BACKLOG L5c) |
-| O6 | No streaming, no proper Stop button | BACKLOG L3 |
+| O5 | 9B model sometimes cites a source that does not support the sentence | Measured (#38): 89% grounded, wrong commands now flagged. Left: check each answer after it is written (BACKLOG L5c) |
+| ~~O6~~ | ~~No streaming, no proper Stop button~~ | **Solved** — #36 |
 | ~~O7~~ | ~~The assistant can only advise, never act ("check all the IPs … table")~~ | **Solved for LAN scans** — `network_scan` tool built (Option A, [TOOLS_DECISION.md](TOOLS_DECISION.md) §7): 25 devices in 9.6 s, table + .xlsx. More tools (networking, security) follow the same pattern |

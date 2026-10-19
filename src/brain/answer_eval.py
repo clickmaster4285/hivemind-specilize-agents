@@ -23,7 +23,6 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
-import re
 import statistics
 import sys
 import time
@@ -33,40 +32,22 @@ from typing import Any
 
 import yaml
 
-from src.brain.answer import answer_question, cited_numbers, format_sources
+from src.brain.answer import answer_question, cited_numbers
+from src.brain.command_check import NOTE_PREFIX
 from src.brain.db import BrainDBError
 from src.brain.embed import EmbedError
 from src.brain.evaluate import QUESTIONS_PATH, RESULTS_DIR, Case, load_cases
 from src.brain.retrieve import Passage
+# the claim check itself lives in src/brain/verify.py — the chat runs the same code after each answer
+from src.brain.verify import (  # noqa: F401 — re-exported for tests/test_answer_eval.py
+    CITE_RE, JUDGE_SYSTEM, JUDGE_TEMPERATURE, Claim, _cites, apply_judgement, judge_prompt,
+    parse_judgement, parse_verdicts, quote_in, split_claims,
+)
 from src.config import ROOT, Config
 from src.llm_client import LLMClient
 
 TARGET_GROUNDED = 0.90
 TARGET_LATENCY_S = 20.0
-MIN_CLAIM_WORDS = 4
-JUDGE_TEMPERATURE = 0.0
-
-JUDGE_SYSTEM = """You check whether an answer is faithful to its sources.
-You get numbered sources and numbered claims from the answer; each claim lists the sources it cites.
-For each claim decide whether the CITED sources state it or directly imply it:
-  yes    — the cited sources support the whole claim
-  partly — some of it is supported, some is added or changed
-  no     — the cited sources do not say this (or say something different)
-Judge meaning, not wording: claims may be in Hinglish (Roman-script Hindi mixed with English).
-Ignore style, politeness and formatting. Do not use your own knowledge — only the cited sources.
-Reply with exactly one line per claim and nothing else, like:
-1: yes
-2: no"""
-
-VERDICT_RE = re.compile(r"^\s*(\d{1,3})\s*[:.)-]\s*(yes|partly|partial(?:ly)?|no)\b", re.I | re.M)
-CITE_RE = re.compile(r"\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]")
-
-
-@dataclass
-class Claim:
-    text: str
-    cites: list[int]
-    verdict: str | None = None          # yes | partly | no (None = not judged)
 
 
 @dataclass
@@ -82,6 +63,7 @@ class Row:
     facts_missing: list[str] = field(default_factory=list)
     claims: list[Claim] = field(default_factory=list)
     uncited_sentences: int = 0
+    unverified_commands: list[str] = field(default_factory=list)   # flagged by src/brain/command_check.py
     error: str | None = None
 
     @property
@@ -101,76 +83,9 @@ def load_facts(path=QUESTIONS_PATH) -> dict[str, list[str]]:
     return {str(q["id"]): [str(f) for f in q.get("facts") or []] for q in data.get("questions") or []}
 
 
-def _cites(text: str) -> list[int]:
-    return sorted({int(n) for group in CITE_RE.findall(text) for n in group.split(",")})
-
-
-# code brackets are hidden while citations are read, then put back in the claim text
-_HIDE_BRACKETS = str.maketrans("[]", "\x01\x02")
-_SHOW_BRACKETS = str.maketrans("\x01\x02", "[]")
-
-
-def _plain(line: str) -> str:
-    """Markdown markers off a line: list bullets, numbering, bold, inline code ticks.
-    Brackets inside inline code are code, not citations (`[1, 2, 3]` is a list)."""
-    line = re.sub(r"`([^`]*)`", lambda m: m.group(1).translate(_HIDE_BRACKETS), line)
-    line = re.sub(r"^\s*(?:[-*+>]|\d+[.)])\s+", "", line)
-    return line.replace("**", "").strip()
-
-
-def split_claims(text: str) -> tuple[list[Claim], int]:
-    """(cited claims, number of uncited factual-looking sentences).
-
-    Code blocks are skipped (they are copied commands, judged through the sentence that cites them).
-    A sentence without its own [n] inherits the citations of its line — models often cite once per bullet —
-    and a line that is only citations ("[1][2]" under a code block) backs the uncited sentences above it.
-    """
-    text = re.sub(r"```.*?```", "", text, flags=re.S)
-    claims: list[Claim] = []
-    pending: list[str] = []             # uncited sentences since the last heading
-    uncited = 0
-    for raw in text.splitlines():
-        line = _plain(raw)
-        if raw.lstrip().startswith("#"):
-            uncited += len(pending)
-            pending = []
-        if not line or raw.lstrip().startswith(("#", "|")):
-            continue
-        line_cites = _cites(line)
-        if line_cites and not CITE_RE.sub("", line).strip(" .,;"):
-            claims += [Claim(text=s.translate(_SHOW_BRACKETS), cites=line_cites) for s in pending]
-            pending = []
-            continue
-        for sentence in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9])", line):
-            sentence = sentence.strip()
-            if len(re.findall(r"\w+", CITE_RE.sub("", sentence))) < MIN_CLAIM_WORDS or sentence.endswith(":"):
-                continue
-            cites = _cites(sentence) or line_cites
-            if cites:
-                claims.append(Claim(text=CITE_RE.sub("", sentence).strip().translate(_SHOW_BRACKETS), cites=cites))
-            else:
-                pending.append(sentence)
-    return claims, uncited + len(pending)
-
-
 def has_fact(answer: str, fact: str) -> bool:
     low = answer.lower()
     return any(alt.strip().lower() in low for alt in fact.split("|") if alt.strip())
-
-
-def judge_prompt(claims: list[Claim], passages: list[Passage]) -> str:
-    numbered = "\n".join(
-        f"{i}. {c.text}  (cites {', '.join(f'[{n}]' for n in c.cites)})" for i, c in enumerate(claims, 1)
-    )
-    return f"## Sources\n\n{format_sources(passages)}\n\n## Claims\n\n{numbered}"
-
-
-def parse_verdicts(reply: str, count: int) -> list[str | None]:
-    found: dict[int, str] = {}
-    for n, word in VERDICT_RE.findall(reply):
-        word = word.lower()
-        found.setdefault(int(n), "partly" if word.startswith("part") else word)
-    return [found.get(i) for i in range(1, count + 1)]
 
 
 def _from_expected_page(passage: Passage, docs: list[str]) -> bool:
@@ -196,14 +111,16 @@ def evaluate_case(case: Case, facts: list[str], *, config: Config, llm: LLMClien
         _from_expected_page(passages[n - 1], case.docs) for n in cited_numbers(result.text, len(passages))
     )
     row.facts_missing = [f for f in facts if not has_fact(result.text, f)]
-    claims, row.uncited_sentences = split_claims(result.text)
+    row.unverified_commands = list(result.unverified)
+    # the "check before use" note is the command check's output, not a claim of the answer
+    body = "\n".join(line for line in result.text.splitlines() if not line.startswith(NOTE_PREFIX))
+    claims, row.uncited_sentences = split_claims(body)
     row.claims = [c for c in claims if all(1 <= n <= len(passages) for n in c.cites)]
 
     if judge and row.claims:
         reply = llm.chat(system=JUDGE_SYSTEM, user=judge_prompt(row.claims, passages),
                          temperature=JUDGE_TEMPERATURE)
-        for claim, verdict in zip(row.claims, parse_verdicts(reply, len(row.claims))):
-            claim.verdict = verdict
+        apply_judgement(row.claims, reply, passages)
     return row
 
 
@@ -225,15 +142,24 @@ def summarize(rows: list[Row]) -> dict[str, Any]:
         "answered_from_sources": share(len(answered), len(inside)),
         "not_answered": [r.id for r in inside if not r.grounded],
         "grounded_answers": share(sum(1 for r in judged if r.faithful), len(judged)),
+        # the same, counting every UNSURE claim as wrong (2026-10-19: all 4 unsure claims were real mistakes)
+        "grounded_strict": share(sum(1 for r in judged if r.faithful and not any(
+            c.verdict == "unsure" for c in r.claims)), len(judged)),
         "unfaithful": [r.id for r in judged if not r.faithful],
         "claims_supported": share(sum(1 for c in claims if c.verdict == "yes"), len(claims)),
         "claims_partly": sum(1 for c in claims if c.verdict == "partly"),
         "claims_unsupported": sum(1 for c in claims if c.verdict == "no"),
+        # the judge said "no" but quoted real supporting text: a person decides (not counted as a failure)
+        "claims_unsure": sum(1 for c in claims if c.verdict == "unsure"),
+        "check_by_hand": sorted({r.id for r in answered for c in r.claims if c.verdict == "unsure"}),
         "right_source_cited": share(sum(1 for r in answered if r.right_source_cited), len(answered)),
         "wrong_source": [r.id for r in answered if not r.right_source_cited],
         "bad_citations": [r.id for r in answered if r.bad_citations],
         "facts_missing": {r.id: r.facts_missing for r in answered if r.facts_missing},
         "uncited_sentences": sum(r.uncited_sentences for r in answered),
+        # the judge's evidence really is in the cited passage (share of judged claims)
+        "quotes_verified": share(sum(1 for c in claims if c.quote_found), len(claims)),
+        "unverified_commands": {r.id: r.unverified_commands for r in answered if r.unverified_commands},
         "out_of_scope": {"n": len(oos), "correct": sum(1 for r in oos if not r.grounded),
                          "answered": [r.id for r in oos if r.grounded]},
         "median_s": round(statistics.median(seconds), 1) if seconds else None,
@@ -247,10 +173,11 @@ def verdict_lines(s: dict[str, Any]) -> list[str]:
     def mark(ok: bool | None) -> str:
         return "n/a " if ok is None else ("PASS" if ok else "FAIL")
 
-    grounded, oos = s["grounded_answers"], s["out_of_scope"]
+    grounded, strict, oos = s["grounded_answers"], s.get("grounded_strict"), s["out_of_scope"]
+    strict_note = f", strict {strict:.0%} if every UNSURE is wrong" if strict is not None and strict != grounded else ""
     return [
         f"{mark(None if grounded is None else grounded >= TARGET_GROUNDED)}  grounded answers     "
-        f"{'-' if grounded is None else f'{grounded:.0%}'}  (target ≥ {TARGET_GROUNDED:.0%})",
+        f"{'-' if grounded is None else f'{grounded:.0%}'}  (target ≥ {TARGET_GROUNDED:.0%}{strict_note})",
         f"{mark(None if not oos['n'] else oos['correct'] == oos['n'])}  no-evidence refusals "
         f"{oos['correct']}/{oos['n']}",
         f"{mark(None if s['median_s'] is None else s['median_s'] <= TARGET_LATENCY_S)}  latency (median)     "
@@ -263,6 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--limit", type=int, help="only the first N questions")
     parser.add_argument("--ids", nargs="+", help="only these question ids")
     parser.add_argument("--no-judge", action="store_true", help="skip the claim-by-claim check")
+    parser.add_argument("--all", action="store_true", help="also list every 'partly' claim at the end")
     args = parser.parse_args(argv)
 
     # no background source refreshes during the run: they would compete for the CPU and skew latency
@@ -289,8 +217,11 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 verdicts = [c.verdict or "?" for c in row.claims]
                 status = (f"claims {verdicts.count('yes')}/{len(verdicts)} ok"
+                          + (f" · {verdicts.count('no')} NO" if "no" in verdicts else "")
+                          + (f" · {verdicts.count('unsure')} unsure" if "unsure" in verdicts else "")
                           + ("" if row.right_source_cited else " · WRONG SOURCE")
-                          + (f" · missing {row.facts_missing}" if row.facts_missing else ""))
+                          + (f" · missing {row.facts_missing}" if row.facts_missing else "")
+                          + (f" · flagged {row.unverified_commands}" if row.unverified_commands else ""))
             print(f"[{i:>2}/{len(cases)}] {case.id:<26} {row.seconds:5.1f}s  {status}", flush=True)
     except (BrainDBError, EmbedError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -300,17 +231,33 @@ def main(argv: list[str] | None = None) -> int:
     print("\n" + "\n".join(verdict_lines(summary)))
     print(f"\nanswered from sources {summary['answered_from_sources']}  ·  right source cited "
           f"{summary['right_source_cited']}  ·  claims supported {summary['claims_supported']} "
-          f"(partly {summary['claims_partly']}, unsupported {summary['claims_unsupported']})  ·  "
-          f"uncited sentences {summary['uncited_sentences']}")
-    for key in ("unfaithful", "not_answered", "wrong_source", "bad_citations", "slow", "errors"):
+          f"(partly {summary['claims_partly']}, unsupported {summary['claims_unsupported']}, "
+          f"unsure {summary['claims_unsure']})  ·  "
+          f"uncited sentences {summary['uncited_sentences']}  ·  judge quotes verified "
+          f"{summary['quotes_verified']}")
+    if summary["unverified_commands"]:
+        print(f"commands flagged under answers (not in the sources): {summary['unverified_commands']}")
+    for key in ("unfaithful", "check_by_hand", "not_answered", "wrong_source", "bad_citations", "slow", "errors"):
         if summary[key]:
             print(f"{key}: {', '.join(summary[key])}")
     if summary["facts_missing"]:
         print(f"facts_missing: {summary['facts_missing']}")
-    for r in rows:
-        for c in r.claims:
-            if c.verdict in ("no", "partly"):
-                print(f"  {r.id} [{c.verdict}] {c.text[:140]}  (cites {c.cites})")
+    # the claims to read, with the judge's evidence: NO = failed, UNSURE = judge contradicted itself
+    titles = {"no": "NO — not supported by the cited source (these fail the answer)",
+              "unsure": "UNSURE — the judge said no but quoted supporting text: decide by hand",
+              "partly": "PARTLY — part supported, or the judge's quote was not found in the source"}
+    for verdict in ("no", "unsure", "partly") if args.all else ("no", "unsure"):
+        listed = [(r, c) for r in rows for c in r.claims if c.verdict == verdict]
+        if not listed:
+            continue
+        print(f"\n{titles[verdict]}  ({len(listed)})")
+        for r, c in listed:
+            print(f"  {r.id}  {c.text[:150]}  (cites {c.cites})")
+            if c.quote:
+                found = "" if c.quote_found else "  [quote NOT in source]"
+                print(f"      judge's quote: \"{c.quote[:170]}\"{found}")
+    if not args.all and summary["claims_partly"]:
+        print(f"\n({summary['claims_partly']} 'partly' claims not listed — add --all to see them)")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"answers-{datetime.now():%Y%m%d-%H%M%S}.json"

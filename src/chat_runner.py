@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
@@ -17,6 +18,8 @@ from src.conversation import format_conversation_block, normalize_conversation
 from src.llm_client import LLMClient, LLMStopped
 from src.ollama_mgmt import model_loaded
 from src.web_search import WebSearchError, answer_from_web
+
+log = logging.getLogger(__name__)
 
 BRAIN_DOWN_NOTICE = (
     "> **Knowledge base unavailable right now** — this answer is from the model's general knowledge, "
@@ -78,6 +81,29 @@ def friendly_error(exc: BaseException, config: Config) -> str:
 def _emit(cb: ProgressCallback | None, event: dict[str, Any]) -> None:
     if cb:
         cb(event)
+
+
+def _verify(answer: Any, *, client: LLMClient, model: str, job_id: str | None,
+            status: Callable[[str], None]) -> dict[str, Any] | None:
+    """Check a knowledge-base answer against its sources (src/brain/verify.py) after it is written.
+
+    Never breaks the answer: a failed or stopped check just shows no verification line."""
+    from src.brain.verify import verify_answer
+
+    passages = answer.search.passages if answer.search else []
+    if not passages or live.is_stopped(job_id):
+        return None
+    status("Checking the answer against its sources…")
+    try:
+        checked = verify_answer(answer.text, passages,
+                                chat=lambda **kw: client.chat(model=model, max_retries=0, **kw))
+    except Exception as exc:  # noqa: BLE001 — the answer is already written; only the badge is lost
+        log.warning("answer check failed: %s", exc)
+        return None
+    if checked is None or live.is_stopped(job_id):
+        return None
+    checked.pop("claims", None)             # the chat needs counts + the unconfirmed sentences only
+    return checked
 
 
 def run_chat(
@@ -198,6 +224,13 @@ def run_chat(
                 output = answer.text
                 role = "Knowledge base" if answer.grounded else "General knowledge"
                 extra = {"grounded": answer.grounded, "sources": answer.sources_payload()}
+                if answer.grounded and config.verify_answers:
+                    live.set_text(job_id, "assistant", output)          # the answer stays readable meanwhile
+                    checked = _verify(answer, client=client, model=model, job_id=job_id,
+                                      status=lambda m: _emit(on_progress, {"type": "status",
+                                                                           "agent_id": "assistant", "message": m}))
+                    if checked is not None:
+                        extra["verification"] = checked
             except (BrainDBError, EmbedError) as exc:
                 result.errors.append(f"knowledge base unavailable: {exc}")
                 output = f"{BRAIN_DOWN_NOTICE}\n\n" + chat(system=system, user=user_msg, model=model)
