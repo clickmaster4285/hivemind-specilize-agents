@@ -1,0 +1,185 @@
+# What the user wants, by example — the semantic router (src/semantic_router.py) compares a new
+# message by MEANING to these sentences. To teach it a new phrasing or a new intent: add lines here.
+# No code change. English and Hinglish both work (the embedding model is multilingual).
+# Check accuracy after editing:  python -m src.semantic_router --eval   (questions in eval.yaml)
+
+intents:
+  chat:
+    note: a real question or request for information — answered with the knowledge base
+    examples:
+      - how do I configure DNS scavenging on Windows Server
+      - what is a DNS zone and how is it different from a domain
+      - explain python decorators with an example
+      - what is the difference between a list and a tuple
+      # decision questions (the old debate intent, removed 2026-10-17) are answered in chat
+      - should we launch our product in Dubai or Karachi first
+      - pros and cons of moving our servers to the cloud
+      - is it a good decision to hire two more developers this quarter
+      - evaluate the risks of expanding to a new market
+      - should I invest in a new office or keep working remotely
+      - which strategy is better for growth, ads or partnerships
+      - how does a DNS forwarder work
+      - explain the architecture of DNS
+      - what is a flowchart
+      - what is an ER diagram used for and when should I use one
+      - explain what a UML class diagram shows
+      - my computer keeps freezing, how do I troubleshoot it
+      - how does a ping sweep work and what does it show
+      - what is ARP and how does it map IP addresses to MAC addresses
+      - explain how network scanners like nmap find devices
+      - how do I find which DNS server my computer uses
+      - why is my website not resolving after changing nameservers
+      - write a python function that removes duplicates from a list
+      - fix this error: ModuleNotFoundError no module named requests
+      - what are the best practices for password storage
+      - compare TCP and UDP
+      - kya hota hai DNS caching aur ye kaise kaam karta hai
+      - python mein virtual environment kaise banate hain
+      - what model of car is best for a family
+      - summarize the key points of zero trust security
+      - how do I set up a reverse proxy with nginx
+      - what does HTTP status 503 mean
+
+  greeting:
+    note: small talk — a short friendly reply, no knowledge base
+    examples:
+      - hi
+      - hello there
+      - good morning
+      - thanks a lot
+      - thank you, that helped
+      - ok cool
+      - bye, see you
+      - how are you doing today
+      - kaise ho
+      - shukriya
+
+  about:
+    note: a question about the assistant itself — answered from live facts (src/about.py)
+    examples:
+      - who are you
+      - what is in your brain
+      - do you have any Microsoft data in your knowledge base
+      - what model are you using
+      - how are you working and how do you generate answers
+      - in which field are you specialized
+      - what can you do
+      - what is MulteAgent
+      - which sources do you know
+      - are you running in the cloud or locally
+      - tumhare brain mein kya kya hai
+      - tum kaun ho aur kya kar sakte ho
+      - when was your knowledge base last updated
+
+  web_search:
+    note: search the internet right now — only when the user asks to search/google/look up online/check the web for live results
+    examples:
+      - search the web for the price of nvidia rtx 5070
+      - google the release date of python 3.15
+      - search the internet for today's dollar rate in pakistan
+      - look up online who won the cricket world cup final
+      - search web for the latest windows 11 update problems
+      - find out from the web whether CVE-2026-1234 is critical
+      - web se aaj ka news search karke batao
+      - google karke batao iphone 17 ka price
+      - internet se check karo aaj ka dollar rate
+
+  image_gen:
+    note: draw a picture (photo, illustration, artwork, thumbnail, wallpaper) with the image model
+    examples:
+      - create an image of a cat sitting on a sofa
+      - draw a red sports car in the rain at night
+      - generate a photorealistic portrait of an old fisherman
+      - make a YouTube thumbnail for my gaming stream
+      - a wallpaper of mountains at sunset in 16:9
+      - paint a watercolor of a village in the hills
+      - create an image of a technical schematic of a server room
+      - give me a picture of a futuristic city
+      - design a logo style illustration of a lion
+      - ek tasveer banao jisme pahadon mein ghar ho
+      - cinematic photo of a woman in a red saree on a rooftop
+      - render a 3d isometric illustration of a tiny office
+      - improve my prompt and then generate the image
+      - make this prompt better and draw it
+      - fix this prompt and create the picture
+
+  diagram:
+    note: boxes and arrows with exact labels — architecture, flowchart, sequence, hierarchy (Mermaid)
+    examples:
+      - create an architecture diagram of our app with the API, database and worker
+      - draw a flowchart of the user login process
+      - make a sequence diagram of how a chat question is answered
+      - diagram of school connected to classes and teachers
+      - show the network topology of a small office
+      - create a schematic of a home network with router and NAS
+      - draw an ER diagram for a library database
+      - org chart of a company with departments and teams
+      - mind map of marketing ideas for a coffee shop
+      - mere app ka architecture diagram banao
+      - process flow of an order from cart to delivery
+      - state diagram for an order status
+
+  diagram_edit:
+    note: a change to the diagram drawn just before (only used right after a diagram)
+    examples:
+      - add a Redis cache between the API and the database
+      - remove the printer from it
+      - move the database to the right side
+      - connect the worker to the image service
+      - rename Class A to Grade 1
+      - make it top to bottom
+      - add more detail to the payment part
+      - fix the login steps
+      - is mein ek load balancer bhi add karo
+
+  doc_gen:
+    note: make a downloadable file — Word, PDF, PowerPoint, Excel
+    examples:
+      - create a word document of this answer
+      - export this as a pdf
+      - make a powerpoint presentation about our product launch
+      - give me this in docx format
+      - create an excel sheet with these numbers
+      - write a report and save it as a pdf
+      - is ka pdf bana do
+      - turn our conversation into slides
+
+  creative:
+    note: creative writing or prompt writing — stories, poems, jokes, image prompts as text
+    examples:
+      - write a short story about a robot who learns to paint
+      - tell me a joke about programmers
+      - write a poem about rain
+      - improve this prompt for midjourney
+      - suggest a better image prompt for a sunset photo
+      - give me a better prompt for a realistic portrait photo
+      - write me a stable diffusion prompt for a mountain landscape (just the text)
+      - write a funny birthday message for my friend
+      - write a facebook post caption for my clothing shop
+      - give me a slogan for my bakery
+      - ek chhoti si kahani likho
+      - write song lyrics about friendship
+
+  agentic:
+    note: needs tools — open a website/URL, research several pages, work with files
+    examples:
+      - research the latest pricing of these three hosting providers and compare them
+      - read this page https://example.com/docs and summarize it
+      - browse the python website and find the release notes
+      - look up this github repo and explain what it does
+      - investigate the files in my project folder and list the TODOs
+      - fetch this url and extract the table
+
+  network_scan:
+    note: actually scan the local private network now and list the devices (IPs, names, MACs, open ports)
+    examples:
+      - scan my network and show all devices in a table
+      - check all the IPs on the LAN and give me only the result
+      - which devices are connected to our office network right now
+      - find the IP address of the new camera on the network
+      - is the NAS and the printer up, scan the network
+      - list every IP that is alive on 192.168.1.0/24
+      - mere network pe kaun kaun se devices hain, table mein dikhao
+      - saare IP check karo aur result table mein do
+      - do an IP scan of the subnet
+

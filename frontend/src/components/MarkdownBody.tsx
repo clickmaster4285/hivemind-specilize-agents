@@ -1,6 +1,47 @@
 "use client";
 
+import { isValidElement, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
+// tables, strikethrough, task lists: without it a | table | shows as raw text
+import remarkGfm from "remark-gfm";
+
+import { getApiOrigin } from "@/lib/api";
+
+import MermaidDiagram from "./MermaidDiagram";
+
+/** Only our own images load inside answers. A model once wrote an image.pollinations.ai link with
+ *  the user's prompt in it: showing it would have sent the prompt to a cloud service. */
+function isOwnImage(src: string): boolean {
+  if (src.startsWith("/") && !src.startsWith("//")) return true;
+  try {
+    const origin = new URL(src).origin;
+    return origin === window.location.origin || origin === new URL(getApiOrigin()).origin;
+  } catch {
+    return false;
+  }
+}
+
+function ExternalImage({ src, alt }: { src: string; alt: string }) {
+  let host = src;
+  try {
+    host = new URL(src).host;
+  } catch {
+    /* keep the raw text */
+  }
+  return (
+    <a href={src} target="_blank" rel="noreferrer nofollow" className="md-a md-external-img"
+      title="Not loaded automatically: opening it contacts another website">
+      [external image not loaded: {alt || "image"} — {host}]
+    </a>
+  );
+}
+
+/** The code of a ```mermaid block, or null for any other <pre>. */
+function mermaidCode(children: ReactNode): string | null {
+  if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return null;
+  if (!children.props.className?.includes("language-mermaid")) return null;
+  return String(children.props.children ?? "").trim();
+}
 
 type Props = {
   content: string;
@@ -31,7 +72,16 @@ export default function MarkdownBody({ content, pending }: Props) {
   return (
     <div className="md-body">
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
+          // wide tables (network scan, weather) scroll sideways instead of squeezing the chat
+          table: ({ children }) => (
+            <div className="md-table-wrap">
+              <table className="md-table">{children}</table>
+            </div>
+          ),
+          th: ({ children }) => <th className="md-th">{children}</th>,
+          td: ({ children }) => <td className="md-td">{children}</td>,
           h1: ({ children }) => <h3 className="md-h">{children}</h3>,
           h2: ({ children }) => <h3 className="md-h">{children}</h3>,
           h3: ({ children }) => <h4 className="md-h">{children}</h4>,
@@ -42,8 +92,17 @@ export default function MarkdownBody({ content, pending }: Props) {
           li: ({ children }) => <li className="md-li">{children}</li>,
           strong: ({ children }) => <strong className="md-strong">{children}</strong>,
           em: ({ children }) => <em>{children}</em>,
-          code: ({ children }) => <code className="md-code">{children}</code>,
-          pre: ({ children }) => <pre className="md-pre">{children}</pre>,
+          // keep className: <pre> needs "language-mermaid" to spot diagrams
+          code: ({ className, children }) => <code className={`md-code ${className ?? ""}`.trim()}>{children}</code>,
+          pre: ({ children }) => {
+            const mermaid = mermaidCode(children);
+            return mermaid !== null ? <MermaidDiagram code={mermaid} /> : <pre className="md-pre">{children}</pre>;
+          },
+          img: ({ src, alt }) => {
+            const url = typeof src === "string" ? src : "";
+            // eslint-disable-next-line @next/next/no-img-element -- answers hold arbitrary sizes
+            return isOwnImage(url) ? <img src={url} alt={alt ?? ""} className="md-img" /> : <ExternalImage src={url} alt={alt ?? ""} />;
+          },
           a: ({ href, children }) => (
             <a href={href} target="_blank" rel="noreferrer" className="md-a">
               {children}

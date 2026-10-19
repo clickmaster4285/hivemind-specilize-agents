@@ -8,3 +8,31 @@ pyjwt>=2.8.0
 passlib[bcrypt]>=1.7.4
 bcrypt>=4.0.0,<4.1
 psycopg[binary]>=3.1.0
+
+# Knowledge brain (Postgres + pgvector) — see doc/BRAIN_DESIGN.md
+pgvector>=0.4.1
+PyYAML>=6.0
+beautifulsoup4>=4.13      # web sources: HTML parsing (MIT)
+markdownify>=1.2          # web sources: HTML -> Markdown (MIT)
+
+# Local SDXL image generation (Diffusers).
+# On Quadro P4000 / Pascal GPUs: use Python 3.11–3.13 and install CUDA 11.8 torch:
+#   pip install -r requirements-image-cu118.txt
+# (Do not leave the default CPU/cu12x torch from accelerate — it breaks sm_61.)
+diffusers>=0.31.0
+transformers>=4.44.0
+accelerate>=0.33.0
+safetensors>=0.4.0
+Pillow>=10.0.0
+sentencepiece>=0.2.0
+protobuf>=4.0.0
+
+# Downloadable documents (agentic write_* tools)
+python-docx>=1.1.0
+python-pptx>=1.0.0
+openpyxl>=3.1.0
+fpdf2>=2.7.0
+Jinja2>=3.1.0
+
+# Linux server audit over SSH (src/linux_audit.py) — LGPL-2.1
+paramiko>=3.5,<4

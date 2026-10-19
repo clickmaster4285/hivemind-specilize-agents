@@ -1,5 +1,94 @@
-import type { DebateEvent, FeedItem, ToolStep } from "@/lib/types";
+import type {
+  AnswerVerification,
+  BrainSource,
+  ChatImage,
+  JobEvent,
+  FeedItem,
+  Job,
+  JobArtifact,
+  ToolStep,
+} from "@/lib/types";
 import { formatAgentOutput, formatToolResult, summarizeArgs } from "@/lib/format";
+
+const DOC_KINDS = new Set([
+  "document",
+  "html",
+  "docx",
+  "pdf",
+  "pptx",
+  "xlsx",
+  "zip",
+]);
+
+/** Document downloads stored on job.payload.attachments (not chat images). */
+export function artifactsFromJobPayload(job: Job): JobArtifact[] {
+  const raw = job.payload?.attachments;
+  if (!Array.isArray(raw)) return [];
+  const out: JobArtifact[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const filename = String(row.filename || "");
+    if (!filename) continue;
+    const kind = String(row.kind || "");
+    const mime = String(row.mime || "");
+    const isDoc =
+      DOC_KINDS.has(kind) ||
+      /\.(pdf|docx|pptx|xlsx|html?|zip|md|txt|csv)$/i.test(filename) ||
+      (mime.startsWith("application/") && !mime.includes("octet-stream")) ||
+      mime === "text/html" ||
+      mime === "text/markdown";
+    if (!isDoc) continue;
+    out.push({
+      filename,
+      mime: mime || undefined,
+      relpath: row.relpath ? String(row.relpath) : undefined,
+      bytes: typeof row.bytes === "number" ? row.bytes : undefined,
+      kind: kind || "document",
+      jobId: job.id,
+    });
+  }
+  return out;
+}
+
+/** Attach payload artifacts to the last agent bubble when SSE events were missing. */
+export function mergeArtifactsFromJob(feed: FeedItem[], job: Job): FeedItem[] {
+  const arts = artifactsFromJobPayload(job);
+  if (!arts.length) return feed;
+  const next = [...feed];
+  for (let i = next.length - 1; i >= 0; i -= 1) {
+    if (next[i].kind !== "agent") continue;
+    const existing = next[i].artifacts || [];
+    const seen = new Set(existing.map((a) => a.filename));
+    const merged = [...existing];
+    for (const art of arts) {
+      if (seen.has(art.filename)) continue;
+      seen.add(art.filename);
+      merged.push(art);
+    }
+    next[i] = {
+      ...next[i],
+      artifacts: merged,
+      jobId: next[i].jobId || job.id,
+    };
+    return next;
+  }
+  // No agent bubble — add a lightweight downloads row
+  return [
+    ...next,
+    {
+      id: uid(),
+      kind: "agent",
+      title: "Downloads",
+      meta: "from job",
+      body: "Files from this run",
+      accent: "#3aa89a",
+      pending: false,
+      jobId: job.id,
+      artifacts: arts,
+    },
+  ];
+}
 
 export const STATUS_ID = "live-status";
 
@@ -27,7 +116,15 @@ export function upsertStatus(
   return copy;
 }
 
-function attachToolCall(prev: FeedItem[], event: DebateEvent): FeedItem[] {
+/** The newest running bubble (of this agent, if given). */
+function lastPendingIndex(prev: FeedItem[], agentId?: string): number {
+  for (let i = prev.length - 1; i >= 0; i -= 1) {
+    if (prev[i].pending && (!agentId || prev[i].agentId === agentId)) return i;
+  }
+  return -1;
+}
+
+function attachToolCall(prev: FeedItem[], event: JobEvent): FeedItem[] {
   const agentId = String(event.agent_id || "");
   const tool = String(event.tool || "tool");
   const step: ToolStep = {
@@ -39,13 +136,13 @@ function attachToolCall(prev: FeedItem[], event: DebateEvent): FeedItem[] {
   const mapped = prev.map((item) => {
     if (!item.pending || item.agentId !== agentId) return item;
     attached = true;
-    return { ...item, body: `Using ${tool}…`, tools: [...(item.tools || []), step] };
+    return { ...item, statusText: `Using ${tool}…`, tools: [...(item.tools || []), step] };
   });
   if (attached) return mapped;
   return upsertStatus(prev, "Working", `Using ${tool}…`);
 }
 
-function attachToolResult(prev: FeedItem[], event: DebateEvent): FeedItem[] {
+function attachToolResult(prev: FeedItem[], event: JobEvent): FeedItem[] {
   const agentId = String(event.agent_id || "");
   const tool = String(event.tool || "tool");
   const result = formatToolResult(String(event.result || ""));
@@ -73,7 +170,7 @@ function attachToolResult(prev: FeedItem[], event: DebateEvent): FeedItem[] {
 }
 
 /** Pure reducer: apply one backend event onto a feed snapshot. */
-export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
+export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
   const type = String(event.type || "");
 
   if (type === "job_queued") {
@@ -86,39 +183,113 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
   if (type === "route_decided") {
     const requested = String(event.requested_mode || "auto");
     const resolved = String(event.resolved_mode || event.intent || "chat");
+    const model = event.model ? String(event.model) : "";
     const intent = String(event.intent || resolved);
     const reason = String(event.reason || "").slice(0, 80);
     const label =
-      requested === "auto" || requested === resolved
-        ? `Auto -> ${resolved}`
-        : `${requested} (forced)`;
+      intent === "vision"
+        ? `Auto -> vision${model ? ` · ${model}` : ""}`
+        : requested === "auto" || requested === resolved
+          ? `Auto -> ${resolved}`
+          : `${requested} (forced)`;
     return upsertStatus(
       prev,
       "Route",
       reason ? `${label} · ${intent} · ${reason}` : `${label} · ${intent}`,
     );
   }
+  if (type === "specialist_chosen") {
+    const how = event.how === "chosen" ? "chosen by you" : "picked automatically";
+    return upsertStatus(prev, "Specialist", `${String(event.name || event.id)} specialist · ${how}`);
+  }
+  if (type === "tool_chosen") {
+    return upsertStatus(prev, "Tool", `${String(event.tool || "tool").replace(/_/g, " ")} …`);
+  }
   if (type === "job_started" || type === "session_start" || type === "agentic_start") {
     return upsertStatus(prev, "Working", "Running…");
   }
   if (type === "agent_start") {
+    const agentId = String(event.agent_id || "");
     return [
-      ...prev.filter((item) => item.id !== STATUS_ID),
+      // A new start replaces an unfinished bubble of the same agent: when the model writes a few words
+      // and then calls a tool (src/assistant.py), its bubble is never closed — without this, the tool's
+      // answer filled both bubbles (saved chats showed every diagram twice).
+      ...prev.filter((item) => item.id !== STATUS_ID && !(item.pending && agentId && item.agentId === agentId)),
       {
         id: uid(),
         kind: "agent",
         title: String(event.name || "Agent"),
         meta: String(event.role || "thinking"),
-        body: "Working…",
+        body: "",
         accent: String(event.accent || "#3aa89a"),
         pending: true,
-        agentId: String(event.agent_id || ""),
+        agentId,
         tools: [],
+        startedAt: Date.now(),
+        statusText: "Starting…",
       },
     ];
   }
+  // "Searching the knowledge base…", "Loading the model…", "Writing…" — shown in the running bubble
+  if (type === "status") {
+    const message = String(event.message || "");
+    const idx = lastPendingIndex(prev, event.agent_id ? String(event.agent_id) : undefined);
+    if (idx === -1) return message ? upsertStatus(prev, "Working", message) : prev;
+    const next = [...prev];
+    next[idx] = { ...next[idx], statusText: message };
+    return next;
+  }
+  // the answer as it is being written (sent a few times per second, always the full text so far)
+  if (type === "agent_stream") {
+    const idx = lastPendingIndex(prev, String(event.agent_id || ""));
+    if (idx === -1) return prev; // already finished: the final text wins
+    const next = [...prev];
+    next[idx] = { ...next[idx], body: String(event.text || ""), streaming: true };
+    return next;
+  }
   if (type === "tool_call") return attachToolCall(prev, event);
   if (type === "tool_result") return attachToolResult(prev, event);
+  if (type === "artifact_ready") {
+    const filename = String(event.filename || "");
+    if (!filename) return prev;
+    const art = {
+      filename,
+      mime: event.mime ? String(event.mime) : undefined,
+      relpath: event.relpath ? String(event.relpath) : undefined,
+      bytes: typeof event.bytes === "number" ? event.bytes : undefined,
+      kind: event.kind ? String(event.kind) : "document",
+      jobId: event.job_id ? String(event.job_id) : undefined,
+    };
+    const next = [...prev];
+    let attached = false;
+    for (let i = next.length - 1; i >= 0; i -= 1) {
+      if (next[i].kind !== "agent") continue;
+      const artifacts = [...(next[i].artifacts || [])].filter((a) => a.filename !== filename);
+      artifacts.push(art);
+      next[i] = {
+        ...next[i],
+        artifacts,
+        jobId: next[i].jobId || art.jobId,
+        statusText: next[i].pending ? `Created ${filename}…` : next[i].statusText,
+      };
+      attached = true;
+      break;
+    }
+    if (!attached) {
+      next.push({
+        id: uid(),
+        kind: "agent",
+        title: "Downloads",
+        meta: "file ready",
+        body: `Created ${filename}`,
+        accent: "#3aa89a",
+        pending: false,
+        jobId: art.jobId,
+        artifacts: [art],
+      });
+    }
+    return upsertStatus(next, "File ready", `${filename} — download below`);
+  }
   if (type === "agent_done") {
     const rawOut = event.output;
     const asText =
@@ -128,6 +299,21 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
           ? ""
           : JSON.stringify(rawOut, null, 2);
     const body = formatAgentOutput(asText);
+    const imageFiles = Array.isArray(event.images)
+      ? (event.images as { filename?: string; mime?: string }[])
+          .filter((img) => img && img.filename)
+          .map((img) => ({ filename: String(img.filename), mime: img.mime }))
+      : undefined;
+    const jobId = event.job_id ? String(event.job_id) : undefined;
+    const sources = Array.isArray(event.sources)
+      ? (event.sources as BrainSource[]).filter((s) => s && typeof s.n === "number" && s.title)
+      : undefined;
+    const grounded = typeof event.grounded === "boolean" ? event.grounded : undefined;
+    const v = event.verification as AnswerVerification | undefined;
+    const verification =
+      v && typeof v.checked === "number" && typeof v.supported === "number"
+        ? { ...v, unsupported: v.unsupported || [], unclear: v.unclear || [] }
+        : undefined;
     const hasPending = prev.some((item) => item.agentId === event.agent_id && item.pending);
     if (!hasPending) {
       return [
@@ -141,6 +327,11 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
           accent: String(event.accent || "#3aa89a"),
           agentId: String(event.agent_id || ""),
           pending: false,
+          jobId,
+          imageFiles,
+          sources,
+          grounded,
+          verification,
         },
       ];
     }
@@ -149,19 +340,41 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
         ? {
             ...item,
             pending: false,
+            streaming: false,
+            statusText: undefined,
             meta: `${event.role || item.meta || ""} · ${Number(event.elapsed_seconds || 0).toFixed(1)}s`,
             body,
+            jobId: jobId || item.jobId,
+            imageFiles: imageFiles || item.imageFiles,
+            artifacts: item.artifacts,
+            sources: sources || item.sources,
+            grounded: grounded ?? item.grounded,
+            verification: verification || item.verification,
           }
         : item,
     );
   }
   if (type === "agent_error" || type === "fatal" || type === "job_cancelled") {
-    return upsertStatus(
-      prev,
-      type === "job_cancelled" ? "Cancelled" : "Error",
-      String(event.error || "cancelled").slice(0, 180),
-      true,
+    const cancelled = type === "job_cancelled";
+    const message = String(event.error || "cancelled");
+    // close the running bubble(s): keep text already written, show the reason
+    const closed = prev.map((item) =>
+      item.pending && (cancelled || !event.agent_id || item.agentId === event.agent_id)
+        ? {
+            ...item,
+            pending: false,
+            streaming: false,
+            statusText: undefined,
+            meta: cancelled ? "Stopped" : "Error",
+            body: cancelled
+              ? item.body || "_Stopped before the answer started._"
+              : item.body
+                ? `${item.body}\n\n> ${message}`
+                : `> ${message}`,
+          }
+        : item,
     );
+    return upsertStatus(closed, cancelled ? "Stopped" : "Error", message.slice(0, 180), !cancelled);
   }
   if (type === "session_done" || type === "agentic_done") {
     const errors = Array.isArray(event.errors) ? event.errors.join("; ") : "";
@@ -176,17 +389,19 @@ export function reduceFeed(prev: FeedItem[], event: DebateEvent): FeedItem[] {
 }
 
 export function buildFeedFromEvents(
-  events: DebateEvent[],
+  events: JobEvent[],
   userMessage?: string,
+  images?: ChatImage[],
 ): FeedItem[] {
   let feed: FeedItem[] = [];
-  if (userMessage) {
+  if (userMessage || (images && images.length > 0)) {
     feed = [
       {
         id: uid(),
         kind: "user",
         title: "You",
-        body: userMessage,
+        body: userMessage || "",
+        images,
       },
     ];
   }
@@ -196,10 +411,19 @@ export function buildFeedFromEvents(
   return feed;
 }
 
-export function appendUserMessage(prev: FeedItem[], text: string, meta?: string): FeedItem[] {
+export function appendUserMessage(
+  prev: FeedItem[],
+  text: string,
+  meta?: string,
+  images?: ChatImage[],
+): FeedItem[] {
   const cleaned = prev.filter((item) => item.id !== STATUS_ID);
   const last = cleaned[cleaned.length - 1];
-  if (last?.kind === "user" && last.body.trim() === text.trim()) {
+  if (
+    last?.kind === "user" &&
+    last.body.trim() === text.trim() &&
+    (last.images?.length || 0) === (images?.length || 0)
+  ) {
     return cleaned;
   }
   return [
@@ -210,6 +434,7 @@ export function appendUserMessage(prev: FeedItem[], text: string, meta?: string)
       title: "You",
       meta,
       body: text,
+      images,
     },
   ];
 }

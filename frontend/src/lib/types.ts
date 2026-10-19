@@ -1,25 +1,47 @@
-export type AgentStage = "panel" | "consensus";
-export type ExecutionMode = "parallel" | "sequential";
-export type RunMode = "auto" | "chat" | "debate" | "agentic" | "mixed";
+export type RunMode = "auto" | "chat" | "agentic";
 
-export type Agent = {
+/** A domain specialist (src/specialists.py): the assistant picks one from `covers`, or the user pins one. */
+export type Specialist = {
   id: string;
   name: string;
-  role: string;
-  system_prompt: string;
-  stage: AgentStage;
+  covers: string;
+  instructions: string;
+  tools: string[];
+  collections: string[];
   enabled: boolean;
   sort_order: number;
   accent: string;
 };
 
-export type AgentInput = {
-  name: string;
-  role: string;
-  system_prompt: string;
-  stage: AgentStage;
-  enabled: boolean;
-  accent: string;
+export type SpecialistInput = Omit<Specialist, "id" | "sort_order">;
+
+/** A Linux server login kept in the API's memory for this session (src/server_vault.py) — never the secret. */
+export type ServerInfo = {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  username: string;
+  auth: "password" | "key";
+  host_key: string;
+  expires_at: number;
+  os?: string;
+  access?: string;
+};
+
+export type ServerLoginInput = {
+  label: string;
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  private_key?: string;
+  key_passphrase?: string;
+};
+
+export type SpecialistOptions = {
+  tools: { name: string; description: string }[];
+  collections: string[];
 };
 
 export type Health = {
@@ -30,6 +52,14 @@ export type Health = {
   queue_depth?: number;
   estimated_wait_seconds?: number;
   llm_slots?: number;
+  image_slots?: number;
+  image_profile?: string;
+  image_pipeline?: {
+    state?: string;
+    error?: string | null;
+    loaded?: boolean;
+    path?: string | null;
+  };
   auth_required?: boolean;
 };
 
@@ -47,6 +77,15 @@ export type ModelInfo = {
   role: string;
   max_concurrency: number;
   enabled: boolean;
+  vision?: boolean;
+  image_gen?: boolean;
+  available?: boolean;
+};
+
+export type ChatImage = {
+  url: string;
+  filename: string;
+  mime: string;
 };
 
 export type Job = {
@@ -64,7 +103,7 @@ export type Job = {
   deleted_at?: string | null;
 };
 
-export type DebateEvent = {
+export type JobEvent = {
   type: string;
   [key: string]: unknown;
 };
@@ -75,6 +114,39 @@ export type ToolStep = {
   args?: string;
   result?: string;
   error?: boolean;
+};
+
+export type JobArtifact = {
+  filename: string;
+  mime?: string;
+  relpath?: string;
+  bytes?: number;
+  kind?: string;
+  jobId?: string;
+};
+
+/** A knowledge-base passage an answer was built from (numbered like the [n] citations). */
+export type BrainSource = {
+  n: number;
+  title: string;
+  url?: string | null;
+  heading_path?: string | null;
+  publisher?: string | null;
+  updated_at?: string | null;
+  source: string;
+  cited: boolean;
+  /** When the knowledge-base source was last checked for changes; refreshing = being re-checked now */
+  checked_at?: string | null;
+  refreshing?: boolean;
+};
+
+/** The check after a knowledge-base answer (src/brain/verify.py): which cited sentences the sources confirm. */
+export type AnswerVerification = {
+  checked: number;
+  supported: number;
+  unsupported: { text: string; cites: number[] }[];
+  unclear: { text: string; cites: number[]; verdict: string }[];
+  seconds?: number;
 };
 
 export type FeedItem = {
@@ -88,4 +160,16 @@ export type FeedItem = {
   agentId?: string;
   /** Collapsed tool activity attached to an agent step */
   tools?: ToolStep[];
+  images?: ChatImage[];
+  jobId?: string;
+  imageFiles?: { filename: string; mime?: string }[];
+  artifacts?: JobArtifact[];
+  /** Knowledge-base answers: true = built from sources; false = brain had nothing relevant */
+  grounded?: boolean;
+  sources?: BrainSource[];
+  verification?: AnswerVerification;
+  /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */
+  startedAt?: number;
+  statusText?: string;
+  streaming?: boolean;
 };

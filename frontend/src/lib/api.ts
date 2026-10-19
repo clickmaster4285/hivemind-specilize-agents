@@ -1,13 +1,15 @@
 import type {
-  Agent,
-  AgentInput,
   AuthUser,
-  DebateEvent,
-  ExecutionMode,
+  JobEvent,
   Health,
   Job,
   ModelInfo,
   RunMode,
+  ServerInfo,
+  ServerLoginInput,
+  Specialist,
+  SpecialistInput,
+  SpecialistOptions,
 } from "./types";
 
 const API_PORT = process.env.NEXT_PUBLIC_API_PORT || "8787";
@@ -53,6 +55,9 @@ export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
 }
+
+/** Sent on window when the API refused the saved login (401): the session is over. */
+export const SESSION_EXPIRED_EVENT = "multeagent:session-expired";
 
 export function setToken(token: string | null) {
   if (typeof window === "undefined") return;
@@ -100,6 +105,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       // Drop stale session so the login screen returns instead of a half-authed UI.
       if (response.status === 401 && !path.includes("/api/auth/login")) {
         setToken(null);
+        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT)); // useAuth shows the login again
       }
       throw new Error(await readError(response));
     }
@@ -130,42 +136,86 @@ export async function getHealth(): Promise<Health> {
   return request("/api/health");
 }
 
-export async function listAgents(): Promise<Agent[]> {
-  return request("/api/agents");
+export async function listSpecialists(): Promise<Specialist[]> {
+  return request("/api/specialists");
 }
 
-export async function createAgent(payload: AgentInput): Promise<Agent> {
-  return request("/api/agents", { method: "POST", body: JSON.stringify(payload) });
+export async function specialistOptions(): Promise<SpecialistOptions> {
+  return request("/api/specialists/options");
 }
 
-export async function updateAgent(id: string, payload: Partial<AgentInput>): Promise<Agent> {
-  return request(`/api/agents/${encodeURIComponent(id)}`, {
+export async function createSpecialist(payload: SpecialistInput): Promise<Specialist> {
+  return request("/api/specialists", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateSpecialist(id: string, payload: Partial<SpecialistInput>): Promise<Specialist> {
+  return request(`/api/specialists/${encodeURIComponent(id)}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
 }
 
-export async function deleteAgent(id: string): Promise<void> {
-  await request(`/api/agents/${encodeURIComponent(id)}`, { method: "DELETE" });
+export async function deleteSpecialist(id: string): Promise<void> {
+  await request(`/api/specialists/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export async function resetAgents(): Promise<Agent[]> {
-  return request("/api/agents/reset", { method: "POST", body: "{}" });
+export async function resetSpecialists(): Promise<Specialist[]> {
+  return request("/api/specialists/reset", { method: "POST", body: "{}" });
+}
+
+/** Server logins live in the API's memory for this session only (admins). */
+export async function listServers(): Promise<ServerInfo[]> {
+  return request("/api/servers");
+}
+
+export async function addServer(payload: ServerLoginInput): Promise<ServerInfo> {
+  return request("/api/servers", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function removeServer(id: string): Promise<void> {
+  await request(`/api/servers/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** Logout: the API forgets every server login of this user. */
+export async function forgetServers(): Promise<void> {
+  await request("/api/servers", { method: "DELETE" });
 }
 
 export async function listModels(refresh = false): Promise<ModelInfo[]> {
   return request(`/api/models${refresh ? "?refresh=true" : ""}`);
 }
 
+export type ImageForceIntent =
+  | "describe"
+  | "generate"
+  | "edit"
+  | "inpaint"
+  | "doc_gen"
+  | "web_search";
+export type ImageProfile = "fast" | "quality" | "balanced";
+
 export async function createJob(payload: {
   query: string;
   mode: RunMode;
-  execution_mode: ExecutionMode;
-  agent_ids: string[];
+  /** "auto" = the assistant picks · "none" = no specialist · or a specialist id */
+  specialist?: string;
   model?: string;
   allow_overflow?: boolean;
+  images?: { filename: string; mime: string; data: string }[];
+  /** Prior turns so follow-ups like “write that as docx” keep context */
+  conversation?: { role: "user" | "assistant"; content: string }[];
+  force_intent?: ImageForceIntent;
+  image_profile?: ImageProfile;
+  image_strength?: number;
 }): Promise<Job> {
-  return request("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
+  // the user's own time zone (e.g. "Asia/Karachi"): answers tell their local time, no location permission
+  let client_time_zone: string | undefined;
+  try {
+    client_time_zone = Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    client_time_zone = undefined;
+  }
+  return request("/api/jobs", { method: "POST", body: JSON.stringify({ ...payload, client_time_zone }) });
 }
 
 export async function listJobs(limit = 100): Promise<Job[]> {
@@ -191,16 +241,26 @@ export async function softDeleteJobs(jobIds: string[]): Promise<{
   });
 }
 
+export async function fetchJobAttachment(jobId: string, filename: string): Promise<string> {
+  const response = await fetch(
+    apiUrl(`/api/jobs/${encodeURIComponent(jobId)}/attachments/${encodeURIComponent(filename)}`),
+    { headers: authHeaders(false) },
+  );
+  if (!response.ok) throw new Error(await readError(response));
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
 export async function getJobHistory(jobId: string): Promise<{
   job: Job;
-  events: DebateEvent[];
+  events: JobEvent[];
 }> {
   return request(`/api/jobs/${encodeURIComponent(jobId)}/history`);
 }
 
 export async function streamJobEvents(
   jobId: string,
-  onEvent: (event: DebateEvent) => void,
+  onEvent: (event: JobEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   let response: Response;
@@ -232,7 +292,7 @@ export async function streamJobEvents(
           .map((line) => line.slice(5).trim())
           .join("");
         if (!data) continue;
-        onEvent(JSON.parse(data) as DebateEvent);
+        onEvent(JSON.parse(data) as JobEvent);
       }
     }
   } catch (err) {

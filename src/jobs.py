@@ -10,14 +10,24 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
+from src.attachments import save_images
 from src.config import Config
+from src.conversation import normalize_conversation
 from src.intent_router import classify_query
-from src.model_registry import resolve_model_plan
+from src.model_registry import force_vision_model, resolve_model_plan
 from src.models_db import Job, JobEvent, User
 
 
 ACTIVE = ("queued", "running")
 
+
+
+def _last_answer_was_diagram(conversation: Any) -> bool:
+    """True when the assistant's latest reply contains a Mermaid diagram (follow-up edits stay diagrams)."""
+    for turn in reversed(normalize_conversation(conversation)):
+        if turn["role"] == "assistant":
+            return "```mermaid" in turn["content"]
+    return False
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -67,6 +77,9 @@ def estimate_wait_seconds(session: Session, config: Config) -> float:
     return depth * 45.0 / max(1, config.llm_slots)
 
 
+LEGACY_MODES = frozenset({"debate", "mixed"})
+
+
 def create_job(
     session: Session,
     *,
@@ -79,8 +92,10 @@ def create_job(
 ) -> Job:
     config = config or Config.from_env()
     requested_mode = (mode or "auto").strip().lower()
-    if requested_mode not in {"auto", "debate", "agentic", "mixed", "chat"}:
-        raise ValueError("mode must be auto, chat, debate, agentic, or mixed")
+    if requested_mode in LEGACY_MODES:
+        requested_mode = "auto"           # the Optimist/Cynic/Consensus debate was removed (2026-10-17)
+    if requested_mode not in {"auto", "agentic", "chat"}:
+        raise ValueError("mode must be auto, chat or agentic")
     if count_active_for_user(session, user.id) >= config.max_active_jobs_per_user:
         raise ValueError(
             f"User already has {config.max_active_jobs_per_user} active job(s). Wait or cancel."
@@ -92,12 +107,51 @@ def create_job(
     if count_jobs_today(session, user.id) >= user.daily_job_quota:
         raise ValueError(f"Daily job quota reached ({user.daily_job_quota}).")
 
-    route = classify_query(query.strip(), requested_mode=requested_mode, config=config)
+    incoming_images = payload.get("images") if isinstance(payload.get("images"), list) else []
+    has_images = bool(incoming_images)
+    force_intent = str(payload.get("force_intent") or "").strip().lower() or None
+    query_text = query.strip() or ("What's in this image?" if has_images else "")
+    if not query_text:
+        raise ValueError("query is required")
+    if force_intent in {"edit", "img2img", "image_edit", "inpaint", "image_inpaint"} and not has_images:
+        raise ValueError("Edit/inpaint requires an attached image.")
+    if force_intent in {"vision", "describe"} and not has_images:
+        raise ValueError("Describe requires an attached image.")
+
+    route = classify_query(
+        query_text,
+        requested_mode=requested_mode,
+        config=config,
+        has_images=has_images,
+        force_intent=force_intent,
+        after_diagram=_last_answer_was_diagram(payload.get("conversation")),
+    )
     resolved_mode = route.resolved_mode
+    payload_clean = {k: v for k, v in payload.items() if k != "images"}
+    # Apply per-job image profile / strength from UI presets.
+    image_profile = str(payload.get("image_profile") or "").strip().lower() or None
+    image_strength = payload.get("image_strength")
+    try:
+        strength_f = float(image_strength) if image_strength is not None else None
+    except (TypeError, ValueError):
+        strength_f = None
+    if image_profile or strength_f is not None:
+        config = config.with_image_overrides(
+            profile=image_profile,
+            strength=strength_f,
+        )
+    conversation = normalize_conversation(payload.get("conversation"))
     enriched_payload = {
-        **payload,
+        **payload_clean,
         "requested_mode": requested_mode,
         "route": route.as_dict(),
+        "has_images": has_images,
+        "force_intent": force_intent,
+        "image_profile": config.image_profile,
+        "image_strength": config.image_strength,
+        "image_steps": config.image_steps,
+        "image_guidance": config.image_guidance,
+        "conversation": conversation,
     }
 
     wait = estimate_wait_seconds(session, config)
@@ -108,6 +162,21 @@ def create_job(
         queue_wait_seconds=wait,
         prefer_cloud_overflow=bool(payload.get("allow_overflow", True)),
     )
+    if has_images and route.intent != "image_gen":
+        model_plan, vision_name = force_vision_model(
+            session,
+            config,
+            model_plan,
+            override_model=str(payload.get("model") or "") or None,
+        )
+        route = route.with_model(vision_name)
+        enriched_payload["route"] = route.as_dict()
+        enriched_payload["vision_model"] = vision_name
+    elif route.intent == "image_gen":
+        image_name = (model_plan.get("image") or "").strip()
+        route = route.with_model(image_name or "sdxl-local")
+        enriched_payload["route"] = route.as_dict()
+        enriched_payload["image_model"] = image_name
 
     job = Job(
         id=str(uuid.uuid4()),
@@ -115,12 +184,17 @@ def create_job(
         mode=resolved_mode,
         status="queued",
         priority=priority,
-        query=query.strip(),
+        query=query_text,
         payload_json=json.dumps(enriched_payload),
         model_plan_json=json.dumps(model_plan),
     )
     session.add(job)
     session.flush()
+    if incoming_images:
+        saved = save_images(config, job.id, incoming_images)
+        enriched_payload["attachments"] = saved
+        job.payload_json = json.dumps(enriched_payload)
+        session.flush()
     append_event(
         session,
         job.id,
@@ -132,6 +206,11 @@ def create_job(
             "estimated_wait_seconds": wait,
             "model_plan": model_plan,
             "queue_depth": queue_depth(session),
+            "has_images": has_images,
+            "attachments": [
+                {"filename": a["filename"], "mime": a["mime"]}
+                for a in enriched_payload.get("attachments") or []
+            ],
         },
     )
     append_event(
@@ -146,6 +225,8 @@ def create_job(
 
 
 def append_event(session: Session, job_id: str, event: dict[str, Any]) -> JobEvent:
+    from src.job_events import notify_job
+
     last_seq = session.scalar(
         select(func.max(JobEvent.seq)).where(JobEvent.job_id == job_id)
     )
@@ -153,6 +234,7 @@ def append_event(session: Session, job_id: str, event: dict[str, Any]) -> JobEve
     row = JobEvent(job_id=job_id, seq=seq, event_json=json.dumps(event, ensure_ascii=False))
     session.add(row)
     session.flush()
+    notify_job(job_id)
     return row
 
 

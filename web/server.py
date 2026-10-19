@@ -1,4 +1,4 @@
-"""FastAPI gateway: auth, agents, models, jobs, legacy debate."""
+"""FastAPI gateway: auth, agents, models, jobs."""
 
 from __future__ import annotations
 
@@ -16,7 +16,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.agent_store import AgentStore
+from src.specialists import COLLECTIONS, SpecialistStore
+from src.attachments import image_path
+from src.artifacts import resolve_job_file
 from src.auth import (
     bootstrap_admin,
     create_access_token,
@@ -42,9 +44,10 @@ from src.llm_client import LLMClient
 from src.model_registry import list_models, sync_models_from_ollama
 from src.models_db import Job, ModelRecord, User
 from src.worker import start_inprocess_worker
+from web.brain_routes import router as brain_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-store = AgentStore()
+store = SpecialistStore()
 
 
 @asynccontextmanager
@@ -57,12 +60,24 @@ async def lifespan(_app: FastAPI):
     init_db(config)
     bootstrap_admin(config)
     with session_scope(config) as session:
-        sync_models_from_ollama(session, config)
+        sync_models_from_ollama(session, config, probe_details=True)
     start_inprocess_worker(config)
+    # Keep the knowledge brain fresh: re-check sources whose refresh_every has passed
+    from src.brain.scheduler import start_scheduler
+
+    start_scheduler(config)
+    if config.image_warm_on_start:
+        # SDXL lives in its own process; start it (and load the model) in the background
+        import threading
+
+        from src.image_client import ImageServiceClient
+
+        threading.Thread(target=ImageServiceClient(config).warm, name="image-service-warm", daemon=True).start()
     yield
 
 
 app = FastAPI(title="MulteAgent API", version="0.4.0", lifespan=lifespan)
+app.include_router(brain_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -77,21 +92,23 @@ class LoginPayload(BaseModel):
     password: str
 
 
-class AgentPayload(BaseModel):
+class SpecialistPayload(BaseModel):
     name: str
-    role: str = ""
-    system_prompt: str
-    stage: Literal["panel", "consensus"] = "panel"
+    covers: str
+    instructions: str = ""
+    tools: list[str] = Field(default_factory=list)
+    collections: list[str] = Field(default_factory=list)
     enabled: bool = True
     sort_order: int | None = None
     accent: str = "#6b8cae"
 
 
-class AgentUpdatePayload(BaseModel):
+class SpecialistUpdatePayload(BaseModel):
     name: str | None = None
-    role: str | None = None
-    system_prompt: str | None = None
-    stage: Literal["panel", "consensus"] | None = None
+    covers: str | None = None
+    instructions: str | None = None
+    tools: list[str] | None = None
+    collections: list[str] | None = None
     enabled: bool | None = None
     sort_order: int | None = None
     accent: str | None = None
@@ -101,14 +118,33 @@ class SoftDeleteJobsPayload(BaseModel):
     job_ids: list[str] = Field(default_factory=list)
 
 
+class ImageAttachmentIn(BaseModel):
+    filename: str = "image.png"
+    mime: str = "image/png"
+    data: str
+
+
+class ConversationTurnIn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class JobCreatePayload(BaseModel):
-    query: str = Field(min_length=1)
-    mode: Literal["auto", "chat", "debate", "agentic", "mixed"] = "auto"
-    execution_mode: Literal["parallel", "sequential"] = "sequential"
-    agent_ids: list[str] | None = None
+    query: str = ""
+    # auto | chat | agentic (older clients may still send debate/mixed: treated as auto, see create_job)
+    mode: str = "auto"
+    # auto = the assistant picks a specialist · none = no specialist · or a specialist id (src/specialists.py)
+    specialist: str = "auto"
     model: str | None = None
     allow_overflow: bool = True
     priority: int = 100
+    images: list[ImageAttachmentIn] = Field(default_factory=list)
+    # Prior turns in this chat (so “write that as docx” sees previous answers)
+    conversation: list[ConversationTurnIn] = Field(default_factory=list)
+    # Explicit composer actions: describe | generate | edit | inpaint | doc_gen
+    force_intent: str | None = None
+    image_profile: Literal["fast", "quality", "balanced"] | None = None
+    image_strength: float | None = None
 
 
 class ModelUpdatePayload(BaseModel):
@@ -118,14 +154,10 @@ class ModelUpdatePayload(BaseModel):
     max_concurrency: int | None = None
 
 
-class DebateRequest(BaseModel):
-    query: str = Field(min_length=1)
-    mode: Literal["parallel", "sequential"] = "sequential"
-    agent_ids: list[str] | None = None
-
-
 @app.get("/api/health")
 def health(db: Session = Depends(get_db)) -> dict[str, Any]:
+    from src.image_client import ImageServiceClient
+
     config = Config.from_env()
     client = LLMClient(config)
     return {
@@ -136,6 +168,9 @@ def health(db: Session = Depends(get_db)) -> dict[str, Any]:
         "queue_depth": queue_depth(db),
         "estimated_wait_seconds": estimate_wait_seconds(db, config),
         "llm_slots": config.llm_slots,
+        "image_slots": config.image_slots,
+        "image_profile": config.image_profile,
+        "image_pipeline": ImageServiceClient(config).status(),
         "sso_enabled": config.sso_enabled,
         "auth_required": True,
     }
@@ -186,49 +221,112 @@ def me(user: User = Depends(get_current_user)) -> dict[str, Any]:
     }
 
 
-@app.get("/api/agents")
-def list_agents(_user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
-    return [a.to_dict() for a in store.load_all()]
+# Specialists (src/specialists.py): everyone may read them; only admins change them — they are
+# shared by all users and decide which tools (network_scan) a specialist may run.
+@app.get("/api/specialists")
+def list_specialists(_user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
+    return [s.to_dict() for s in store.load_all()]
 
 
-@app.post("/api/agents")
-def create_agent(
-    payload: AgentPayload, _user: User = Depends(get_current_user)
-) -> dict[str, Any]:
+@app.get("/api/specialists/options")
+def specialist_options(_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """What the edit form offers: the assistant's tools and the knowledge-base collections."""
+    from src.assistant import TOOLS
+
+    return {"tools": [{"name": t.name, "description": t.description.split(". ")[0]} for t in TOOLS],
+            "collections": list(COLLECTIONS)}
+
+
+@app.post("/api/specialists")
+def create_specialist(payload: SpecialistPayload, _user: User = Depends(require_admin)) -> dict[str, Any]:
     try:
-        agent = store.create(payload.model_dump(exclude_none=True))
+        specialist = store.create(payload.model_dump(exclude_none=True))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return agent.to_dict()
+    return specialist.to_dict()
 
 
-@app.put("/api/agents/{agent_id}")
-def update_agent(
-    agent_id: str,
-    payload: AgentUpdatePayload,
-    _user: User = Depends(get_current_user),
+@app.put("/api/specialists/{specialist_id}")
+def update_specialist(
+    specialist_id: str, payload: SpecialistUpdatePayload, _user: User = Depends(require_admin)
 ) -> dict[str, Any]:
     try:
-        agent = store.update(agent_id, payload.model_dump(exclude_none=True))
+        specialist = store.update(specialist_id, payload.model_dump(exclude_none=True))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return agent.to_dict()
+    return specialist.to_dict()
 
 
-@app.delete("/api/agents/{agent_id}")
-def delete_agent(agent_id: str, _user: User = Depends(get_current_user)) -> dict[str, str]:
+@app.delete("/api/specialists/{specialist_id}")
+def delete_specialist(specialist_id: str, _user: User = Depends(require_admin)) -> dict[str, str]:
     try:
-        store.delete(agent_id)
+        store.delete(specialist_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {"status": "deleted", "id": agent_id}
+    return {"status": "deleted", "id": specialist_id}
 
 
-@app.post("/api/agents/reset")
-def reset_agents(_user: User = Depends(require_admin)) -> list[dict[str, Any]]:
-    return [a.to_dict() for a in store.reset_defaults()]
+@app.post("/api/specialists/reset")
+def reset_specialists(_user: User = Depends(require_admin)) -> list[dict[str, Any]]:
+    return [s.to_dict() for s in store.reset_defaults()]
+
+
+# Server logins for the session (src/server_vault.py): kept in this process's memory only — never on
+# disk, in the database, a log or a job. Admins only; each admin sees only the servers they added.
+class ServerLoginPayload(BaseModel):
+    label: str = ""
+    host: str
+    port: int = 22
+    username: str
+    password: str | None = None
+    private_key: str | None = None
+    key_passphrase: str | None = None
+
+
+@app.get("/api/servers")
+def list_servers(user: User = Depends(require_admin)) -> list[dict[str, Any]]:
+    from src import server_vault
+
+    return [s.public() for s in server_vault.list_servers(user.id)]
+
+
+@app.post("/api/servers")
+def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin)) -> dict[str, Any]:
+    """Log in once (learn the server's host key and access level), then keep the login for the session."""
+    from src import linux_audit, server_vault
+
+    try:
+        server_vault.check_host(payload.host)
+        trial = server_vault.ServerLogin(id="trial", label=payload.label or payload.host, host=payload.host.strip(),
+                                         port=payload.port, username=payload.username.strip(),
+                                         password=payload.password or None, private_key=payload.private_key or None,
+                                         key_passphrase=payload.key_passphrase or None)
+        info = linux_audit.test_login(trial)
+        login = server_vault.add(user.id, label=trial.label, host=trial.host, port=trial.port,
+                                 username=trial.username, password=trial.password, private_key=trial.private_key,
+                                 key_passphrase=trial.key_passphrase, host_key=info["host_key"])
+    except (server_vault.VaultError, linux_audit.AuditError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {**login.public(), "os": info["os"], "access": info["access"]}
+
+
+@app.delete("/api/servers/{server_id}")
+def remove_server(server_id: str, user: User = Depends(require_admin)) -> dict[str, str]:
+    from src import server_vault
+
+    if not server_vault.remove(user.id, server_id):
+        raise HTTPException(status_code=404, detail="server not found (the session may have ended)")
+    return {"status": "removed", "id": server_id}
+
+
+@app.delete("/api/servers")
+def forget_servers(user: User = Depends(get_current_user)) -> dict[str, int]:
+    """Logout: forget every server login of this user."""
+    from src import server_vault
+
+    return {"forgotten": server_vault.clear(user.id)}
 
 
 @app.get("/api/models")
@@ -237,9 +335,8 @@ def get_models(
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ) -> list[dict[str, Any]]:
-    if refresh:
-        sync_models_from_ollama(db, Config.from_env())
-        db.commit()
+    sync_models_from_ollama(db, Config.from_env(), probe_details=refresh)
+    db.commit()
     return list_models(db)
 
 
@@ -265,6 +362,9 @@ def patch_model(
         "role": row.role,
         "max_concurrency": row.max_concurrency,
         "enabled": row.enabled,
+        "vision": bool(getattr(row, "vision", False)),
+        "image_gen": bool(getattr(row, "image_gen", False)),
+        "available": bool(getattr(row, "available", True)),
     }
 
 
@@ -282,10 +382,14 @@ def create_job_endpoint(
             query=payload.query,
             mode=payload.mode,
             payload={
-                "execution_mode": payload.execution_mode,
-                "agent_ids": payload.agent_ids,
                 "model": payload.model,
+                "specialist": payload.specialist,
                 "allow_overflow": payload.allow_overflow,
+                "images": [img.model_dump() for img in payload.images],
+                "conversation": [t.model_dump() for t in payload.conversation],
+                "force_intent": payload.force_intent,
+                "image_profile": payload.image_profile,
+                "image_strength": payload.image_strength,
             },
             config=config,
             priority=payload.priority if user.role == "admin" else 100,
@@ -375,6 +479,10 @@ def cancel_job_endpoint(
         db.commit()
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # ends a model call that is writing right now, instead of waiting for the whole answer
+    from src import live
+
+    live.stop(job.id)
     return job_to_dict(job)
 
 
@@ -400,6 +508,43 @@ def job_events_history(
     return {"job": job_to_dict(job), "events": events}
 
 
+@app.get("/api/jobs/{job_id}/attachments/{filename}")
+def job_attachment(
+    job_id: str,
+    filename: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> FileResponse:
+    """Download an image or generated document for this job."""
+    job = get_job(db, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if user.role != "admin" and job.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    config = Config.from_env()
+    payload = json.loads(job.payload_json or "{}")
+    attachments = payload.get("attachments") if isinstance(payload.get("attachments"), list) else []
+    match = next((a for a in attachments if a.get("filename") == filename), None)
+    mime = "application/octet-stream"
+    try:
+        if match and match.get("relpath"):
+            # Images use attachments.image_path; docs may use files/ via resolve_job_file.
+            rel = str(match["relpath"])
+            mime = str(match.get("mime") or mime)
+            try:
+                path = image_path(config, rel)
+            except (ValueError, FileNotFoundError):
+                path = resolve_job_file(config, job_id, filename)
+        else:
+            path = resolve_job_file(config, job_id, filename)
+            from src.artifacts import mime_for
+
+            mime = mime_for(filename)
+    except (ValueError, FileNotFoundError, KeyError) as exc:
+        raise HTTPException(status_code=404, detail="Attachment missing") from exc
+    return FileResponse(path, media_type=mime, filename=filename)
+
+
 @app.get("/api/jobs/{job_id}/events")
 async def job_events_stream(
     job_id: str,
@@ -413,12 +558,18 @@ async def job_events_stream(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     async def event_generator():
+        from src import live
         from src.db import session_scope
 
         last_seq = 0
         terminal = {"succeeded", "failed", "cancelled"}
         idle_rounds = 0
+        sent_live: dict[str, str] = {}      # agent_id → text already streamed
+        finished: set[str] = set()          # agents whose final answer was sent: no more live text
         while True:
+            # read the live text BEFORE the stored events: text cleared just before a final event
+            # then cannot be sent after it
+            live_now = live.snapshot(job_id)
             payloads: list[tuple[int, str]] = []
             status = "queued"
             with session_scope() as session:
@@ -432,7 +583,16 @@ async def job_events_stream(
                 payloads = [(row.seq, row.event_json) for row in rows]
             for seq, event_json in payloads:
                 last_seq = seq
+                if '"agent_done"' in event_json:
+                    try:
+                        finished.add(str(json.loads(event_json).get("agent_id") or ""))
+                    except json.JSONDecodeError:
+                        pass
                 yield f"data: {event_json}\n\n"
+            for agent_id, text in live_now.items():
+                if agent_id not in finished and sent_live.get(agent_id) != text:
+                    sent_live[agent_id] = text
+                    yield f"data: {json.dumps({'type': 'agent_stream', 'agent_id': agent_id, 'text': text})}\n\n"
             if status in terminal:
                 # Keep draining until events stop arriving (avoid cutting off last msgs).
                 idle_rounds = idle_rounds + 1 if not payloads else 0
@@ -440,7 +600,10 @@ async def job_events_stream(
                     break
             else:
                 idle_rounds = 0
-            await asyncio.sleep(0.35)
+            # Wake early when append_event notifies; fall back to short poll.
+            from src.job_events import wait_job
+
+            await asyncio.to_thread(wait_job, job_id, 0.35)
 
     return StreamingResponse(
         event_generator(),
@@ -451,33 +614,6 @@ async def job_events_stream(
             "X-Accel-Buffering": "no",
         },
     )
-
-
-@app.post("/api/debate")
-def debate_compat(
-    payload: DebateRequest,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """Backward-compatible: enqueue a debate job instead of inline streaming."""
-    try:
-        job = create_job(
-            db,
-            user=user,
-            query=payload.query,
-            mode="debate",
-            payload={
-                "execution_mode": payload.mode,
-                "agent_ids": payload.agent_ids,
-                "allow_overflow": True,
-            },
-            config=Config.from_env(),
-        )
-        db.commit()
-        db.refresh(job)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return job_to_dict(job)
 
 
 @app.get("/")

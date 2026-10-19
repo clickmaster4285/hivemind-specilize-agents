@@ -1,0 +1,27 @@
+# SearXNG for MulteAgent: private web search, used only when the user asks to search the web.
+# Runs in Docker on 127.0.0.1:8888 (never on the LAN). The secret key comes from .env (SEARXNG_SECRET).
+use_default_settings: true
+
+general:
+  instance_name: "MulteAgent search"
+
+server:
+  # only MulteAgent on this computer uses it: no bot limiter, no public instance features
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: "GET"
+
+engines:
+  # Tor-network engines need a Tor proxy we do not run: they only fill the log with errors
+  - name: ahmia
+    disabled: true
+  - name: torch
+    disabled: true
+
+search:
+  safe_search: 1          # moderate
+  # json is what MulteAgent reads; html stays for checking results in a browser
+  formats:
+    - html
+    - json
