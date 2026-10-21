@@ -169,6 +169,15 @@ function attachToolResult(prev: FeedItem[], event: JobEvent): FeedItem[] {
   return upsertStatus(prev, isError ? "Tool issue" : "Tool", `${tool} finished`, isError);
 }
 
+/** After the user clicks Run / Cancel: mark the confirm card so its buttons disable. */
+export function markConfirmAnswered(prev: FeedItem[], commandId: string, answered: "run" | "cancel"): FeedItem[] {
+  return prev.map((item) =>
+    item.confirm && item.confirm.commandId === commandId
+      ? { ...item, confirm: { ...item.confirm, answered } }
+      : item,
+  );
+}
+
 /** Pure reducer: apply one backend event onto a feed snapshot. */
 export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
   const type = String(event.type || "");
@@ -204,6 +213,23 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
   }
   if (type === "tool_chosen") {
     return upsertStatus(prev, "Tool", `${String(event.tool || "tool").replace(/_/g, " ")} …`);
+  }
+  if (type === "confirm_command") {
+    // operate_server is waiting for the user to approve this command
+    return [
+      ...prev.filter((item) => item.id !== STATUS_ID),
+      {
+        id: uid(),
+        kind: "system",
+        title: "Approve command",
+        body: "",
+        confirm: {
+          commandId: String(event.command_id || ""),
+          command: String(event.command || ""),
+          server: String(event.server || ""),
+        },
+      },
+    ];
   }
   if (type === "job_started" || type === "session_start" || type === "agentic_start") {
     return upsertStatus(prev, "Working", "Running…");

@@ -85,3 +85,22 @@ class ModelRecord(Base):
     image_gen: Mapped[bool] = mapped_column(Boolean, default=False)
     available: Mapped[bool] = mapped_column(Boolean, default=True)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class CommandLog(Base):
+    """Audit trail of commands the agent ran on a server (SERVER_ACCESS_DECISION.md §8). One row per
+    command that changed, or would have changed, a server — the host and command are kept, never the
+    password. Read-only diagnose commands are not logged here (they change nothing)."""
+
+    __tablename__ = "command_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    job_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    server_label: Mapped[str] = mapped_column(String(80))
+    host: Mapped[str] = mapped_column(String(255))
+    command: Mapped[str] = mapped_column(Text)
+    decision: Mapped[str] = mapped_column(String(20))   # ran | confirmed | cancelled | refused | auto
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    output: Mapped[str | None] = mapped_column(Text, nullable=True)   # first part of the output
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

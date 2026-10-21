@@ -66,7 +66,11 @@ function normalizeMarkdown(raw: string): string {
 
 export default function MarkdownBody({ content, pending }: Props) {
   if (pending) {
-    return <div className="bubble-body pending-text">{content}</div>;
+    return (
+      <div className="whitespace-pre-wrap text-[0.74rem] leading-[1.35] text-[var(--muted)] [font-family:var(--font-mono)]">
+        {content}
+      </div>
+    );
   }
 
   return (

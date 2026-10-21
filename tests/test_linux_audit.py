@@ -44,8 +44,14 @@ def test_logins_expire_and_logout_forgets_them(monkeypatch):
     assert vault.clear(1) == 1 and vault.list_servers(1) == []
 
 
-@pytest.mark.parametrize("host", ["8.8.8.8", "", "1.1.1.1"])
-def test_only_private_servers(host):
+@pytest.mark.parametrize("host", ["192.168.1.9", "8.8.8.8", "203.0.113.10"])
+def test_public_and_private_servers_are_allowed(host):
+    # SSH logins are not limited to the LAN — you own the server and have its password (2026-10-21)
+    assert vault.check_host(host) == host
+
+
+@pytest.mark.parametrize("host", ["", "   ", "0.0.0.0", "no such host that resolves.invalid"])
+def test_invalid_server_addresses_are_refused(host):
     with pytest.raises(vault.VaultError):
         vault.check_host(host)
 
@@ -220,10 +226,13 @@ def test_the_server_named_in_the_message_is_used(monkeypatch):
     assert "Which server" in out                                         # two added, none named
 
 
-def test_admin_only_in_the_worker():
+def test_wired_and_credential_gated_not_admin_only():
+    # decided 2026-10-21 (SERVER_ACCESS_DECISION.md §8): server tools are gated by who holds the login,
+    # not by a MulteAgent admin role — so server_audit is NOT in ADMIN_TOOLS
     from src import worker
 
-    assert "server_audit" in worker.ADMIN_TOOLS and worker.DIRECT_TOOLS["server_audit"] is la.run_server_audit
+    assert worker.DIRECT_TOOLS["server_audit"] is la.run_server_audit
+    assert "server_audit" not in worker.ADMIN_TOOLS
 
 
 # ── the API ──────────────────────────────────────────────────────────────
@@ -249,6 +258,6 @@ def test_api_adds_lists_and_forgets_without_returning_secrets(api):
     assert added.json()["host_key"] == "ssh-ed25519 SHA256:abc" and added.json()["os"] == "Ubuntu 22.04"
     listed = api.get("/api/servers")
     assert [s["label"] for s in listed.json()] == ["web01"] and SECRET not in listed.text
-    assert api.post("/api/servers", json={"host": "8.8.8.8", "username": "u", "password": "x"}).status_code == 400
+    assert api.post("/api/servers", json={"host": "0.0.0.0", "username": "u", "password": "x"}).status_code == 400
     assert api.delete("/api/servers").json() == {"forgotten": 1}
     assert api.get("/api/servers").json() == []

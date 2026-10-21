@@ -315,6 +315,20 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*
   pinned in the chat bar. Tool choice with specialists **27/27** after putting the persona *before* the tool
   rules (after them, the persona made the model explain instead of acting: 25/27).
 
+### 40. IT specialist gets real tools: security check, ping, server audit/diagnose/operate — 2026-10-19 → 21
+- **security_check** (`src/security_scan.py`): ports + service versions + HTTPS certs + this PC's firewall/RDP/SMBv1,
+  risk-flagged; admin-only. **ping_host** (`src/host_check.py`): is one device up — fixes "the model answered
+  'I cannot ping'"; catches public-IP typos (192.16.→192.168). Both private-range only, read-only.
+- **server_audit / diagnose_server / operate_server** (`src/linux_audit.py`, `src/server_ops.py`): log in to a
+  Linux server over SSH. Logins are typed in Settings → Servers and kept **in the API's memory only**
+  (`src/server_vault.py`) — never in `.env`, the chat, the DB or the model; gone at logout / restart / 8 h.
+  Access is gated by who holds the credentials, not an admin role (SERVER_ACCESS_DECISION.md §8).
+- **Safety for changes (operate):** a deterministic allow-list classifier decides read-only vs change (not the
+  model); a per-server trust mode (audit / confirm / trusted); a Run/Cancel confirm card for each change
+  (`live.wait_confirm` + `/api/jobs/{id}/confirm`); a destructive-command deny-list that holds even in trusted
+  mode; an audit log (`app.command_log`). Completes P0–P2 of `doc/requirment.md`. **Live-test pending** (the user
+  runs the first real server session). ~130 new tests.
+
 ---
 
 ## Open issues

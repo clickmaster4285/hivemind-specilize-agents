@@ -7,6 +7,7 @@ import type {
   RunMode,
   ServerInfo,
   ServerLoginInput,
+  ServerMode,
   Specialist,
   SpecialistInput,
   SpecialistOptions,
@@ -176,9 +177,24 @@ export async function removeServer(id: string): Promise<void> {
   await request(`/api/servers/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+export async function setServerMode(id: string, mode: ServerMode): Promise<ServerInfo> {
+  return request(`/api/servers/${encodeURIComponent(id)}/mode`, {
+    method: "PUT",
+    body: JSON.stringify({ mode }),
+  });
+}
+
 /** Logout: the API forgets every server login of this user. */
 export async function forgetServers(): Promise<void> {
   await request("/api/servers", { method: "DELETE" });
+}
+
+/** The user clicked Run / Cancel on a command the agent asked to run (operate_server). */
+export async function confirmCommand(jobId: string, commandId: string, approved: boolean): Promise<void> {
+  await request(`/api/jobs/${encodeURIComponent(jobId)}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ command_id: commandId, approved }),
+  });
 }
 
 export async function listModels(refresh = false): Promise<ModelInfo[]> {

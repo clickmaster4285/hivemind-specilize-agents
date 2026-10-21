@@ -14,6 +14,10 @@ type Props = {
 
 const noSubscribe = () => () => undefined;
 
+const field =
+  "w-full rounded-[0.55rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.55rem] font-[inherit] text-[var(--text)] outline-none";
+const labelCol = "flex flex-col gap-1 text-[0.82rem] text-[var(--muted)]";
+
 /** The sign-in card shown when nobody is signed in. */
 export default function AuthScreen({ health, healthError, error, onSignIn }: Props) {
   const [username, setUsername] = useState("admin");
@@ -28,25 +32,38 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
   }
 
   return (
-    <div className="app-shell auth-shell">
-      <form className="auth-card" onSubmit={submit}>
-        <div className="brand">
+    <div className="grid min-h-screen place-items-center p-4">
+      <form
+        className="flex w-full max-w-[420px] flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-5 shadow-[var(--shadow)]"
+        onSubmit={submit}
+      >
+        <div className="flex items-center gap-[0.85rem]">
           <span className="brand-mark" aria-hidden />
           <div>
-            <h1>MulteAgent</h1>
-            <p>Sign in to continue</p>
+            <h1 className="m-0 text-[1.65rem] leading-none tracking-[-0.03em] [font-family:var(--font-display)]">
+              MulteAgent
+            </h1>
+            <p className="mt-[0.2rem] text-[0.85rem] text-[var(--muted)]">Sign in to continue</p>
           </div>
         </div>
-        <p className="hint">
+        <p className="m-0 text-[0.8rem] leading-[1.45] text-[var(--muted)]">
           Testing login: <strong>admin / admin123</strong>
         </p>
-        <label>
+        <label className={labelCol}>
           Username
-          <input name="username" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+          <input
+            className={field}
+            name="username"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
         </label>
-        <label>
+        <label className={labelCol}>
           Password
           <input
+            className={field}
             type="password"
             name="password"
             autoComplete="current-password"
@@ -55,7 +72,11 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
             required
           />
         </label>
-        {error ? <p className="banner">{error}</p> : null}
+        {error ? (
+          <p className="m-0 rounded-[0.7rem] border border-[color-mix(in_srgb,var(--danger)_40%,var(--line))] bg-[rgba(214,90,74,0.12)] px-[0.9rem] py-[0.7rem] text-[#ffb4aa]">
+            {error}
+          </p>
+        ) : null}
         <div className={`status ${health?.llm_reachable ? "ok" : "bad"}`}>
           <span className="dot" />
           <span>

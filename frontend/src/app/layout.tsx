@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AppProvider } from "@/components/app/AppProvider";
+import AppShell from "@/components/app/AppShell";
 
 export const metadata: Metadata = {
   title: "MulteAgent — Control Deck",
@@ -13,9 +15,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-      </head>
-      <body>{children}</body>
+      <head></head>
+      <body>
+        {/* The provider + shell keep the sidebar and navbar mounted; only `children` (the page) changes. */}
+        <AppProvider>
+          <AppShell>{children}</AppShell>
+        </AppProvider>
+      </body>
     </html>
   );
 }

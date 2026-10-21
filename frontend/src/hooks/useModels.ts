@@ -19,3 +19,5 @@ export function useModels() {
 
   return { models, override, setOverride, refresh };
 }
+
+export type ModelsApi = ReturnType<typeof useModels>;

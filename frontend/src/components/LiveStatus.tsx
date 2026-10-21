@@ -15,10 +15,10 @@ export default function LiveStatus({ text, startedAt }: Props) {
 
   const seconds = startedAt ? Math.max(0, Math.round((now - startedAt) / 1000)) : null;
   return (
-    <p className="live-status" role="status" aria-live="polite">
-      <span className="live-dot" aria-hidden />
+    <p className="mt-[0.35rem] flex items-center gap-[0.45rem] text-[0.8rem] text-[var(--muted)]" role="status" aria-live="polite">
+      <span className="h-[0.5rem] w-[0.5rem] rounded-full bg-[var(--copper)]" aria-hidden />
       {text || "Working…"}
-      {seconds !== null ? <span className="live-time"> · {seconds} s</span> : null}
+      {seconds !== null ? <span className="[font-variant-numeric:tabular-nums]"> · {seconds} s</span> : null}
     </p>
   );
 }

@@ -283,6 +283,11 @@ class ServerLoginPayload(BaseModel):
     password: str | None = None
     private_key: str | None = None
     key_passphrase: str | None = None
+    mode: str = "audit"            # audit | confirm | trusted (server_vault.MODES)
+
+
+class ServerModePayload(BaseModel):
+    mode: str
 
 
 @app.get("/api/servers")
@@ -306,10 +311,21 @@ def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin))
         info = linux_audit.test_login(trial)
         login = server_vault.add(user.id, label=trial.label, host=trial.host, port=trial.port,
                                  username=trial.username, password=trial.password, private_key=trial.private_key,
-                                 key_passphrase=trial.key_passphrase, host_key=info["host_key"])
+                                 key_passphrase=trial.key_passphrase, host_key=info["host_key"], mode=payload.mode)
     except (server_vault.VaultError, linux_audit.AuditError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {**login.public(), "os": info["os"], "access": info["access"]}
+
+
+@app.put("/api/servers/{server_id}/mode")
+def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Depends(require_admin)) -> dict[str, Any]:
+    """Change a server's trust mode (audit / confirm / trusted)."""
+    from src import server_vault
+
+    try:
+        return server_vault.set_mode(user.id, server_id, payload.mode).public()
+    except server_vault.VaultError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.delete("/api/servers/{server_id}")
@@ -484,6 +500,28 @@ def cancel_job_endpoint(
 
     live.stop(job.id)
     return job_to_dict(job)
+
+
+class ConfirmPayload(BaseModel):
+    command_id: str
+    approved: bool
+
+
+@app.post("/api/jobs/{job_id}/confirm")
+def confirm_command_endpoint(
+    job_id: str,
+    payload: ConfirmPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The user clicked Run / Cancel on a command the agent asked to run (operate_server)."""
+    job = get_job(db, job_id)
+    if job is None or (user.role != "admin" and job.user_id != user.id):
+        raise HTTPException(status_code=404, detail="Job not found")
+    from src import live
+
+    found = live.answer_confirm(job_id, payload.command_id, payload.approved)
+    return {"ok": found, "approved": payload.approved}
 
 
 @app.get("/api/jobs/{job_id}/history")

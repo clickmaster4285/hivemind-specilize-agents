@@ -38,9 +38,10 @@ EVAL_FILE = ROOT / "data" / "specialists" / "eval.yaml"
 COLLECTIONS = ("it", "development", "marketing", "general")      # brain.collections slugs
 GENERAL = "general"                                                # the picker's "no specialist"
 # tools that probe or act on machines, not only read text — the IT specialist only
-ACTION_TOOLS = frozenset({"network_scan", "security_check", "server_audit"})
+ACTION_TOOLS = frozenset({"network_scan", "security_check", "server_audit", "diagnose_server",
+                          "operate_server", "ping_host"})
 # tools added after agents/specialists.json files already existed (files saved before "seen_tools")
-ADDED_LATER = frozenset({"security_check", "server_audit"})
+ADDED_LATER = frozenset({"security_check", "server_audit", "diagnose_server", "operate_server", "ping_host"})
 PICK_MAX_TOKENS = 6
 
 PICK_SYSTEM = """Pick the specialist for the user's message. Specialists:
@@ -121,6 +122,15 @@ def default_specialists() -> list[Specialist]:
                 "- Check before you change: suggest read-only checks (status, logs, test commands) first. For a "
                 "command that changes or deletes something, say what it changes and how to undo it.\n"
                 "- Name security risks plainly (open ports, weak passwords, missing patches) and the safe default.\n"
+                "- You CAN log in to Linux servers over SSH and run commands on them — but only servers the user "
+                "has added in Settings → Servers, where the login is kept for this session only. Never ask for or "
+                "accept a password or key in the chat; if the user sends one, tell them to add the server in "
+                "Settings instead, then you can connect. On an added server you can run read-only checks "
+                "(server_audit), diagnose problems (diagnose_server), and make changes (operate_server) — changes "
+                "follow the server's mode (ask-first or trusted).\n"
+                "- The credential-free tools (ping_host, security_check, network_scan) only reach the local / "
+                "private network (10.x, 172.16–31.x, 192.168.x). For a public server such as a VPS, do not offer "
+                "those — have the user add its login in Settings and use the SSH audit instead.\n"
                 "- Never help get into systems or accounts the user does not own or manage."
             ),
             tools=tool_names(), collections=["it", "general"],

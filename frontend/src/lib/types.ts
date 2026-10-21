@@ -15,6 +15,9 @@ export type Specialist = {
 
 export type SpecialistInput = Omit<Specialist, "id" | "sort_order">;
 
+/** What the agent may change on a server (src/server_vault.py MODES). */
+export type ServerMode = "audit" | "confirm" | "trusted";
+
 /** A Linux server login kept in the API's memory for this session (src/server_vault.py) — never the secret. */
 export type ServerInfo = {
   id: string;
@@ -24,6 +27,7 @@ export type ServerInfo = {
   username: string;
   auth: "password" | "key";
   host_key: string;
+  mode: ServerMode;
   expires_at: number;
   os?: string;
   access?: string;
@@ -37,6 +41,7 @@ export type ServerLoginInput = {
   password?: string;
   private_key?: string;
   key_passphrase?: string;
+  mode: ServerMode;
 };
 
 export type SpecialistOptions = {
@@ -168,6 +173,8 @@ export type FeedItem = {
   grounded?: boolean;
   sources?: BrainSource[];
   verification?: AnswerVerification;
+  /** operate_server: a command waiting for the user to approve or cancel. */
+  confirm?: { commandId: string; command: string; server: string; answered?: "run" | "cancel" };
   /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */
   startedAt?: number;
   statusText?: string;

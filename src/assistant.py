@@ -63,6 +63,12 @@ TOOLS: tuple[Tool, ...] = (
     Tool("network_scan", "network_scan",
          "Actually scan the local private network now and list the devices (IP, name, MAC, open ports) as a table.",
          {"subnet": "e.g. 192.168.1.0/24; empty = this computer's network"}, (), lambda c: c.network_scan_enabled),
+    Tool("ping_host", "host_check",
+         "Actually ping ONE device now and check it is up / running / online: replies and response time, "
+         "its name, MAC address and manufacturer, open common ports. Use for 'ping 192.168.1.20', 'is the "
+         "printer up', 'check 10.0.0.5 is running'. Never answer 'I cannot ping' — call this.",
+         {"host": "the device's IP address (exactly as the user wrote it) or name"}, ("host",),
+         lambda c: c.network_scan_enabled),
     Tool("security_check", "security_check",
          "Actually check security now: open ports and the services/versions behind them, HTTPS certificates, "
          "risky services (RDP, Telnet, databases, SMB), and for this PC its Windows Firewall, Remote Desktop and "
@@ -77,6 +83,23 @@ TOOLS: tuple[Tool, ...] = (
          "web01', 'is my Linux server hardened'.",
          {"server": "the server's name or IP as the user added it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled),
+    Tool("diagnose_server", "server_diagnose",
+         "Log in to one of the user's Linux servers (Settings → Servers) and INVESTIGATE a problem read-only: "
+         "the agent runs its own read-only commands (service status, logs, disk, config, processes), reads the "
+         "output and keeps going until it can explain the issue, then reports the cause and the fix. Use for "
+         "'log in to web01 and check why nginx is down', 'why is the server slow', 'is the disk full on db01'. "
+         "It cannot change anything (read-only); applying a fix is a separate confirmed step.",
+         {"server": "the server's name or IP as the user added it; empty = the only one added"},
+         (), lambda c: c.security_scan_enabled),
+    Tool("operate_server", "server_operate",
+         "Log in to one of the user's Linux servers (Settings → Servers) and DO WORK that may change it: "
+         "run a given command or file, restart or install a service, edit config, apply a fix. Each changing "
+         "command is gated by the server's mode (read-only, ask-first, or trusted) — truly destructive commands "
+         "are always blocked, and every change is logged. Use for 'run deploy.sh on web01', 'restart nginx on "
+         "web01', 'install htop on db01', 'apply the fix'.",
+         {"server": "the server's name or IP as the user added it; empty = the only one added",
+          "task": "what to do on the server (a command, a file to run, or the change to make)"}, ("task",),
+         lambda c: c.security_scan_enabled),
     Tool("generate_image", "image_gen", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
          {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None),
     Tool("draw_diagram", "diagram",

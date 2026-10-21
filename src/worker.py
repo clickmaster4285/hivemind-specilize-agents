@@ -16,6 +16,8 @@ from src.diagram_gen import run_diagram
 from src.net_scan import run_network_scan
 from src.security_scan import run_security_check
 from src.linux_audit import run_server_audit
+from src.server_ops import run_server_diagnose, run_server_operate
+from src.host_check import run_host_check
 from src.assistant import decide
 from src.specialists import resolve as resolve_specialist
 from src.weather import run_weather
@@ -32,9 +34,13 @@ _stop = threading.Event()
 
 # tools that run on their own: (query, job_id, config, on_progress, conversation, **tool_args) -> (output, errors, s)
 DIRECT_TOOLS = {"network_scan": run_network_scan, "security_check": run_security_check,
-                "server_audit": run_server_audit, "weather": run_weather, "diagram": run_diagram}
-# tools only admins may run (doc/SECURITY_TOOLS_DECISION.md §2): they probe or log in to other machines
-ADMIN_TOOLS = frozenset({"security_check", "server_audit"})
+                "server_audit": run_server_audit, "server_diagnose": run_server_diagnose,
+                "server_operate": run_server_operate, "host_check": run_host_check,
+                "weather": run_weather, "diagram": run_diagram}
+# tools only admins may run (doc/SECURITY_TOOLS_DECISION.md §2): they probe the local network in depth.
+# server_audit / server_diagnose need a stored server login, so they are already gated by who holds the
+# credentials (SERVER_ACCESS_DECISION.md §8) — not listed here.
+ADMIN_TOOLS = frozenset({"security_check"})
 
 
 def _is_admin(config: Config, user_id: int | None) -> bool:

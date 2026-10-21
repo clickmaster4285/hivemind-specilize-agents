@@ -19,6 +19,8 @@ _lock = threading.Lock()
 _text: dict[str, dict[str, str]] = {}           # job_id → agent_id → text so far
 _last_notify: dict[str, float] = {}
 _stopped: set[str] = set()
+# command confirmations: a running job asks "run this?" and blocks until the browser answers or it times out
+_confirm: dict[tuple[str, str], dict] = {}      # (job_id, command_id) → {"event", "approved"}
 
 
 def set_text(job_id: str | None, agent_id: str, text: str) -> None:
@@ -66,3 +68,34 @@ def clear(job_id: str) -> None:
         _text.pop(job_id, None)
         _last_notify.pop(job_id, None)
         _stopped.discard(job_id)
+        for key in [k for k in _confirm if k[0] == job_id]:
+            _confirm[key]["event"].set()            # release any waiter so the worker thread can exit
+            del _confirm[key]
+
+
+# ── command confirmation (operate_server: a change needs the user's click) ──
+def wait_confirm(job_id: str | None, command_id: str, timeout: float) -> bool | None:
+    """Block until the browser approves/rejects this command, or timeout. True=run, False=cancel,
+    None=timed out or the job was stopped. Only works with the in-process worker (shared memory)."""
+    if not job_id:
+        return None
+    event = threading.Event()
+    with _lock:
+        _confirm[(job_id, command_id)] = {"event": event, "approved": None}
+    answered = event.wait(timeout)
+    with _lock:
+        entry = _confirm.pop((job_id, command_id), None)
+    if not answered or entry is None or is_stopped(job_id):
+        return None
+    return bool(entry["approved"])
+
+
+def answer_confirm(job_id: str, command_id: str, approved: bool) -> bool:
+    """From the confirm endpoint. True if a waiter was found and released."""
+    with _lock:
+        entry = _confirm.get((job_id, command_id))
+        if entry is None:
+            return False
+        entry["approved"] = approved
+        entry["event"].set()
+    return True

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { addServer, forgetServers, listServers, removeServer } from "@/lib/api";
-import type { ServerInfo, ServerLoginInput } from "@/lib/types";
+import { addServer, forgetServers, listServers, removeServer, setServerMode } from "@/lib/api";
+import type { ServerInfo, ServerLoginInput, ServerMode } from "@/lib/types";
 
 /**
  * Linux server logins kept in the API's memory for this session only (src/server_vault.py).
@@ -47,13 +47,21 @@ export function useServers(active: boolean) {
     [load],
   );
 
+  const setMode = useCallback(
+    async (id: string, mode: ServerMode) => {
+      await setServerMode(id, mode).catch(() => undefined);
+      await load();
+    },
+    [load],
+  );
+
   /** Logout: the API forgets them; call before the login token is dropped. */
   const forget = useCallback(() => {
     void forgetServers().catch(() => undefined);
     setServers([]);
   }, []);
 
-  return { servers, add, remove, forget };
+  return { servers, add, remove, setMode, forget };
 }
 
 export type ServersApi = ReturnType<typeof useServers>;

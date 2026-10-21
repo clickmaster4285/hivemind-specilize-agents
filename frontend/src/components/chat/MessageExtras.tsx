@@ -71,12 +71,12 @@ export function ArtifactChips({ item, fallbackJobId }: ItemProps) {
   }
 
   return (
-    <div className="artifact-chips">
+    <div className="mb-[0.45rem] flex flex-wrap gap-[0.35rem]">
       {arts.map((art) => (
         <button
           key={art.filename}
           type="button"
-          className="artifact-chip"
+          className="cursor-pointer rounded-full border border-[color-mix(in_srgb,var(--teal)_45%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_12%,var(--panel-2))] px-[0.65rem] py-[0.25rem] text-[0.75rem] text-[var(--text)] hover:brightness-[1.08]"
           title={`Download ${art.filename}`}
           onClick={() => void download(art.filename)}
         >
