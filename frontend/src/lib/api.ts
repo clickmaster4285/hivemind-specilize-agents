@@ -96,10 +96,15 @@ function networkHint(err: unknown): string {
   return msg;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, opts?: { timeoutMs?: number }): Promise<T> {
+  // A slow request (e.g. an SSH test login to an unreachable server) is aborted with a clear message
+  // instead of hanging until the browser gives up and reports a bare "Failed to fetch".
+  const controller = opts?.timeoutMs ? new AbortController() : null;
+  const timer = controller ? window.setTimeout(() => controller.abort(), opts!.timeoutMs) : null;
   try {
     const response = await fetch(apiUrl(path), {
       ...init,
+      signal: controller?.signal,
       headers: { ...authHeaders(!(init?.body instanceof FormData)), ...(init?.headers || {}) },
     });
     if (!response.ok) {
@@ -113,7 +118,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (response.status === 204) return undefined as T;
     return response.json();
   } catch (err) {
+    if (controller?.signal.aborted) {
+      throw new Error("the server did not answer in time — check the address, that port is open, and the login");
+    }
     throw new Error(networkHint(err));
+  } finally {
+    if (timer) window.clearTimeout(timer);
   }
 }
 
@@ -170,7 +180,8 @@ export async function listServers(): Promise<ServerInfo[]> {
 }
 
 export async function addServer(payload: ServerLoginInput): Promise<ServerInfo> {
-  return request("/api/servers", { method: "POST", body: JSON.stringify(payload) });
+  // the API logs in over SSH to test the credentials; bound the wait so a dead host fails clearly
+  return request("/api/servers", { method: "POST", body: JSON.stringify(payload) }, { timeoutMs: 30000 });
 }
 
 export async function removeServer(id: string): Promise<void> {

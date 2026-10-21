@@ -93,19 +93,25 @@ TOOLS: tuple[Tool, ...] = (
          (), lambda c: c.security_scan_enabled),
     Tool("operate_server", "server_operate",
          "Log in to one of the user's Linux servers (Settings → Servers) and DO WORK that may change it: "
-         "run a given command or file, restart or install a service, edit config, apply a fix. Each changing "
-         "command is gated by the server's mode (read-only, ask-first, or trusted) — truly destructive commands "
-         "are always blocked, and every change is logged. Use for 'run deploy.sh on web01', 'restart nginx on "
-         "web01', 'install htop on db01', 'apply the fix'.",
+         "run a command or script, CREATE or edit files and folders, WRITE content into a file on the server, "
+         "restart or install a service, edit config, apply a fix. Each changing command is gated by the server's "
+         "mode (read-only, ask-first, or trusted) — truly destructive commands are always blocked, and every "
+         "change is logged. Use whenever the user wants something done ON a server, e.g. 'create a folder in "
+         "/var/www on web01', 'create index.html and write Hello World in that folder', 'run deploy.sh', "
+         "'restart nginx', 'install htop'. When the user is already working on a server, keep using this for "
+         "follow-up file and command tasks — do NOT use create_document, which only makes a local download.",
          {"server": "the server's name or IP as the user added it; empty = the only one added",
-          "task": "what to do on the server (a command, a file to run, or the change to make)"}, ("task",),
+          "task": "what to do on the server (a command, a file to create/run, or the change to make)"}, ("task",),
          lambda c: c.security_scan_enabled),
     Tool("generate_image", "image_gen", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
          {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None),
     Tool("draw_diagram", "diagram",
          "Draw or change a diagram with boxes, arrows and exact labels: architecture, flowchart, network schematic, "
          "sequence, hierarchy, org chart.", {"request": "what the diagram shows"}, ("request",)),
-    Tool("create_document", "doc_gen", "Create a downloadable Word, PDF, PowerPoint or Excel file.",
+    Tool("create_document", "doc_gen",
+         "Create a downloadable Word, PDF, PowerPoint or Excel file for the user to save on their own computer. "
+         "This is NOT for creating files on a server — to create or write a file on a Linux server, use "
+         "operate_server instead.",
          {"format": "docx, pdf, pptx or xlsx", "request": "what the file should contain"}, ("format", "request")),
     Tool("about_multeagent", "about",
          "Live facts about this assistant: what is in its knowledge base ('your brain', your data, your sources), "
@@ -121,6 +127,9 @@ You do NOT know by heart: what your knowledge base contains, today's facts (weat
 or the local network. For those, call the tool. Questions in the knowledge base's areas go to
 search_knowledge_base so the answer can cite sources. Use a tool also for an action (network scan),
 a file, a picture or a diagram. Otherwise answer directly.
+Never say you ran a command, created or changed a file, or did anything on a server, computer or network
+unless a tool actually did it and returned a result. If you do not have the tool for what is asked, say so
+plainly and what the user should do — do not pretend to have done it or invent command output.
 Call at most one tool. When you answer directly: follow the user's intent (greeting → short and warm,
 story → write it), reply in the user's language (English or Hinglish), never put images or image links
 in the answer, and never output TOOL lines or XML tags."""

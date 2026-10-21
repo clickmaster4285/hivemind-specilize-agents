@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
@@ -75,6 +76,8 @@ async def lifespan(_app: FastAPI):
         threading.Thread(target=ImageServiceClient(config).warm, name="image-service-warm", daemon=True).start()
     yield
 
+
+logger = logging.getLogger("multeagent.web")
 
 app = FastAPI(title="MulteAgent API", version="0.4.0", lifespan=lifespan)
 app.include_router(brain_router)
@@ -314,6 +317,9 @@ def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin))
                                  key_passphrase=trial.key_passphrase, host_key=info["host_key"], mode=payload.mode)
     except (server_vault.VaultError, linux_audit.AuditError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # never hang or 500: a test login can fail in many ways — say what, cleanly
+        logger.exception("add_server failed for %s@%s:%s", payload.username, payload.host, payload.port)
+        raise HTTPException(status_code=400, detail=f"could not add the server: {type(exc).__name__}: {exc}") from exc
     return {**login.public(), "os": info["os"], "access": info["access"]}
 
 
@@ -665,6 +671,8 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 def main() -> None:
     import uvicorn
 
+    # Show our own INFO logs (e.g. SSH connect timing) in the console, not just uvicorn's.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = Config.from_env()
     uvicorn.run("web.server:app", host=config.api_host, port=config.api_port, reload=False)
 

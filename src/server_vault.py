@@ -122,15 +122,22 @@ def list_servers(user_id: int) -> list[ServerLogin]:
 
 
 def find(user_id: int, name: str | None) -> ServerLogin | None:
-    """By id, label or address; with no name and exactly one server, that one."""
+    """By id, label or address. With exactly one server in the session it is unambiguous, so that one is
+    returned whatever the name says (handles a typo like 'pk sever', or no name at all)."""
     servers = list_servers(user_id)
-    if not (name or "").strip():
-        return servers[0] if len(servers) == 1 else None
-    wanted = name.strip().lower()
+    if not servers:
+        return None
+    if len(servers) == 1:
+        return servers[0]
+    wanted = (name or "").strip().lower()
+    if not wanted:
+        return None
     for s in servers:
         if wanted in (s.id, s.label.lower(), s.host.lower()):
             return s
-    return next((s for s in servers if wanted in s.label.lower()), None)
+    # looser: the label or the address appears somewhere in what the user said ("pk server (31.97.75.233)")
+    return next((s for s in servers
+                 if wanted in s.label.lower() or s.label.lower() in wanted or s.host.lower() in wanted), None)
 
 
 def set_mode(user_id: int, server_id: str, mode: str) -> ServerLogin:

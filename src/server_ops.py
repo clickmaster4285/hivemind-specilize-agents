@@ -212,14 +212,36 @@ class RemoteSession:
     """A logged-in SSH connection. `run` enforces read-only; `execute` runs anything (used after approval)."""
 
     def __init__(self, login: ServerLogin):
+        self.login = login
         self.client, _ = connect(login)
         self.shell = Shell(self.client, password=login.password)
         self.shell.detect_sudo()
         self.runs: list[CommandRun] = []
 
+    def _reconnect(self) -> None:
+        """A long operate/diagnose session can be dropped by the server (idle, MaxStartups). Log back in
+        so the next command still runs instead of failing the whole operation."""
+        try:
+            self.client.close()
+        except Exception:  # noqa: BLE001 — already broken; closing is best-effort
+            pass
+        logger.info("server_ops reconnecting to %s after a dropped session", self.login.host)
+        self.client, _ = connect(self.login)
+        self.shell = Shell(self.client, password=self.login.password)
+        self.shell.detect_sudo()
+
+    def _raw(self, command: str) -> tuple[int, str, str]:
+        import paramiko
+
+        try:
+            return self.shell.raw(command)
+        except paramiko.SSHException:
+            self._reconnect()                 # one retry on a dropped session
+            return self.shell.raw(command)
+
     def execute(self, command: str) -> CommandRun:
         """Run the command with no read-only check (the caller has already decided it may run)."""
-        code, out, err = self.shell.raw(command)
+        code, out, err = self._raw(command)
         text = (out + (("\n" + err) if err.strip() else "")).strip()
         if len(text) > MAX_OUTPUT_CHARS:
             text = text[:MAX_OUTPUT_CHARS] + f"\n… (output cut at {MAX_OUTPUT_CHARS} characters)"

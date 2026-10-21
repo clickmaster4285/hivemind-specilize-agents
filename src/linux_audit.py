@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 10
 COMMAND_TIMEOUT = 25
+TEST_LOGIN_TIMEOUT = 22         # hard cap on "Add & test login" so the request never hangs the browser
 FAILED_LOGINS_ALERT = 20        # failed SSH logins in 24 h that count as an ongoing guessing attack
 LOCAL_ADDRESSES = ("127.", "::1", "[::1]", "localhost")
 NEEDS_ROOT_NOTE = "needs root — give the account passwordless sudo for this command, or log in as root"
@@ -102,11 +103,14 @@ def connect(login: ServerLogin) -> tuple[Any, str]:
     address = check_host(login.host)
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(_Remember())   # no known_hosts file: every key goes through the check above
+    started = time.monotonic()
+    logger.info("SSH connect → %s:%s as %s", address, login.port, login.username)
     try:
         client.connect(address, port=login.port, username=login.username, password=login.password,
                        pkey=_load_key(login.private_key, login.key_passphrase) if login.private_key else None,
                        look_for_keys=False, allow_agent=False, timeout=CONNECT_TIMEOUT,
                        banner_timeout=CONNECT_TIMEOUT, auth_timeout=CONNECT_TIMEOUT)
+        logger.info("SSH connected to %s:%s in %.1fs", address, login.port, time.monotonic() - started)
     except paramiko.AuthenticationException as exc:
         client.close()
         raise AuditError("login refused — check the user name and password / key") from exc
@@ -157,8 +161,7 @@ class Shell:
         return self.raw(command)
 
 
-def test_login(login: ServerLogin) -> dict[str, Any]:
-    """Settings → Servers → Add: log in once, learn the host key and what the account may read."""
+def _test_login(login: ServerLogin) -> dict[str, Any]:
     client, fp = connect(login)
     try:
         shell = Shell(client, password=login.password)
@@ -167,6 +170,47 @@ def test_login(login: ServerLogin) -> dict[str, Any]:
         return {"host_key": fp, "os": os_name, "access": "root" if shell.root else f"sudo: {shell.sudo}"}
     finally:
         client.close()
+
+
+def test_login(login: ServerLogin) -> dict[str, Any]:
+    """Settings → Servers → Add: log in once, learn the host key and what the account may read.
+
+    A hard wall-clock cap so the request can never hang: paramiko's own timeouts bound each phase, but
+    a stuck key exchange or a server that stalls auth could still block — if that happens, fail cleanly
+    well before the browser gives up, and say so. A dropped session ("SSH session not active") is usually
+    the server rate-limiting repeated connections (sshd MaxStartups), so retry once after a short pause."""
+    import concurrent.futures as cf
+
+    import paramiko
+
+    last: Exception | None = None
+    for attempt in range(2):
+        with cf.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_test_login, login)
+            try:
+                return future.result(timeout=TEST_LOGIN_TIMEOUT)
+            except cf.TimeoutError as exc:
+                raise AuditError(
+                    f"timed out logging in to {login.host}:{login.port} after {TEST_LOGIN_TIMEOUT}s — "
+                    "the port may be firewalled, or the server is slow to answer SSH. Check the address and port, "
+                    "and that this machine can reach it (try `ssh` to it from the same machine)."
+                ) from exc
+            except AuditError:
+                raise
+            except paramiko.SSHException as exc:
+                last = exc
+                logger.info("test_login attempt %d dropped (%s); retrying", attempt + 1, exc)
+                if attempt == 0:
+                    time.sleep(2.0)             # let the server's connection rate-limit cool down
+                    continue
+                raise AuditError(
+                    f"the server dropped the SSH session ({exc}) — this usually means it is rate-limiting "
+                    "repeated logins. Wait ~30 seconds and try again; if it keeps happening, check the server's "
+                    "sshd settings (MaxStartups) or any fail2ban / firewall rule."
+                ) from exc
+            except Exception as exc:
+                raise AuditError(f"could not log in to {login.host}:{login.port}: {type(exc).__name__}: {exc}") from exc
+    raise AuditError(f"could not log in to {login.host}:{login.port}: {last}")
 
 
 # ── reading what the commands print ──────────────────────────────────────

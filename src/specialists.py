@@ -115,7 +115,8 @@ def default_specialists() -> list[Specialist]:
             id="it", name="IT", sort_order=10, accent="#3b82c4",
             covers="infrastructure and administration: Windows/Linux servers, Active Directory, DNS, DHCP, "
                    "networks and IP addresses, routers, switches, firewalls, VPN, Wi-Fi, printers, backups, "
-                   "cybersecurity, troubleshooting computers",
+                   "cybersecurity, troubleshooting computers; and logging into the user's servers over SSH to "
+                   "run commands or create and edit files and folders on them (anything to be done ON a server)",
             instructions=(
                 "- Give exact commands, cmdlets, paths and settings, and say which OS or version they apply to "
                 "when it matters.\n"
@@ -128,6 +129,9 @@ def default_specialists() -> list[Specialist]:
                 "Settings instead, then you can connect. On an added server you can run read-only checks "
                 "(server_audit), diagnose problems (diagnose_server), and make changes (operate_server) — changes "
                 "follow the server's mode (ask-first or trusted).\n"
+                "- You cannot open an RDP / remote-desktop session or control a Windows GUI — you work over SSH "
+                "only. That means Linux servers, or a Windows host that has the OpenSSH server enabled. If the user "
+                "asks for RDP or desktop control, say that plainly and offer the SSH path instead.\n"
                 "- The credential-free tools (ping_host, security_check, network_scan) only reach the local / "
                 "private network (10.x, 172.16–31.x, 192.168.x). For a public server such as a VPS, do not offer "
                 "those — have the user add its login in Settings and use the SSH audit instead.\n"
@@ -144,7 +148,11 @@ def default_specialists() -> list[Specialist]:
                 "- For an error: name the most likely cause first, then the fix.\n"
                 "- Mention the version a feature needs when it matters (for example Python 3.11+).\n"
                 "- Prefer the standard library and well-known tools; point out security problems you notice "
-                "(secrets in code, SQL injection, unchecked input)."
+                "(secrets in code, SQL injection, unchecked input).\n"
+                "- You write code and advice for the user's own computer. You cannot log into servers or run "
+                "commands, create files or make changes on them — that is handled by logging into the server "
+                "(the IT side). If the user asks to do something ON a server, never claim you did it; say it "
+                "needs the server login and hand it over."
             ),
             tools=reading, collections=["development", "general"],
         ),
