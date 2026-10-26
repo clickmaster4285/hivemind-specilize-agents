@@ -9,8 +9,7 @@ import ConfirmCard from "@/components/chat/ConfirmCard";
 import { AgentThumbs, ArtifactChips, SourceList, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
 import type { FeedItem } from "@/lib/types";
 
-// Inline Tailwind building blocks. Shared/detail widgets (msg-action, tool-drawer, answer-check,
-// brain-sources, chat-thumbs, md-body) stay global CSS.
+// Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
 // The scroll container is full-width (so the scrollbar sits at the Main-area edge, not against the text);
 // the content lives in a centered, comfortably-wide column inside it.
 const scrollCls =
@@ -149,11 +148,17 @@ function MessageRow({
             {item.kind === "user" ? (
               <div className="whitespace-pre-wrap text-[0.86rem] leading-[1.35]">
                 {item.images?.length ? (
-                  <div className="chat-thumbs">
+                  <div className="mb-[0.45rem] flex flex-wrap items-start gap-[0.4rem]">
                     {item.images.map((img) => (
-                      <a key={img.url} href={img.url} target="_blank" rel="noreferrer">
+                      <a
+                        key={img.url}
+                        href={img.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="relative block h-[4.4rem] w-[4.4rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)]"
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={img.url} alt={img.filename} />
+                        <img src={img.url} alt={img.filename} className="block h-full w-full object-cover" />
                       </a>
                     ))}
                   </div>

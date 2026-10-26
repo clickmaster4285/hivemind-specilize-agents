@@ -1,6 +1,7 @@
 "use client";
 
-import { isValidElement, type ReactNode } from "react";
+import { isValidElement, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 // tables, strikethrough, task lists: without it a | table | shows as raw text
 import remarkGfm from "remark-gfm";
@@ -46,18 +47,112 @@ function mermaidCode(children: ReactNode): string | null {
 type Props = {
   content: string;
   pending?: boolean;
-  sources?: Array<{ n: number; url?: string | null }>;
+  sources?: CiteSrc[];
 };
 
-/** Turn inline [n] citation markers into links to their source, so the source is right on the line. */
+type CiteSrc = { n: number; url?: string | null; title?: string; publisher?: string | null; updated_at?: string | null };
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function faviconOf(host: string): string {
+  return host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64` : "";
+}
+
+/** One inline citation group: a pill with the first source (favicon + name) and "+N" for the rest;
+ *  hovering opens a card listing every source in the group, each linking out. */
+function CiteCluster({ sources }: { sources: CiteSrc[] }) {
+  const [card, setCard] = useState<{ x: number; y: number } | null>(null);
+  const closeTimer = useRef<number | null>(null);
+
+  const open = (el: HTMLElement) => {
+    if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    const r = el.getBoundingClientRect();
+    setCard({ x: r.left + r.width / 2, y: r.top });
+  };
+  const scheduleClose = () => {
+    closeTimer.current = window.setTimeout(() => setCard(null), 160);
+  };
+  const keepOpen = () => {
+    if (closeTimer.current) window.clearTimeout(closeTimer.current);
+  };
+
+  if (!sources.length) return null;
+  const first = sources[0];
+  const host = hostOf(first.url || "");
+  const name = first.publisher || host || "source";
+  const ico = faviconOf(host);
+  const extra = sources.length - 1;
+
+  return (
+    <span className="whitespace-nowrap">
+      <a
+        href={first.url ?? undefined}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="relative top-[-0.06rem] mx-[0.12rem] inline-flex max-w-[12rem] items-center gap-[0.3rem] overflow-hidden rounded-full border border-[color-mix(in_srgb,var(--teal)_30%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_10%,var(--panel-2))] px-[0.42rem] py-[0.08rem] align-middle leading-[1.5] no-underline transition-[transform,border-color] duration-100 hover:-translate-y-px hover:border-[var(--teal)]"
+        title={name}
+        onMouseEnter={(e) => open(e.currentTarget)}
+        onMouseLeave={scheduleClose}
+      >
+        {ico ? <img src={ico} alt="" className="h-[0.85rem] w-[0.85rem] shrink-0 rounded-[2px]" loading="lazy" /> : null}
+        <span className="truncate text-[0.72rem] text-[var(--text)]">{name}</span>
+        {extra > 0 ? <span className="shrink-0 text-[0.68rem] font-semibold text-[var(--teal)]">+{extra}</span> : null}
+      </a>
+      {card
+        ? createPortal(
+            <div
+              className="pointer-events-auto fixed z-[60] max-h-[18rem] w-[19rem] max-w-[85vw] -translate-x-1/2 -translate-y-full overflow-y-auto rounded-[0.7rem] border border-[var(--line)] bg-[var(--panel)] p-[0.3rem] shadow-[var(--shadow)] [font-family:var(--font-body)]"
+              style={{ left: card.x, top: card.y - 6 }}
+              role="tooltip"
+              onMouseEnter={keepOpen}
+              onMouseLeave={scheduleClose}
+            >
+              {sources.map((s) => {
+                const h = hostOf(s.url || "");
+                const sico = faviconOf(h);
+                return (
+                  <a
+                    key={s.n}
+                    href={s.url ?? undefined}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="flex items-start gap-[0.5rem] rounded-[0.45rem] px-[0.45rem] py-[0.4rem] no-underline hover:bg-[color-mix(in_srgb,var(--teal)_10%,transparent)]"
+                  >
+                    {sico ? <img src={sico} alt="" className="mt-[0.1rem] h-4 w-4 shrink-0 rounded-[3px]" loading="lazy" /> : null}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[0.66rem] text-[var(--muted)]">{s.publisher || h}</span>
+                      <span className="block overflow-hidden text-[0.78rem] leading-[1.25] text-[var(--text)] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [display:-webkit-box]">
+                        {s.title ?? h}
+                      </span>
+                    </span>
+                  </a>
+                );
+              })}
+            </div>,
+            document.body,
+          )
+        : null}
+    </span>
+  );
+}
+
+/** Turn a run of inline [n] citation markers into one link (title "cite:1,2,3") so a run like [1][2]
+ *  renders as a single source chip with a "+N" overflow, instead of a row of tiny icons or an end-only list. */
 function linkCitations(text: string, sources?: Array<{ n: number; url?: string | null }>): string {
   if (!sources?.length) return text;
   const byN = new Map<number, string>();
   for (const s of sources) if (s.url && /^https?:\/\//i.test(s.url)) byN.set(s.n, s.url);
   if (!byN.size) return text;
-  return text.replace(/\[(\d{1,3})\](?!\()/g, (m, d) => {
-    const url = byN.get(Number(d));
-    return url ? `[\\[${d}\\]](${url})` : m;
+  return text.replace(/(?:\[\d{1,3}\])+(?!\()/g, (run) => {
+    const nums = (run.match(/\d{1,3}/g) || []).map(Number).filter((n) => byN.has(n));
+    if (!nums.length) return run;
+    return `[${nums.join(",")}](${byN.get(nums[0])} "cite:${nums.join(",")}")`;
   });
 }
 
@@ -85,6 +180,8 @@ export default function MarkdownBody({ content, pending, sources }: Props) {
       </div>
     );
   }
+
+  const srcByN = new Map((sources || []).map((s) => [s.n, s]));
 
   return (
     <div className="md-body">
@@ -120,11 +217,19 @@ export default function MarkdownBody({ content, pending, sources }: Props) {
             // eslint-disable-next-line @next/next/no-img-element -- answers hold arbitrary sizes
             return isOwnImage(url) ? <img src={url} alt={alt ?? ""} className="md-img" /> : <ExternalImage src={url} alt={alt ?? ""} />;
           },
-          a: ({ href, children }) => (
-            <a href={href} target="_blank" rel="noreferrer" className="md-a">
-              {children}
-            </a>
-          ),
+          a: ({ href, title, children }) => {
+            if (title && title.startsWith("cite")) {
+              const raw = title.includes(":") ? title.slice(title.indexOf(":") + 1) : "";
+              const nums = (raw.match(/\d+/g) || []).map(Number);
+              const group = nums.map((n) => srcByN.get(n)).filter((s): s is CiteSrc => !!s);
+              if (group.length) return <CiteCluster sources={group} />;
+            }
+            return (
+              <a href={href} target="_blank" rel="noreferrer" className="md-a">
+                {children}
+              </a>
+            );
+          },
         }}
       >
         {linkCitations(normalizeMarkdown(content), sources)}

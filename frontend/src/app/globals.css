@@ -174,65 +174,6 @@ body {
   background: var(--danger);
 }
 
-.tool-drawer {
-  margin-top: 0.35rem;
-  border-top: 1px solid var(--line);
-  padding-top: 0.3rem;
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.tool-drawer summary {
-  cursor: pointer;
-  user-select: none;
-  color: var(--teal);
-  font-weight: 500;
-}
-
-.tool-drawer ul {
-  list-style: none;
-  margin: 0.45rem 0 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-}
-
-.tool-drawer li {
-  border: 1px solid var(--line);
-  border-radius: 0.55rem;
-  background: rgba(0, 0, 0, 0.18);
-  padding: 0.45rem 0.55rem;
-}
-
-.tool-drawer li.bad {
-  border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
-}
-
-.tool-drawer li strong {
-  display: block;
-  color: var(--text);
-  margin-bottom: 0.15rem;
-}
-
-.tool-drawer li span, .tool-drawer li em {
-  display: block;
-  color: var(--muted);
-  margin-bottom: 0.25rem;
-}
-
-.tool-drawer li pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  line-height: 1.4;
-  color: #d7d2c8;
-  max-height: 10rem;
-  overflow: auto;
-}
-
 .md-body {
   font-size: 0.9rem;
   line-height: 1.6;
@@ -463,92 +404,6 @@ body {
   white-space: pre;
 }
 
-/* Knowledge-base sources under a grounded answer */
-/* the check after a knowledge-base answer (src/brain/verify.py) */
-.answer-check {
-  margin: 0.6rem 0 0.2rem;
-  padding: 0.4rem 0.7rem;
-  border-radius: 8px;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-
-.answer-check.ok {
-  border: 1px solid color-mix(in srgb, var(--teal) 35%, var(--line));
-}
-
-.answer-check.warn {
-  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--line));
-  background: color-mix(in srgb, var(--danger) 7%, var(--panel-2));
-}
-
-.answer-check summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.answer-check.warn summary {
-  color: var(--text);
-}
-
-.answer-check-head {
-  margin: 0.45rem 0 0.2rem;
-  font-weight: 600;
-}
-
-.answer-check ul {
-  margin: 0;
-  padding-left: 1.1rem;
-}
-
-.answer-check li {
-  margin: 0.15rem 0;
-  color: var(--text);
-}
-
-.answer-check-cites {
-  color: var(--muted);
-}
-
-.brain-sources {
-  margin: 0.6rem 0 0.2rem;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid color-mix(in srgb, var(--teal) 35%, var(--line));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--teal) 6%, var(--panel-2));
-  font-size: 0.78rem;
-}
-
-.brain-sources summary {
-  cursor: pointer;
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.brain-sources ol {
-  margin: 0.35rem 0 0;
-  padding-left: 1.4rem;
-}
-
-.brain-sources li {
-  margin: 0.2rem 0;
-  overflow-wrap: anywhere;
-}
-
-.brain-sources a {
-  color: var(--teal);
-}
-
-.brain-source-section {
-  color: var(--text);
-}
-
-.brain-source-meta {
-  display: block;
-  color: var(--muted);
-  font-size: 0.72rem;
-}
-
 .msg-action {
   border: 1px solid var(--line);
   background: transparent;
@@ -568,49 +423,6 @@ body {
 .msg-action:disabled {
   opacity: 0.45;
   cursor: not-allowed;
-}
-
-.chat-thumbs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0 0 0.45rem;
-  align-items: flex-start;
-}
-
-.chat-thumbs a {
-  position: relative;
-  display: block;
-  width: 4.4rem;
-  height: 4.4rem;
-  border-radius: 0.45rem;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  background: rgba(0, 0, 0, 0.25);
-}
-
-.chat-thumbs img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-/* Generated images: size to natural aspect, not a fixed tiny square */
-.chat-thumbs-generated a {
-  width: auto;
-  height: auto;
-  max-width: min(36rem, 100%);
-  max-height: min(70vh, 36rem);
-  overflow: hidden;
-}
-
-.chat-thumbs-generated img {
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: min(70vh, 36rem);
-  object-fit: contain;
 }
 
 .btn {
