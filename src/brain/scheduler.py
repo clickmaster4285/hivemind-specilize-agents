@@ -22,7 +22,7 @@ from src.brain.db import CONNECT_TIMEOUT_SECONDS, BrainDBError, app_url, connect
 from src.brain.ingest import IngestStats, ingest_source
 from src.brain.migrate import MigrationError, migrate
 from src.brain.sources import RegistryError, sync_sources
-from src.config import Config
+from src.core.config import Config
 
 log = logging.getLogger("brain.scheduler")
 

@@ -34,7 +34,7 @@ from src.brain.fetch import FetchError, Loaded, SourceFile, prepare_source_files
 from src.brain.web import WebClient
 from src.brain.migrate import MigrationError, migrate
 from src.brain.sources import RegistryError, load_registry, sync_sources
-from src.config import Config
+from src.core.config import Config
 
 Embedder = Callable[[list[str]], list[list[float]]]
 REMOVE_AFTER_MISSING_RUNS = 2

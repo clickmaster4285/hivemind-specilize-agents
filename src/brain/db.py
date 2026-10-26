@@ -14,7 +14,7 @@ from urllib.parse import quote, urlsplit, urlunsplit
 import psycopg
 from pgvector.psycopg import register_vector
 
-from src.config import Config
+from src.core.config import Config
 
 APP_ROLE = "brain_app"
 # Fail fast instead of hanging (e.g. "localhost" resolving to IPv6 ::1 while Docker listens on 127.0.0.1)

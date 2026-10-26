@@ -42,7 +42,7 @@ def test_the_note_appears_under_a_knowledge_base_answer(monkeypatch):
 
     from src.brain.answer import answer_question
     from src.brain.retrieve import Passage, SearchResult
-    from src.config import Config
+    from src.core.config import Config
 
     monkeypatch.setattr("src.brain.answer._log_retrieval", lambda *a, **k: None)
     monkeypatch.setattr("src.brain.freshness.check_sources", lambda config, slugs: {})

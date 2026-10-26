@@ -6,9 +6,9 @@ import dataclasses
 
 import pytest
 
-from src.config import Config
-from src.diagram_gen import check_mermaid, extract, fix_mermaid, run_diagram, write_diagram
-from src.intent_router import classify_query
+from src.core.config import Config
+from src.tools.diagram_gen import check_mermaid, extract, fix_mermaid, run_diagram, write_diagram
+from src.llm.intent_router import classify_query
 
 # these test the example-based backup router (the assistant normally picks tools itself)
 CFG = dataclasses.replace(Config.from_env(), assistant_tools=False)
@@ -41,7 +41,7 @@ def test_forced_and_manual_modes():
 
 
 def test_last_answer_was_diagram():
-    from src.jobs import _last_answer_was_diagram
+    from src.jobs.jobs import _last_answer_was_diagram
 
     conv = [{"role": "user", "content": "draw it"}, {"role": "assistant", "content": "**X**\n```mermaid\nflowchart LR\n```"}]
     assert _last_answer_was_diagram(conv) is True
@@ -104,7 +104,7 @@ def test_retry_when_first_answer_is_broken():
 
 
 def test_run_diagram_reply_and_events(monkeypatch):
-    import src.diagram_gen as dg
+    import src.tools.diagram_gen as dg
 
     monkeypatch.setattr(dg, "write_diagram", lambda q, c, conv, chat=None: ("Arch", "flowchart LR\n a --> b", "- note", []))
     events = []
@@ -207,8 +207,8 @@ def test_questions_about_the_assistant(query, intent):
 
 
 def test_stop_ends_a_diagram(monkeypatch):
-    import src.diagram_gen as dg
-    from src.llm_client import LLMStopped
+    import src.tools.diagram_gen as dg
+    from src.llm.llm_client import LLMStopped
 
     def stopped(*a, **k):
         raise LLMStopped("")

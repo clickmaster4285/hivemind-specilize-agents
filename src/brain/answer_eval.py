@@ -43,8 +43,8 @@ from src.brain.verify import (  # noqa: F401 — re-exported for tests/test_answ
     CITE_RE, JUDGE_SYSTEM, JUDGE_TEMPERATURE, Claim, _cites, apply_judgement, judge_prompt,
     parse_judgement, parse_verdicts, quote_in, split_claims,
 )
-from src.config import ROOT, Config
-from src.llm_client import LLMClient
+from src.core.config import ROOT, Config
+from src.llm.llm_client import LLMClient
 
 TARGET_GROUNDED = 0.90
 TARGET_LATENCY_S = 20.0

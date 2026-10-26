@@ -6,10 +6,10 @@ from dataclasses import replace
 
 import pytest
 
-from src import linux_audit as la
-from src import server_vault as vault
-from src.config import Config
-from src.security_scan import HIGH, LOW, MEDIUM
+from src.servers import linux_audit as la
+from src.servers import server_vault as vault
+from src.core.config import Config
+from src.servers.security_scan import HIGH, LOW, MEDIUM
 
 SECRET = "S3cret-pa55!"
 CFG = replace(Config.from_env(), security_scan_enabled=True)
@@ -229,7 +229,7 @@ def test_the_server_named_in_the_message_is_used(monkeypatch):
 def test_wired_and_credential_gated_not_admin_only():
     # decided 2026-10-21 (SERVER_ACCESS_DECISION.md §8): server tools are gated by who holds the login,
     # not by a MulteAgent admin role — so server_audit is NOT in ADMIN_TOOLS
-    from src import worker
+    from src.jobs import worker
 
     assert worker.DIRECT_TOOLS["server_audit"] is la.run_server_audit
     assert "server_audit" not in worker.ADMIN_TOOLS

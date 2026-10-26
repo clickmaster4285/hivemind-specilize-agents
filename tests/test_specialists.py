@@ -7,11 +7,11 @@ from dataclasses import replace
 
 import pytest
 
-from src import specialists as sp
-from src.assistant import messages_for, speaker, tool_schemas
+from src.llm import specialists as sp
+from src.llm.assistant import messages_for, speaker, tool_schemas
 from src.brain.answer import answer_question
 from src.brain.retrieve import SearchResult
-from src.config import Config
+from src.core.config import Config
 
 CFG = replace(Config.from_env(), brain_enabled=True, network_scan_enabled=True)
 

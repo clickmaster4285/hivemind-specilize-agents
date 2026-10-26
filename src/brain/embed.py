@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import requests
 
-from src.config import Config
+from src.core.config import Config
 
 EMBED_DIM = 1024
 BATCH_SIZE = 16

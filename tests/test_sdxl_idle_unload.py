@@ -9,7 +9,7 @@ import time
 
 import pytest
 
-from src import sdxl_pipeline as sdxl
+from src.images import sdxl_pipeline as sdxl
 
 
 @pytest.fixture(autouse=True)

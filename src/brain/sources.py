@@ -17,7 +17,7 @@ import yaml
 from psycopg.types.json import Jsonb
 
 from src.brain.db import connect
-from src.config import ROOT, Config
+from src.core.config import ROOT, Config
 
 REGISTRY_PATH = ROOT / "data" / "brain" / "sources.yaml"
 KINDS = {"web_page", "sitemap", "feed", "git_repo", "api", "upload"}

@@ -27,7 +27,7 @@ the user would have to run the script and paste results back — then ask again 
 |---|------|----------|
 | 1 | **The app has no way to execute anything.** There is no tool that runs code or commands. | Deliberate, locked decision: FULL_PROJECT_PLAN §10 — *"Why no shell tool in v1: shared team server + unrestricted shell = high risk. Add later only with hard sandboxing."* |
 | 2 | **Web search can only read, never act.** It fetches pages and writes an answer from them (`src/web_search.py`). Correct behaviour, wrong tool for "do it for me". | The screenshot's answer: instructions + links |
-| 3 | **The message doesn't even route to a useful intent.** Classified `diagram` (0.678, nearest = *"show the network topology of a small office"*), because no intent describes "run a local scan". | `python -m src.semantic_router "i need to check all the ip nad at the end i only the result in table format"` — it only reached Web search because the **Web** button was pressed (`force_intent`) |
+| 3 | **The message doesn't even route to a useful intent.** Classified `diagram` (0.678, nearest = *"show the network topology of a small office"*), because no intent describes "run a local scan". | `python -m src.llm.semantic_router "i need to check all the ip nad at the end i only the result in table format"` — it only reached Web search because the **Web** button was pressed (`force_intent`) |
 
 ### What this really is
 
@@ -170,7 +170,7 @@ size cap, no secrets in env, job temp dir only, egress locked down, per-user quo
 4. **`src/agentic/runtime.py`** — add to the allowlist.
 5. **`data/router/intents.yaml`** — example under `agentic`: *"check all the IPs on my network and
    show the results in a table"* (+ one Hinglish), **`data/router/eval.yaml`** — matching cases;
-   re-run `python -m src.semantic_router --eval` (must stay 0 wrong).
+   re-run `python -m src.llm.semantic_router --eval` (must stay 0 wrong).
 6. **Config** — `NETWORK_SCAN_ENABLED` (default true), `NETWORK_SCAN_MAX_HOSTS` (1024).
 7. **Tests** — private-range refusal, `/16` refusal, cap, timeout, table/xlsx output shape
    (mocked ping; no real network in unit tests).

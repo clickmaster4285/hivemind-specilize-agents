@@ -20,8 +20,8 @@ import {
   STATUS_ID,
   upsertStatus,
 } from "@/lib/feedReducer";
-import { assignJobToProject } from "@/lib/projects";
-import { addJobToThread, createThread, listThreads, type ChatThread } from "@/lib/threads";
+import { newId } from "@/lib/id";
+import type { ChatThread } from "@/lib/threads";
 import type { ChatImage, FeedItem, JobEvent, RunMode } from "@/lib/types";
 import type { HistoryApi } from "@/hooks/useHistory";
 
@@ -61,9 +61,9 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
   }
 
   function newChat() {
-    const thread = createThread("New chat", history.projectId);
-    history.setThreads(listThreads());
-    history.selectThread(thread.id);
+    const id = newId();
+    history.noteThread(id, "New chat", history.projectId);
+    history.selectThread(id);
     clear();
     setEditingFromId(null);
     setRunning(false);
@@ -133,8 +133,10 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
     }
     let threadId = history.activeThreadId;
     const titleSeed = trimmed || images[0]?.file.name || "Image";
+    const isNewThread = !threadId;
     if (!threadId) {
-      threadId = createThread(titleFromQuery(titleSeed), history.projectId).id;
+      threadId = newId();
+      history.noteThread(threadId, titleFromQuery(titleSeed), history.projectId);
       history.selectThread(threadId);
     }
     const chatImages: ChatImage[] = images.map((img) => ({ url: img.url, filename: img.file.name, mime: img.mime }));
@@ -166,10 +168,13 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
         force_intent: force,
         image_profile: options.imageProfile,
         image_strength: force === "edit" || force === "inpaint" ? strengthValue(options.editStrength) : undefined,
+        // tag the job with its chat so history can regroup the conversation after a reload/login
+        thread_id: threadId,
       });
       setActiveJobId(job.id);
-      history.setThreads(addJobToThread(threadId, job.id, titleFromQuery(titleSeed)));
-      if (history.projectId) history.setProjects(assignJobToProject(history.projectId, job.id));
+      // the job carries thread_id, so history regroups it and the server keeps the chat's metadata;
+      // a new chat started inside a project joins that project.
+      if (isNewThread && history.projectId) history.moveToProject(threadId, history.projectId);
       setFeed((prev) => upsertStatus(prev, "Queued", `${job.status} · ${job.id.slice(0, 8)}…`));
       await streamJobEvents(job.id, applyEvent);
       await history.refreshJobs();

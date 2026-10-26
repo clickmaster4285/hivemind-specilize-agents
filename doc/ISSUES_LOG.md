@@ -284,7 +284,7 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*
   sources), web search, **weather** (new: Open-Meteo, exact data, no key), network scan, image, diagram,
   document, about. Worker: one `DIRECT_TOOLS` table + one `_finish` helper instead of five copies.
   The example-based router stays only as a backup (`ASSISTANT_TOOLS=false`).
-- **Measured:** `python -m src.assistant --eval` — **27/27** right choices, median decision 3.3 s (a direct
+- **Measured:** `python -m src.llm.assistant --eval` — **27/27** right choices, median decision 3.3 s (a direct
   answer IS that call). Lesson from the misses: say in the description *when* a tool beats the model's memory.
 - **Speed:** weather 39 s (web search) → **6.5 s**; greeting 2.6 s; web search **60 s → 12 s**: shorter answers,
   4 passages, a 6-s page budget, and BM25 keyword ranking instead of CPU embeddings (14.3 s → milliseconds).

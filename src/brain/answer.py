@@ -12,13 +12,13 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from src.about import identity_line
-from src.clock import current_time_text as _clock_current_time_text
+from src.tools.about import identity_line
+from src.core.clock import current_time_text as _clock_current_time_text
 from src.brain.command_check import check_note, unverified_terms
 from src.brain.db import connect
 from src.brain.retrieve import Passage, SearchResult, search
-from src.config import Config
-from src.llm_client import LLMClient
+from src.core.config import Config
+from src.llm.llm_client import LLMClient
 
 log = logging.getLogger(__name__)
 

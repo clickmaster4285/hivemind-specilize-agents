@@ -7,9 +7,9 @@ import dataclasses
 import pytest
 import requests
 
-from src import intent_router
-from src.config import Config
-from src.intent_router import classify_query
+from src.llm import intent_router
+from src.core.config import Config
+from src.llm.intent_router import classify_query
 
 # these test the example-based backup router (the assistant normally picks tools itself)
 CFG = dataclasses.replace(Config.from_env(), assistant_tools=False)
@@ -27,7 +27,7 @@ needs_ollama = pytest.mark.skipif(not _ollama_up(), reason="needs the embedding 
 
 @needs_ollama
 def test_no_wrong_decisions_on_the_eval_set():
-    from src.semantic_router import evaluate
+    from src.llm.semantic_router import evaluate
 
     result = evaluate(CFG)
     wrong = [(r["text"], r["intent"], r["got"]) for r in result["wrong"]]
@@ -39,7 +39,7 @@ def test_offline_falls_back_to_the_old_rules(monkeypatch):
     def down(*a, **k):
         raise RuntimeError("Ollama is not reachable")
 
-    monkeypatch.setattr("src.semantic_router.SemanticRouter.classify", down)
+    monkeypatch.setattr("src.llm.semantic_router.SemanticRouter.classify", down)
     assert classify_query("draw a cat sitting on a sofa", config=CFG, allow_llm=False).intent == "image_gen"
     assert classify_query("hello", config=CFG, allow_llm=False).intent == "chat"
 
@@ -67,7 +67,7 @@ def test_greeting_keeps_the_knowledge_base_out():
 
 def test_new_intents_need_no_code(tmp_path, monkeypatch):
     """Adding an intent = adding examples: the router and the LLM menu pick it up from the file."""
-    from src.semantic_router import SemanticRouter
+    from src.llm.semantic_router import SemanticRouter
 
     f = tmp_path / "intents.yaml"
     f.write_text("intents:\n  weather:\n    note: weather questions\n    examples:\n      - will it rain today\n"

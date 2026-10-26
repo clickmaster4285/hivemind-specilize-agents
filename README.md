@@ -114,8 +114,8 @@ TLS / reverse proxy starter: [deploy/Caddyfile](deploy/Caddyfile). SSO is gated 
 ```bash
 python -m src.brain.evaluate        # retrieval: is the right page found?          (Recall@8, MRR)
 python -m src.brain.answer_eval     # answers: grounded, right source, no-evidence, latency  (B6)
-python -m src.assistant --eval      # does the assistant pick the right tool?  (--specialists: as real chats do)
-python -m src.specialists --eval    # does the picker choose the right specialist?
+python -m src.llm.assistant --eval      # does the assistant pick the right tool?  (--specialists: as real chats do)
+python -m src.llm.specialists --eval    # does the picker choose the right specialist?
 ```
 
 ## Defaults

@@ -33,7 +33,7 @@ from src.brain.web import (
     normalize_url,
     sitemap_urls,
 )
-from src.config import ROOT
+from src.core.config import ROOT
 
 CACHE_DIR = ROOT / "data" / "brain_cache"
 SUPPORTED_SUFFIXES = (".md", ".markdown", ".txt", ".html", ".htm")

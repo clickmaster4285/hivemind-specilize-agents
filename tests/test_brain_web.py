@@ -23,7 +23,7 @@ from src.brain.ingest import ingest_source
 from src.brain.migrate import migrate
 from src.brain.scheduler import LOCK_KEY, due_sources, in_window, run_due
 from src.brain.web import WebClient, WebError, crawl, feed_urls, sitemap_urls
-from src.config import Config
+from src.core.config import Config
 
 PREFIX = "test-web-"
 

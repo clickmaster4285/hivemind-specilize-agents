@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.assistant import _should_web_search
+from src.llm.assistant import _should_web_search
 
 CFG = SimpleNamespace(web_search_url="http://127.0.0.1:8888")
 

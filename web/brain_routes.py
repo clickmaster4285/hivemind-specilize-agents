@@ -7,11 +7,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg.rows import dict_row
 
-from src.auth import get_current_user
+from src.core.auth import get_current_user
 from src.brain.db import BrainDBError, connect
 from src.brain.embed import EmbedError
 from src.brain.retrieve import MAX_PASSAGES, search
-from src.models_db import User
+from src.core.models_db import User
 
 router = APIRouter(prefix="/api/brain", tags=["brain"])
 

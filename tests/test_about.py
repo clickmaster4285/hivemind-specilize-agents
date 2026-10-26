@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 
-from src import about
-from src.config import Config
+from src.tools import about
+from src.core.config import Config
 
 CFG = Config.from_env()
 
@@ -55,7 +55,7 @@ def test_brain_down_or_off_is_said_plainly(monkeypatch):
 
 
 def test_about_answer_skips_the_brain(monkeypatch):
-    from src import chat_runner
+    from src.jobs import chat_runner
 
     seen = {}
 
@@ -81,7 +81,7 @@ def test_about_answer_skips_the_brain(monkeypatch):
 def test_time_is_told_in_the_users_time_zone():
     from datetime import datetime, timezone
 
-    from src.clock import current_time_text, set_time_zone
+    from src.core.clock import current_time_text, set_time_zone
 
     noon_utc = datetime(2026, 10, 17, 6, 11, tzinfo=timezone.utc)
     assert "11:11 AM" in current_time_text(noon_utc, "Asia/Karachi")

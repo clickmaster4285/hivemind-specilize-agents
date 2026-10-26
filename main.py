@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     if args.gui:
-        from src.config import Config
+        from src.core.config import Config
 
         cfg = Config.from_env()
         print(f"Starting MulteAgent API at http://{cfg.api_host}:{cfg.api_port}")

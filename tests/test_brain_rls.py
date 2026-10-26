@@ -12,7 +12,7 @@ from pgvector import Vector
 
 from src.brain import db as brain_db
 from src.brain.migrate import migrate
-from src.config import Config
+from src.core.config import Config
 
 PREFIX = "test-rls-"
 

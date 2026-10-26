@@ -7,11 +7,11 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src import chat_runner
+from src.jobs import chat_runner
 from src.brain.answer import GroundedAnswer
 from src.brain.retrieve import Passage, SearchResult
 from src.brain.verify import JUDGE_SYSTEM, verify_answer
-from src.config import Config
+from src.core.config import Config
 
 
 def _passage(n: int, content: str) -> Passage:

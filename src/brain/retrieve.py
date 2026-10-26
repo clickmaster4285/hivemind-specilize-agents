@@ -26,7 +26,7 @@ from psycopg.rows import dict_row
 from src.brain.chunking import estimate_tokens
 from src.brain.db import connect
 from src.brain.embed import embed_query
-from src.config import Config
+from src.core.config import Config
 
 Mode = Literal["hybrid", "vector", "keyword"]
 

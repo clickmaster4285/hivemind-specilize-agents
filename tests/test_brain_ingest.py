@@ -16,7 +16,7 @@ from src.brain import db as brain_db
 from src.brain.embed import EMBED_DIM
 from src.brain.ingest import ingest_source
 from src.brain.migrate import migrate
-from src.config import Config
+from src.core.config import Config
 
 SLUG = "test-ingest-local"
 

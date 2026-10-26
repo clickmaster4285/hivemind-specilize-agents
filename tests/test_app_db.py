@@ -6,9 +6,9 @@ import dataclasses
 
 import pytest
 
-from src.app_db import AppDBError, _app_login
-from src.config import Config
-from src.db import _postgres_ddl
+from src.core.app_db import AppDBError, _app_login
+from src.core.config import Config
+from src.core.db import _postgres_ddl
 
 
 @pytest.mark.parametrize("ddl, expected", [

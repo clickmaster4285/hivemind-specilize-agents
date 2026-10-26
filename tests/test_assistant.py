@@ -1,6 +1,6 @@
 """The assistant picks tools itself (native tool calling) — logic tested with a fake model.
 
-The real model's choices are measured by `python -m src.assistant --eval` (27/27 on 2026-10-17);
+The real model's choices are measured by `python -m src.llm.assistant --eval` (27/27 on 2026-10-17);
 run it here with RUN_LLM_EVAL=1 (slow, needs Ollama).
 """
 
@@ -11,10 +11,11 @@ import os
 
 import pytest
 
-from src import assistant, live
-from src.config import Config
-from src.intent_router import classify_query
-from src.llm_client import LLMStopped
+from src.llm import assistant
+from src.jobs import live
+from src.core.config import Config
+from src.llm.intent_router import classify_query
+from src.llm.llm_client import LLMStopped
 
 CFG = dataclasses.replace(Config.from_env(), assistant_tools=True)
 
@@ -42,7 +43,7 @@ def _fake_model(monkeypatch, text="", calls=None, stop=False):
             on_delta(text)
         return text, calls or []
 
-    monkeypatch.setattr("src.llm_client.LLMClient.chat_tools", chat_tools)
+    monkeypatch.setattr("src.llm.llm_client.LLMClient.chat_tools", chat_tools)
 
 
 def test_direct_answer_streams_and_finishes(monkeypatch):

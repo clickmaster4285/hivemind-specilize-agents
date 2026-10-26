@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.win_commands import classify_windows_command, is_destructive_windows
+from src.servers.win_commands import classify_windows_command, is_destructive_windows
 
 READ_ONLY = [
     "Get-Process",

@@ -234,6 +234,8 @@ export async function createJob(payload: {
   force_intent?: ImageForceIntent;
   image_profile?: ImageProfile;
   image_strength?: number;
+  /** The chat this job belongs to, so history can regroup the conversation after a reload */
+  thread_id?: string;
 }): Promise<Job> {
   // the user's own time zone (e.g. "Asia/Karachi"): answers tell their local time, no location permission
   let client_time_zone: string | undefined;
@@ -266,6 +268,71 @@ export async function softDeleteJobs(jobIds: string[]): Promise<{
     method: "POST",
     body: JSON.stringify({ job_ids: jobIds }),
   });
+}
+
+// ── Chat history: thread + project metadata (per user, server-side, so it syncs across devices).
+export type ThreadMeta = {
+  id: string;
+  title: string;
+  projectId: string | null;
+  pinned: boolean;
+  deletedAt: string | null;
+  updatedAt: string | null;
+};
+export type ProjectMeta = { id: string; name: string; createdAt: string | null };
+
+type ThreadRow = { id: string; title: string; project_id?: string | null; pinned?: boolean; deleted_at?: string | null; updated_at?: string | null };
+type ProjectRow = { id: string; name: string; created_at?: string | null };
+
+function toThreadMeta(t: ThreadRow): ThreadMeta {
+  return {
+    id: t.id,
+    title: t.title,
+    projectId: t.project_id ?? null,
+    pinned: Boolean(t.pinned),
+    deletedAt: t.deleted_at ?? null,
+    updatedAt: t.updated_at ?? null,
+  };
+}
+function toProjectMeta(p: ProjectRow): ProjectMeta {
+  return { id: p.id, name: p.name, createdAt: p.created_at ?? null };
+}
+
+export async function fetchHistory(): Promise<{ threads: ThreadMeta[]; projects: ProjectMeta[] }> {
+  const raw = await request<{ threads: ThreadRow[]; projects: ProjectRow[] }>("/api/history");
+  return { threads: (raw.threads || []).map(toThreadMeta), projects: (raw.projects || []).map(toProjectMeta) };
+}
+
+/** Rename / pin / move a chat. Only the given fields change; `project_id: null` removes it from a project. */
+export async function putThread(
+  id: string,
+  changes: { title?: string; pinned?: boolean; project_id?: string | null },
+): Promise<ThreadMeta> {
+  return toThreadMeta(await request(`/api/threads/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(changes) }));
+}
+
+export async function deleteThreadApi(id: string): Promise<void> {
+  await request(`/api/threads/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+/** One-time migration of browser-stored history; the server ignores it once the user has any thread. */
+export async function importHistory(
+  threads: unknown[],
+  projects: unknown[],
+): Promise<{ imported: boolean }> {
+  return request("/api/history/import", { method: "POST", body: JSON.stringify({ threads, projects }) });
+}
+
+export async function createProjectApi(name: string): Promise<ProjectMeta> {
+  return toProjectMeta(await request("/api/projects", { method: "POST", body: JSON.stringify({ name }) }));
+}
+
+export async function renameProjectApi(id: string, name: string): Promise<ProjectMeta> {
+  return toProjectMeta(await request(`/api/projects/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ name }) }));
+}
+
+export async function deleteProjectApi(id: string): Promise<void> {
+  await request(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function fetchJobAttachment(jobId: string, filename: string): Promise<string> {

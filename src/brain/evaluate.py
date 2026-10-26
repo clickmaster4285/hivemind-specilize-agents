@@ -27,7 +27,7 @@ import yaml
 from src.brain.db import BrainDBError
 from src.brain.embed import EmbedError, embed_query
 from src.brain.retrieve import MAX_PASSAGES, MIN_SIMILARITY, SearchResult, search
-from src.config import ROOT, Config
+from src.core.config import ROOT, Config
 
 QUESTIONS_PATH = ROOT / "data" / "brain_eval" / "questions.yaml"
 RESULTS_DIR = ROOT / "data" / "brain_eval" / "results"

@@ -1,6 +1,9 @@
-/** Client-side chat threads so one chat can hold many jobs/messages. */
+/** Chat threads: one chat holds many jobs. The metadata (title, pin, project, deletion) lives on the
+ *  server (see api.ts fetchHistory/putThread/…), so it syncs across devices; a chat's messages are its
+ *  jobs, grouped by each job's thread_id. Only the "which chat is open" pointer stays in this browser. */
 
-import { newId } from "@/lib/id";
+import type { ThreadMeta } from "@/lib/api";
+import type { Job } from "@/lib/types";
 
 export type ChatThread = {
   id: string;
@@ -8,143 +11,13 @@ export type ChatThread = {
   jobIds: string[];
   projectId: string | null;
   pinned: boolean;
-  /** ISO timestamp when soft-deleted; null/undefined = active */
+  /** ISO timestamp when soft-deleted; null = active */
   deletedAt: string | null;
   updatedAt: string;
 };
 
-const KEY = "multeagent_threads_v1";
 const ACTIVE_KEY = "multeagent_active_thread";
-
-function normalize(raw: Partial<ChatThread> & { id: string }): ChatThread {
-  return {
-    id: raw.id,
-    title: (raw.title || "Chat").trim() || "Chat",
-    jobIds: Array.isArray(raw.jobIds) ? raw.jobIds : [],
-    projectId: raw.projectId ?? null,
-    pinned: Boolean(raw.pinned),
-    deletedAt: raw.deletedAt ?? null,
-    updatedAt: raw.updatedAt || new Date().toISOString(),
-  };
-}
-
-function read(): ChatThread[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter((t): t is Partial<ChatThread> & { id: string } => Boolean(t && typeof t === "object" && "id" in t))
-      .map(normalize);
-  } catch {
-    return [];
-  }
-}
-
-function write(threads: ChatThread[]) {
-  localStorage.setItem(KEY, JSON.stringify(threads));
-}
-
-function sortThreads(threads: ChatThread[]): ChatThread[] {
-  return [...threads].sort((a, b) => {
-    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-    return b.updatedAt.localeCompare(a.updatedAt);
-  });
-}
-
-/** Active (non-deleted) threads for the sidebar. */
-export function listThreads(): ChatThread[] {
-  return sortThreads(read().filter((t) => !t.deletedAt));
-}
-
-/** All threads including soft-deleted (for migrations / restore). */
-export function listAllThreads(): ChatThread[] {
-  return sortThreads(read());
-}
-
-export function getThread(id: string, includeDeleted = false): ChatThread | null {
-  const t = read().find((x) => x.id === id) || null;
-  if (!t) return null;
-  if (!includeDeleted && t.deletedAt) return null;
-  return t;
-}
-
-export function createThread(title = "New chat", projectId: string | null = null): ChatThread {
-  const thread: ChatThread = {
-    id: newId(),
-    title: title.trim() || "New chat",
-    jobIds: [],
-    projectId,
-    pinned: false,
-    deletedAt: null,
-    updatedAt: new Date().toISOString(),
-  };
-  const all = read();
-  all.unshift(thread);
-  write(all);
-  localStorage.setItem(ACTIVE_KEY, thread.id);
-  return thread;
-}
-
-export function renameThread(id: string, title: string): ChatThread[] {
-  const all = read().map((t) =>
-    t.id === id
-      ? { ...t, title: title.trim() || t.title, updatedAt: new Date().toISOString() }
-      : t,
-  );
-  write(all);
-  return listThreads();
-}
-
-export function setThreadProject(id: string, projectId: string | null): ChatThread[] {
-  const all = read().map((t) =>
-    t.id === id && !t.deletedAt ? { ...t, projectId, updatedAt: new Date().toISOString() } : t,
-  );
-  write(all);
-  return listThreads();
-}
-
-export function pinThread(id: string, pinned?: boolean): ChatThread[] {
-  const all = read().map((t) => {
-    if (t.id !== id || t.deletedAt) return t;
-    return { ...t, pinned: pinned ?? !t.pinned, updatedAt: new Date().toISOString() };
-  });
-  write(all);
-  return listThreads();
-}
-
-export function addJobToThread(threadId: string, jobId: string, title?: string): ChatThread[] {
-  const all = read().map((t) => {
-    if (t.id !== threadId || t.deletedAt) return t;
-    const jobIds = t.jobIds.includes(jobId) ? t.jobIds : [...t.jobIds, jobId];
-    return {
-      ...t,
-      jobIds,
-      title: t.title === "New chat" && title ? title : t.title,
-      updatedAt: new Date().toISOString(),
-    };
-  });
-  write(all);
-  return listThreads();
-}
-
-/** Soft-delete a conversation (keeps record + job ids for audit). */
-export function softDeleteThread(id: string): ChatThread[] {
-  const now = new Date().toISOString();
-  const all = read().map((t) =>
-    t.id === id ? { ...t, deletedAt: t.deletedAt || now, pinned: false, updatedAt: now } : t,
-  );
-  write(all);
-  if (localStorage.getItem(ACTIVE_KEY) === id) localStorage.removeItem(ACTIVE_KEY);
-  return listThreads();
-}
-
-/** @deprecated use softDeleteThread */
-export function deleteThread(id: string): ChatThread[] {
-  return softDeleteThread(id);
-}
+const LEGACY_KEY = "multeagent_threads_v1"; // pre-server history, migrated once on first login
 
 export function getActiveThreadId(): string | null {
   if (typeof window === "undefined") return null;
@@ -157,31 +30,63 @@ export function setActiveThreadId(id: string | null) {
   else localStorage.removeItem(ACTIVE_KEY);
 }
 
-/**
- * Ensure every known (non-deleted) job appears in some active thread.
- * Skips jobs already on any thread (including soft-deleted) so they don't reappear.
- */
-export function ensureThreadsForJobs(
-  jobs: { id: string; query: string; created_at?: string | null; deleted_at?: string | null }[],
-): ChatThread[] {
-  const threads = read();
-  const seen = new Set(threads.flatMap((t) => t.jobIds));
-  let changed = false;
-  for (const job of jobs) {
+function sortThreads(threads: ChatThread[]): ChatThread[] {
+  return [...threads].sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return b.updatedAt.localeCompare(a.updatedAt);
+  });
+}
+
+/** Build the chat list the sidebar shows: group jobs by their thread_id, then layer on the server
+ *  metadata (title, pin, project, deletion). A legacy job with no thread_id becomes its own chat;
+ *  a chat that has a metadata row but no loaded jobs yet (a brand-new empty chat) is kept too. */
+export function buildThreads(jobs: Job[], metas: ThreadMeta[]): ChatThread[] {
+  const metaById = new Map(metas.map((m) => [m.id, m]));
+  const byId = new Map<string, ChatThread>();
+  const now = new Date().toISOString();
+  const ordered = [...jobs].sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+  for (const job of ordered) {
     if (job.deleted_at) continue;
-    if (seen.has(job.id)) continue;
-    threads.push({
-      id: newId(),
-      title: job.query.trim().slice(0, 42) || "Chat",
-      jobIds: [job.id],
-      projectId: null,
-      pinned: false,
-      deletedAt: null,
-      updatedAt: job.created_at || new Date().toISOString(),
-    });
-    seen.add(job.id);
-    changed = true;
+    const tid = job.thread_id || `job-${job.id}`;
+    let thread = byId.get(tid);
+    if (!thread) {
+      const m = metaById.get(tid);
+      thread = {
+        id: tid,
+        title: m?.title || job.query.trim().slice(0, 42) || "Chat",
+        jobIds: [],
+        projectId: m?.projectId ?? null,
+        pinned: m?.pinned ?? false,
+        deletedAt: m?.deletedAt ?? null,
+        updatedAt: m?.updatedAt || job.created_at || now,
+      };
+      byId.set(tid, thread);
+    }
+    thread.jobIds.push(job.id);
   }
-  if (changed) write(threads);
-  return listThreads();
+  for (const m of metas) {
+    if (byId.has(m.id)) continue;
+    byId.set(m.id, {
+      id: m.id,
+      title: m.title,
+      jobIds: [],
+      projectId: m.projectId,
+      pinned: m.pinned,
+      deletedAt: m.deletedAt,
+      updatedAt: m.updatedAt || now,
+    });
+  }
+  return sortThreads([...byId.values()].filter((t) => !t.deletedAt));
+}
+
+/** Old browser-stored threads, read once so first login can migrate them to the server. */
+export function readLegacyThreads(): unknown[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(LEGACY_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }

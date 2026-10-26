@@ -8,9 +8,9 @@ from dataclasses import replace
 
 import pytest
 
-from src import security_scan as sec
-from src.config import Config
-from src.net_scan import ScanError
+from src.servers import security_scan as sec
+from src.core.config import Config
+from src.servers.net_scan import ScanError
 
 CFG = replace(Config.from_env(), security_scan_enabled=True, network_scan_max_hosts=1024)
 
@@ -156,7 +156,7 @@ def test_this_pc_section_and_known_ports():
 
 # ── admin only ───────────────────────────────────────────────────────────
 def test_only_admins_run_it(monkeypatch):
-    from src import worker
+    from src.jobs import worker
 
     assert "security_check" in worker.ADMIN_TOOLS and worker.DIRECT_TOOLS["security_check"] is sec.run_security_check
     finished, events = [], []

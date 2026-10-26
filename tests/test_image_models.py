@@ -6,16 +6,16 @@ import dataclasses
 
 import pytest
 
-from src import image_gen
-from src.config import Config
-from src.image_models import (
+from src.images import image_gen
+from src.core.config import Config
+from src.images.image_models import (
     CHECKPOINT_DIR,
     parse_image_flags,
     preset_for,
     resolve_checkpoint,
     size_for_aspect,
 )
-from src.image_prompt import PromptRewrite, fit_prompt, parse_rewrite
+from src.images.image_prompt import PromptRewrite, fit_prompt, parse_rewrite
 
 
 # ── flags ───────────────────────────────────────────────────────────────
@@ -200,7 +200,7 @@ def test_fast_profile_uses_the_fast_checkpoint(monkeypatch, fake_run, tmp_path):
     ("http://192.168.1.5:11434", "http://192.168.1.5:11434"),
 ])
 def test_localhost_becomes_ipv4(url, expected):
-    from src.config import _loopback
+    from src.core.config import _loopback
 
     assert _loopback(url) == expected
 
@@ -221,7 +221,7 @@ def test_profiles_choose_model_size_and_hires(monkeypatch, fake_run, tmp_path):
 
 
 def test_long_prompts_are_condensed_not_cut():
-    from src.image_prompt import needs_rewrite
+    from src.images.image_prompt import needs_rewrite
 
     gta = ("YouTube thumbnail design for GTA V streaming. Style: Hyper-realistic, vibrant 8k, dynamic angle. "
            "Main subject: A muscular character in a luxury sports car speeding through a neon-lit city at night "

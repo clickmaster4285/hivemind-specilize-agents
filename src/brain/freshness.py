@@ -12,7 +12,7 @@ import logging
 import threading
 from datetime import datetime, timedelta, timezone
 
-from src.config import Config
+from src.core.config import Config
 
 logger = logging.getLogger(__name__)
 

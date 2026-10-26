@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from src.artifacts import (
+from src.tools.artifacts import (
     artifact_event,
     list_artifacts,
     mime_for,
@@ -20,8 +20,8 @@ from src.artifacts import (
     write_bytes,
     write_text,
 )
-from src.config import Config, ROOT
-from src.doc_builder import (
+from src.core.config import Config, ROOT
+from src.tools.doc_builder import (
     append_markdown_to_docx,
     fix_mojibake,
     markdown_to_plain,
@@ -32,7 +32,7 @@ from src.doc_builder import (
     subtitle_line,
     template_name,
 )
-from src.llm_client import LLMClient
+from src.llm.llm_client import LLMClient
 
 
 class ToolError(RuntimeError):
@@ -72,7 +72,7 @@ def _is_dup(*titles: str) -> bool:
 
 def _md_html_inline(text: str) -> str:
     """Escape then restore **bold** / *italic* / `code` as HTML tags."""
-    from src.doc_builder import parse_inline_markdown
+    from src.tools.doc_builder import parse_inline_markdown
 
     parts: list[str] = []
     for chunk, style in parse_inline_markdown(text):
@@ -88,7 +88,7 @@ def _md_html_inline(text: str) -> str:
 
 
 def _md_html_blocks(body: str, *, skip: tuple[str, ...] = ()) -> list[str]:
-    from src.doc_builder import iter_markdown_blocks
+    from src.tools.doc_builder import iter_markdown_blocks
 
     out: list[str] = []
     bullets: list[str] = []
@@ -383,7 +383,7 @@ def run_tool(
             layout = prs.slide_layouts[1] if len(prs.slide_layouts) > 1 else prs.slide_layouts[0]
             s = prs.slides.add_slide(layout)
             s.shapes.title.text = strip_inline_markdown(heading)
-            from src.doc_builder import iter_markdown_blocks
+            from src.tools.doc_builder import iter_markdown_blocks
 
             bullets: list[str] = []
             for block in iter_markdown_blocks(body):
@@ -529,8 +529,8 @@ def run_tool(
 
     if name == "network_scan":
         # private networks only, size and time limits, Stop honoured (src/net_scan.py)
-        from src import live
-        from src.net_scan import ScanError, markdown_table, scan, summary
+        from src.jobs import live
+        from src.servers.net_scan import ScanError, markdown_table, scan, summary
 
         try:
             result = scan(str(args.get("subnet") or "").strip() or None, config,

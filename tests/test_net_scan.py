@@ -7,9 +7,9 @@ import time
 
 import pytest
 
-from src import net_scan
-from src.config import Config
-from src.net_scan import Device, ScanError, ScanResult, subnet_from_text, validate_subnet
+from src.servers import net_scan
+from src.core.config import Config
+from src.servers.net_scan import Device, ScanError, ScanResult, subnet_from_text, validate_subnet
 
 CFG = Config.from_env()
 
@@ -94,7 +94,7 @@ def test_chat_job_gives_table_and_file(fake_network, monkeypatch, tmp_path):
         saved["name"] = filename
         return {"filename": filename, "mime": "x", "relpath": f"{job_id}/files/{filename}", "bytes": len(data), "kind": kind}
 
-    monkeypatch.setattr("src.artifacts.write_bytes", fake_write)
+    monkeypatch.setattr("src.tools.artifacts.write_bytes", fake_write)
     events = []
     output, errors, _ = net_scan.run_network_scan("check all the IPs and give me a table", job_id="j1",
                                                   config=CFG, on_progress=events.append)

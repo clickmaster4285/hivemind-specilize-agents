@@ -11,9 +11,9 @@ from typing import Any, Callable
 
 from src.agentic import prompts
 from src.agentic.tools import ToolError, run_tool
-from src.config import Config
-from src.conversation import format_conversation_block, normalize_conversation
-from src.llm_client import LLMClient
+from src.core.config import Config
+from src.core.conversation import format_conversation_block, normalize_conversation
+from src.llm.llm_client import LLMClient
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 

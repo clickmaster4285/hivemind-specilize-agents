@@ -19,7 +19,7 @@ import psycopg
 from psycopg import sql
 
 from src.brain.db import APP_ROLE, CONNECT_TIMEOUT_SECONDS, BrainDBError, owner_url
-from src.config import ROOT, Config
+from src.core.config import ROOT, Config
 
 MIGRATIONS_DIR = ROOT / "deploy" / "brain-migrations"
 

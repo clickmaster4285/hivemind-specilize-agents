@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src import host_check as hc
-from src.net_scan import ScanError
+from src.servers import host_check as hc
+from src.servers.net_scan import ScanError
 
 WINDOWS_UP = """Pinging 192.168.88.1 with 32 bytes of data:
 Reply from 192.168.88.1: bytes=32 time=1ms TTL=255
@@ -74,9 +74,9 @@ def test_answers_for_up_blocked_and_down():
 
 
 def test_registered_for_the_it_specialist_and_not_admin_only():
-    from src import worker
-    from src.assistant import BY_NAME
-    from src.specialists import default_specialists
+    from src.jobs import worker
+    from src.llm.assistant import BY_NAME
+    from src.llm.specialists import default_specialists
 
     assert BY_NAME["ping_host"].intent == "host_check" and worker.DIRECT_TOOLS["host_check"] is hc.run_host_check
     assert "host_check" not in worker.ADMIN_TOOLS                   # a ping is harmless, like network_scan
@@ -87,7 +87,7 @@ def test_registered_for_the_it_specialist_and_not_admin_only():
 def test_chat_job_reports_the_typo():
     from dataclasses import replace
 
-    from src.config import Config
+    from src.core.config import Config
 
     out, errors, _ = hc.run_host_check("ping 192.16.88.18 and check it is running ?", job_id="j",
                                        config=replace(Config.from_env(), network_scan_enabled=True),

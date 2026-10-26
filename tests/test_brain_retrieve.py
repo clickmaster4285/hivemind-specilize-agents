@@ -18,7 +18,7 @@ from src.brain import db as brain_db
 from src.brain.embed import EMBED_DIM
 from src.brain.migrate import migrate
 from src.brain.retrieve import detect_exact_terms, keyword_query, rrf_merge, search
-from src.config import Config
+from src.core.config import Config
 
 PREFIX = "test-retrieve-"
 FORWARDER_CHUNK = "zzqtoken Use Set-ZzqForwarder to change the forwarders list."

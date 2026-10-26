@@ -17,10 +17,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.specialists import COLLECTIONS, SpecialistStore
-from src.attachments import image_path
-from src.artifacts import resolve_job_file
-from src.auth import (
+from src.llm.specialists import COLLECTIONS, SpecialistStore
+from src.tools.attachments import image_path
+from src.tools.artifacts import resolve_job_file
+from src.core.auth import (
     bootstrap_admin,
     create_access_token,
     get_current_user,
@@ -28,9 +28,9 @@ from src.auth import (
     require_admin,
     verify_password,
 )
-from src.config import Config
-from src.db import init_db
-from src.jobs import (
+from src.core.config import Config
+from src.core.db import init_db
+from src.jobs.jobs import (
     cancel_job,
     create_job,
     estimate_wait_seconds,
@@ -41,10 +41,11 @@ from src.jobs import (
     soft_delete_job,
     soft_delete_jobs,
 )
-from src.llm_client import LLMClient
-from src.model_registry import list_models, sync_models_from_ollama
-from src.models_db import Job, ModelRecord, User
-from src.worker import start_inprocess_worker
+from src.jobs import history_store
+from src.llm.llm_client import LLMClient
+from src.llm.model_registry import list_models, sync_models_from_ollama
+from src.core.models_db import Job, ModelRecord, User
+from src.jobs.worker import start_inprocess_worker
 from web.brain_routes import router as brain_router
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -53,7 +54,7 @@ store = SpecialistStore()
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    from src.db import session_scope
+    from src.core.db import session_scope
 
     config = Config.from_env()
     config.log_dir.mkdir(parents=True, exist_ok=True)
@@ -71,7 +72,7 @@ async def lifespan(_app: FastAPI):
         # SDXL lives in its own process; start it (and load the model) in the background
         import threading
 
-        from src.image_client import ImageServiceClient
+        from src.images.image_client import ImageServiceClient
 
         threading.Thread(target=ImageServiceClient(config).warm, name="image-service-warm", daemon=True).start()
     yield
@@ -121,6 +122,26 @@ class SoftDeleteJobsPayload(BaseModel):
     job_ids: list[str] = Field(default_factory=list)
 
 
+class ThreadUpsertPayload(BaseModel):
+    # all optional: only the fields sent are changed (title=rename, pinned=pin, project_id=move)
+    title: str | None = None
+    pinned: bool | None = None
+    project_id: str | None = None
+
+
+class ProjectCreatePayload(BaseModel):
+    name: str = "Untitled project"
+
+
+class ProjectRenamePayload(BaseModel):
+    name: str
+
+
+class HistoryImportPayload(BaseModel):
+    threads: list[dict[str, Any]] = Field(default_factory=list)
+    projects: list[dict[str, Any]] = Field(default_factory=list)
+
+
 class ImageAttachmentIn(BaseModel):
     filename: str = "image.png"
     mime: str = "image/png"
@@ -148,6 +169,9 @@ class JobCreatePayload(BaseModel):
     force_intent: str | None = None
     image_profile: Literal["fast", "quality", "balanced"] | None = None
     image_strength: float | None = None
+    # Which chat this job belongs to (client-generated id). Lets history regroup a conversation's jobs
+    # into one chat after a reload/login, instead of one chat per job.
+    thread_id: str | None = None
 
 
 class ModelUpdatePayload(BaseModel):
@@ -159,7 +183,7 @@ class ModelUpdatePayload(BaseModel):
 
 @app.get("/api/health")
 def health(db: Session = Depends(get_db)) -> dict[str, Any]:
-    from src.image_client import ImageServiceClient
+    from src.images.image_client import ImageServiceClient
 
     config = Config.from_env()
     client = LLMClient(config)
@@ -234,7 +258,7 @@ def list_specialists(_user: User = Depends(get_current_user)) -> list[dict[str, 
 @app.get("/api/specialists/options")
 def specialist_options(_user: User = Depends(get_current_user)) -> dict[str, Any]:
     """What the edit form offers: the assistant's tools and the knowledge-base collections."""
-    from src.assistant import TOOLS
+    from src.llm.assistant import TOOLS
 
     return {"tools": [{"name": t.name, "description": t.description.split(". ")[0]} for t in TOOLS],
             "collections": list(COLLECTIONS)}
@@ -295,7 +319,7 @@ class ServerModePayload(BaseModel):
 
 @app.get("/api/servers")
 def list_servers(user: User = Depends(require_admin)) -> list[dict[str, Any]]:
-    from src import server_vault
+    from src.servers import server_vault
 
     return [s.public() for s in server_vault.list_servers(user.id)]
 
@@ -303,7 +327,7 @@ def list_servers(user: User = Depends(require_admin)) -> list[dict[str, Any]]:
 @app.post("/api/servers")
 def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin)) -> dict[str, Any]:
     """Log in once (learn the server's host key and access level), then keep the login for the session."""
-    from src import linux_audit, server_vault
+    from src.servers import linux_audit, server_vault
 
     try:
         server_vault.check_host(payload.host)
@@ -327,7 +351,7 @@ def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin))
 @app.put("/api/servers/{server_id}/mode")
 def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Depends(require_admin)) -> dict[str, Any]:
     """Change a server's trust mode (audit / confirm / trusted)."""
-    from src import server_vault
+    from src.servers import server_vault
 
     try:
         return server_vault.set_mode(user.id, server_id, payload.mode).public()
@@ -337,7 +361,7 @@ def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Dep
 
 @app.delete("/api/servers/{server_id}")
 def remove_server(server_id: str, user: User = Depends(require_admin)) -> dict[str, str]:
-    from src import server_vault
+    from src.servers import server_vault
 
     if not server_vault.remove(user.id, server_id):
         raise HTTPException(status_code=404, detail="server not found (the session may have ended)")
@@ -347,7 +371,7 @@ def remove_server(server_id: str, user: User = Depends(require_admin)) -> dict[s
 @app.delete("/api/servers")
 def forget_servers(user: User = Depends(get_current_user)) -> dict[str, int]:
     """Logout: forget every server login of this user."""
-    from src import server_vault
+    from src.servers import server_vault
 
     return {"forgotten": server_vault.clear(user.id)}
 
@@ -413,6 +437,7 @@ def create_job_endpoint(
                 "force_intent": payload.force_intent,
                 "image_profile": payload.image_profile,
                 "image_strength": payload.image_strength,
+                "thread_id": payload.thread_id,
             },
             config=config,
             priority=payload.priority if user.role == "admin" else 100,
@@ -454,6 +479,98 @@ def soft_delete_jobs_endpoint(
     deleted = soft_delete_jobs(db, ids, user=user)
     db.commit()
     return {"status": "soft_deleted", "deleted_ids": deleted, "count": len(deleted)}
+
+
+# ── Chat history: thread + project metadata, per user, so titles/pins/projects sync across devices.
+# A thread's messages stay its jobs (grouped by the job's thread_id); these rows hold only metadata.
+@app.get("/api/history")
+def get_history(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    return history_store.list_history(db, user.id)
+
+
+@app.put("/api/threads/{thread_id}")
+def upsert_thread_endpoint(
+    thread_id: str,
+    payload: ThreadUpsertPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    fields = payload.model_fields_set
+    kwargs: dict[str, Any] = {}
+    if "title" in fields:
+        kwargs["title"] = payload.title
+    if "pinned" in fields:
+        kwargs["pinned"] = payload.pinned
+    if "project_id" in fields:  # present (even as null) ⇒ change it; absent ⇒ leave as-is
+        kwargs["project_id"] = payload.project_id
+    try:
+        row = history_store.upsert_thread(db, user.id, thread_id, **kwargs)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Forbidden") from exc
+    db.commit()
+    return history_store._thread_dict(row)
+
+
+@app.delete("/api/threads/{thread_id}")
+def delete_thread_endpoint(
+    thread_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    ok = history_store.delete_thread(db, user.id, thread_id)
+    db.commit()
+    return {"ok": ok}
+
+
+@app.post("/api/history/import")
+def import_history_endpoint(
+    payload: HistoryImportPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """One-time migration of a user's browser-stored history (no-op once they have any thread row)."""
+    result = history_store.import_history(db, user.id, threads=payload.threads, projects=payload.projects)
+    db.commit()
+    return result
+
+
+@app.post("/api/projects")
+def create_project_endpoint(
+    payload: ProjectCreatePayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    row = history_store.create_project(db, user.id, payload.name)
+    db.commit()
+    return history_store._project_dict(row)
+
+
+@app.put("/api/projects/{project_id}")
+def rename_project_endpoint(
+    project_id: str,
+    payload: ProjectRenamePayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    row = history_store.rename_project(db, user.id, project_id, payload.name)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    db.commit()
+    return history_store._project_dict(row)
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project_endpoint(
+    project_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    ok = history_store.delete_project(db, user.id, project_id)
+    db.commit()
+    return {"ok": ok}
 
 
 @app.delete("/api/jobs/{job_id}")
@@ -503,7 +620,7 @@ def cancel_job_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     # ends a model call that is writing right now, instead of waiting for the whole answer
-    from src import live
+    from src.jobs import live
 
     live.stop(job.id)
     return job_to_dict(job)
@@ -525,7 +642,7 @@ def confirm_command_endpoint(
     job = get_job(db, job_id)
     if job is None or (user.role != "admin" and job.user_id != user.id):
         raise HTTPException(status_code=404, detail="Job not found")
-    from src import live
+    from src.jobs import live
 
     found = live.answer_confirm(job_id, payload.command_id, payload.approved)
     return {"ok": found, "approved": payload.approved}
@@ -582,7 +699,7 @@ def job_attachment(
                 path = resolve_job_file(config, job_id, filename)
         else:
             path = resolve_job_file(config, job_id, filename)
-            from src.artifacts import mime_for
+            from src.tools.artifacts import mime_for
 
             mime = mime_for(filename)
     except (ValueError, FileNotFoundError, KeyError) as exc:
@@ -603,8 +720,8 @@ async def job_events_stream(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     async def event_generator():
-        from src import live
-        from src.db import session_scope
+        from src.jobs import live
+        from src.core.db import session_scope
 
         last_seq = 0
         terminal = {"succeeded", "failed", "cancelled"}
@@ -646,7 +763,7 @@ async def job_events_stream(
             else:
                 idle_rounds = 0
             # Wake early when append_event notifies; fall back to short poll.
-            from src.job_events import wait_job
+            from src.jobs.job_events import wait_job
 
             await asyncio.to_thread(wait_job, job_id, 0.35)
 

@@ -6,8 +6,8 @@ from dataclasses import replace
 
 import pytest
 
-from src import server_ops as so
-from src.config import Config
+from src.servers import server_ops as so
+from src.core.config import Config
 
 SAFE = [
     "systemctl status nginx", "journalctl -u nginx --since -1h", "df -h", "free -m", "ss -tulpn",
@@ -125,9 +125,9 @@ def test_a_change_command_from_the_model_is_refused_not_run(monkeypatch):
 
 # ── wiring ─────────────────────────────────────────────────────────────────
 def test_wired_for_the_it_specialist_credential_gated_not_admin_only():
-    from src import worker
-    from src.assistant import BY_NAME
-    from src.specialists import default_specialists
+    from src.jobs import worker
+    from src.llm.assistant import BY_NAME
+    from src.llm.specialists import default_specialists
 
     assert BY_NAME["diagnose_server"].intent == "server_diagnose"
     assert worker.DIRECT_TOOLS["server_diagnose"] is so.run_server_diagnose
@@ -167,7 +167,7 @@ def _operate(monkeypatch, mode, script, confirm, shell_outputs=None, os_family="
     FakeLLM.script = script
     monkeypatch.setattr(so, "LLMClient", FakeLLM)
     logged: list[tuple[str, str]] = []
-    monkeypatch.setattr("src.command_audit.log_command",
+    monkeypatch.setattr("src.servers.command_audit.log_command",
                         lambda **kw: logged.append((kw["command"], kw["decision"])))
     login = so.ServerLogin(id="1", label="web01", host="192.168.1.9", port=22, username="u", password="p",
                            mode=mode, os_family=os_family)
@@ -228,9 +228,9 @@ def test_destructive_is_refused_even_in_trusted(monkeypatch):
 
 
 def test_operate_wired_and_it_only():
-    from src import worker
-    from src.assistant import BY_NAME
-    from src.specialists import default_specialists
+    from src.jobs import worker
+    from src.llm.assistant import BY_NAME
+    from src.llm.specialists import default_specialists
 
     assert BY_NAME["operate_server"].intent == "server_operate"
     assert worker.DIRECT_TOOLS["server_operate"] is so.run_server_operate
@@ -242,7 +242,7 @@ def test_operate_wired_and_it_only():
 def test_confirm_round_trip(monkeypatch):
     import threading
 
-    from src import live
+    from src.jobs import live
 
     live.clear("job-x")
     answers = {}
@@ -262,7 +262,7 @@ def test_confirm_round_trip(monkeypatch):
 
 
 def test_confirm_times_out_without_an_answer():
-    from src import live
+    from src.jobs import live
 
     live.clear("job-y")
     assert live.wait_confirm("job-y", "cmd-9", timeout=0.1) is None     # nobody answered

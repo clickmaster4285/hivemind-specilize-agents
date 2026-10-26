@@ -6,8 +6,8 @@ import dataclasses
 
 import pytest
 
-from src.config import Config
-from src.intent_router import classify_query
+from src.core.config import Config
+from src.llm.intent_router import classify_query
 
 
 def _route(text: str):

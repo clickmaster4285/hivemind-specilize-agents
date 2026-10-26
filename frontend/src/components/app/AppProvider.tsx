@@ -54,15 +54,17 @@ function useAppState() {
 
   const { load: loadSpecialists, clear: clearSpecialists } = specialists;
   const { refresh: refreshModels } = models;
-  const { refreshJobs, clear: clearJobs, selectThread } = history;
+  const { refreshJobs, loadHistory, clear: clearJobs, selectThread } = history;
   const { setFeed } = chat;
   const onSignedIn = useCallback(
     async (fresh: boolean) => {
       await loadSpecialists();
       await refreshModels(fresh);
+      // load the chat/project metadata first so refreshed jobs group under their saved titles/pins
+      await loadHistory();
       await refreshJobs();
     },
-    [loadSpecialists, refreshModels, refreshJobs],
+    [loadSpecialists, refreshModels, loadHistory, refreshJobs],
   );
   const onSignedOut = useCallback(
     (reason: "logout" | "expired") => {

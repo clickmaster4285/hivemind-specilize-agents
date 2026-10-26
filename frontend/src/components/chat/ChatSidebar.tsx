@@ -89,7 +89,9 @@ export default function ChatSidebar({
         <ProjectList
           history={history}
           onNew={() => {
-            if (history.newProject()) setTab("projects");
+            void history.newProject().then((p) => {
+              if (p) setTab("projects");
+            });
           }}
           onSelect={(id) => {
             history.selectProject(id);
@@ -144,7 +146,7 @@ function ProjectList({
             <div className={`${navRow} ${history.projectId === p.id ? navActive : ""}`}>
               <button type="button" className={navMain} onClick={() => onSelect(p.id)}>
                 <strong className={navMainTitle}>{p.name}</strong>
-                <span className={navMainSub}>{p.jobIds.length} chats</span>
+                <span className={navMainSub}>{history.threads.filter((t) => t.projectId === p.id).length} chats</span>
               </button>
               <button
                 type="button"

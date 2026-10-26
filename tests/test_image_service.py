@@ -19,10 +19,10 @@ import uvicorn
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from src import image_service
-from src import sdxl_pipeline as sdxl
-from src.config import Config
-from src.image_client import ImageCancelled, ImageServiceClient, ImageServiceError
+from src.images import image_service
+from src.images import sdxl_pipeline as sdxl
+from src.core.config import Config
+from src.images.image_client import ImageCancelled, ImageServiceClient, ImageServiceError
 
 TOKEN = "test-token-123"
 AUTH = {"X-Image-Token": TOKEN}

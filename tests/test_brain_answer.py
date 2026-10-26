@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 import psycopg
 import pytest
 
-from src import chat_runner
+from src.jobs import chat_runner
 from src.brain import answer as brain_answer
 from src.brain import db as brain_db
 from src.brain.answer import (
@@ -26,7 +26,7 @@ from src.brain.answer import (
 from src.brain.db import BrainDBError
 from src.brain.migrate import migrate
 from src.brain.retrieve import Passage, SearchResult
-from src.config import Config
+from src.core.config import Config
 
 
 def _passage(n: int, title: str, content: str) -> Passage:

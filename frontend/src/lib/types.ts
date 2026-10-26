@@ -101,6 +101,8 @@ export type Job = {
   status: string;
   priority: number;
   query: string;
+  /** Which chat this job belongs to; lets history regroup a conversation after a reload */
+  thread_id?: string | null;
   payload: Record<string, unknown>;
   model_plan: Record<string, string>;
   error?: string | null;

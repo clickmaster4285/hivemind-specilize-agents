@@ -10,9 +10,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from src import live
-from src.config import Config
-from src.llm_client import LLMClient, LLMError, LLMStopped
+from src.jobs import live
+from src.core.config import Config
+from src.llm.llm_client import LLMClient, LLMError, LLMStopped
 
 WORDS = ["Hello", " there", ",", " this", " is", " a", " streamed", " answer", "."]
 
@@ -114,7 +114,7 @@ def test_live_buffer_and_stop_flag():
 
 
 def test_run_chat_streams_and_stops(ollama, monkeypatch):
-    from src import chat_runner
+    from src.jobs import chat_runner
 
     monkeypatch.setattr(chat_runner, "model_loaded", lambda config, model: True)
     events = []
@@ -133,7 +133,7 @@ def test_run_chat_streams_and_stops(ollama, monkeypatch):
 
 
 def test_friendly_errors():
-    from src.chat_runner import friendly_error
+    from src.jobs.chat_runner import friendly_error
 
     cfg = Config.from_env()
     assert "not running" in friendly_error(LLMError("connection refused — Ollama is not reachable"), cfg)
