@@ -286,11 +286,6 @@ def get_pipelines(config: Config | None = None, checkpoint: Path | None = None) 
     return _txt2img, _img2img
 
 
-def get_pipeline(config: Config | None = None) -> Any:
-    """Backward-compatible: return txt2img pipeline."""
-    return get_pipelines(config)[0]
-
-
 def warm_pipeline_async(config: Config | None = None, checkpoint: Path | None = None) -> None:
     """Background warm-load so the first chat image is not cold."""
     global _warm_state, _warm_error
@@ -556,15 +551,3 @@ def _fit_image(image: Any, width: int, height: int) -> Any:
     left = max(0, (new_w - width) // 2)
     top = max(0, (new_h - height) // 2)
     return resized.crop((left, top, left + width, top + height))
-
-
-def reset_pipeline() -> None:
-    """Drop cached pipelines (tests / model path change)."""
-    global _txt2img, _img2img, _pipeline_path, _warm_state, _warm_error
-    with _lock:
-        _txt2img = None
-        _img2img = None
-        _pipeline_path = None
-        _warm_state = "cold"
-        _warm_error = None
-    _free_memory()

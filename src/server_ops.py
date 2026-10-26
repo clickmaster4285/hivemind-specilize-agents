@@ -101,10 +101,6 @@ _SUBSHELL = re.compile(r"\$\([^)]*\)|`[^`]*`|<\([^)]*\)")
 _REDIRECT = re.compile(r">>?")
 
 
-class CommandRefused(ValueError):
-    """The command is not read-only (this server is in Audit mode)."""
-
-
 def _first_program(tokens: list[str]) -> tuple[str, list[str]] | None:
     """Drop leading env assignments / sudo / nice / etc., return (program, its args)."""
     i = 0

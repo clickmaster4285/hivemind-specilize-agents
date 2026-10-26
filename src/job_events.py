@@ -23,6 +23,3 @@ def wait_job(job_id: str, timeout: float = 0.35) -> bool:
     return ev.wait(timeout=timeout)
 
 
-def clear_job(job_id: str) -> None:
-    with _meta:
-        _waiters.pop(job_id, None)

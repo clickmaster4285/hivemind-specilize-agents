@@ -155,8 +155,6 @@ User submits job (mode=auto|chat|debate|agentic|mixed)
 | `frontend/`                      | Next.js team UI                       |
 | `docker-compose.yml`             | Postgres + API + workers + Caddy      |
 | `deploy/Caddyfile`               | TLS / reverse-proxy starter           |
-| `requirments.md`                 | Original product brief                |
-| `multi_agent_project_plan.md`    | Early checklist                       |
 | `FULL_PROJECT_PLAN.md`           | **This document**                     |
 
 

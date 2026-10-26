@@ -207,7 +207,8 @@ def resolve_model_plan(
     queue_wait_seconds: float = 0.0,
     prefer_cloud_overflow: bool = True,
 ) -> dict[str, str]:
-    """Return models for fast/panel, strong/consensus, and optional cloud overflow."""
+    """Return the model for each role (planner, worker, critic, vision, image), using the cloud model
+    as overflow when the queue is long."""
     enabled = {
         r.name: r
         for r in session.scalars(select(ModelRecord).where(ModelRecord.enabled.is_(True))).all()
@@ -263,8 +264,6 @@ def resolve_model_plan(
         if row is not None and getattr(row, "vision", False):
             override_vision = override_model
         return {
-            "panel": override_model,
-            "consensus": override_model,
             "planner": override_model,
             "worker": override_model,
             "critic": override_model,
@@ -281,8 +280,6 @@ def resolve_model_plan(
     panel = cloud if use_cloud else fast
     consensus = cloud if use_cloud else strong
     return {
-        "panel": panel,
-        "consensus": consensus,
         "planner": panel,
         "worker": consensus,
         "critic": consensus,

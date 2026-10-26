@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import requests
 
@@ -77,12 +76,3 @@ def model_loaded(config: Config, model: str) -> bool:
     except Exception:  # noqa: BLE001
         return True
     return model in names or f"{model}:latest" in names
-
-
-def ollama_reachable(config: Config | None = None) -> bool:
-    config = config or Config.from_env()
-    try:
-        r = requests.get(f"{config.llm_base_url.rstrip('/')}/api/tags", timeout=2)
-        return r.ok
-    except Exception:  # noqa: BLE001
-        return False

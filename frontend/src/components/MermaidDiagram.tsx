@@ -63,7 +63,7 @@ function openFullSize(svg: string) {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
-/** Send the browser's exact Mermaid error back to the assistant (ControlDeck listens). The previous
+/** Send the browser's exact Mermaid error back to the assistant (AppProvider listens). The previous
  *  answer is a diagram, so the router keeps this follow-up on the diagram writer. */
 function askToFix(error: string) {
   const text = `Fix the diagram above: Mermaid could not draw it. Error: ${error.split("\n").slice(0, 3).join(" ")}`;

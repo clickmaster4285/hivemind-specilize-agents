@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from typing import Any
 
 from src.agentic.runtime import run_agentic
@@ -322,5 +321,3 @@ def start_inprocess_worker(config: Config | None = None) -> None:
     _worker_thread.start()
 
 
-def stop_inprocess_worker() -> None:
-    _stop.set()

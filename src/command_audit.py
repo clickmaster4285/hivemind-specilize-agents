@@ -43,14 +43,3 @@ def log_command(
         logger.warning("command_log write failed: %s", exc)
 
 
-def recent(config: Config, user_id: int, limit: int = 100) -> list[dict]:
-    """The user's own command history, newest first (for a future Settings view)."""
-    from sqlalchemy import select
-
-    with session_scope(config) as session:
-        rows = session.scalars(
-            select(CommandLog).where(CommandLog.user_id == user_id)
-            .order_by(CommandLog.created_at.desc()).limit(limit)
-        ).all()
-        return [{"host": r.host, "server": r.server_label, "command": r.command, "decision": r.decision,
-                 "exit_code": r.exit_code, "at": r.created_at.isoformat()} for r in rows]

@@ -21,6 +21,7 @@ data/brain_eval/results/
 data/router/.cache/
 artifacts/
 models/checkpoints/*.safetensors
+models/checkpoints/*.gguf
 models/checkpoints/*.ckpt
 models/checkpoints/*.pt
 .idea/

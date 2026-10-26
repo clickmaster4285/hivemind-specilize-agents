@@ -22,7 +22,6 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from src.net_scan import PRIVATE_NETS
 
 SESSION_HOURS = 8
 MAX_SERVERS_PER_USER = 50

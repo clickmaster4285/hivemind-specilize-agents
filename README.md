@@ -86,8 +86,6 @@ Agentic tools write files under `artifacts/{job_id}/files/`; the feed shows **Do
 
 **Full review doc (what / how / why / libraries):** [FULL_PROJECT_PLAN.md](FULL_PROJECT_PLAN.md)
 
-Also see [multi_agent_project_plan.md](multi_agent_project_plan.md).
-
 ## Horizontal workers
 
 ```bash

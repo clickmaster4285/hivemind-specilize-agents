@@ -103,12 +103,6 @@ def resolve_checkpoint(name: str | None, default: Path | None) -> Path | None:
     return CHECKPOINT_DIR / name
 
 
-def available_checkpoints() -> list[str]:
-    if not CHECKPOINT_DIR.is_dir():
-        return []
-    return sorted(p.name for p in CHECKPOINT_DIR.glob("*.safetensors"))
-
-
 # ── sizes ───────────────────────────────────────────────────────────────
 # Sizes SDXL was trained on (~1 megapixel). Other aspect ratios snap to the nearest one.
 SDXL_BUCKETS: tuple[tuple[int, int], ...] = (
@@ -199,5 +193,3 @@ def parse_image_flags(text: str) -> ImageFlags:
     return flags
 
 
-def parse_aspect(text: str | None) -> tuple[int, int] | None:
-    return _ratio(text or "")

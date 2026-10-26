@@ -40,7 +40,7 @@ class Job(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    mode: Mapped[str] = mapped_column(String(20))  # debate|agentic|mixed
+    mode: Mapped[str] = mapped_column(String(20))  # auto|chat|agentic (legacy rows may be debate|mixed)
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
     priority: Mapped[int] = mapped_column(Integer, default=100)
     query: Mapped[str] = mapped_column(Text)
