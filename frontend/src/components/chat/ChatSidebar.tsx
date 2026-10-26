@@ -29,6 +29,17 @@ const navRow = `${navBase} flex items-center gap-[0.15rem] py-[0.2rem] pl-[0.15r
 const navMain = "flex-1 min-w-0 border-0 bg-transparent text-left font-[inherit] text-inherit cursor-pointer px-[0.4rem] py-[0.35rem]";
 const navMainTitle = "block truncate text-[0.86rem]";
 const navMainSub = "block text-[0.72rem] text-[var(--muted)] mt-[0.15rem]";
+const menuRow = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[0.8rem] text-[var(--text)] hover:bg-white/[0.06]";
+
+function Dots() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden>
+      <circle cx="12" cy="5" r="1.7" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.7" fill="currentColor" />
+      <circle cx="12" cy="19" r="1.7" fill="currentColor" />
+    </svg>
+  );
+}
 
 /** The left rail: new chat, history / projects, settings, sign out. */
 export default function ChatSidebar({
@@ -162,6 +173,10 @@ function ThreadList({
   onOpen: (thread: ChatThread) => void;
   onDelete: (thread: ChatThread) => void;
 }) {
+  // the per-chat ⋮ menu — one at a time, positioned from the button so the scrolling list can't clip it
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const menuThread = history.filteredThreads.find((t) => t.id === menu?.id) || null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-[0.45rem] overflow-hidden">
       <div className={sectionHead}>
@@ -200,27 +215,19 @@ function ThreadList({
                       {lastJob ? ` · ${lastJob.status}` : ""}
                     </span>
                   </button>
+                  {thread.pinned ? <span className="shrink-0 text-[0.7rem] text-[var(--copper)]" title="Pinned">★</span> : null}
                   <button
                     type="button"
-                    className={`icon-btn ${thread.pinned ? "on" : ""}`}
-                    title={thread.pinned ? "Unpin chat" : "Pin chat"}
+                    className={`icon-btn ${menu?.id === thread.id ? "on" : ""}`}
+                    title="More"
+                    aria-label="More"
                     onClick={(e) => {
                       e.stopPropagation();
-                      history.togglePin(thread);
+                      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                      setMenu(menu?.id === thread.id ? null : { id: thread.id, x: r.right, y: r.bottom });
                     }}
                   >
-                    {thread.pinned ? "★" : "☆"}
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-btn danger"
-                    title="Delete chat"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(thread);
-                    }}
-                  >
-                    ×
+                    <Dots />
                   </button>
                 </div>
               </li>
@@ -228,6 +235,74 @@ function ThreadList({
           })
         )}
       </ul>
+      {menu && menuThread ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 cursor-default"
+            aria-hidden
+            tabIndex={-1}
+            onClick={() => setMenu(null)}
+          />
+          <div
+            className="fixed z-50 w-[12rem] rounded-lg border border-[var(--line)] bg-[var(--panel)] p-1 shadow-[var(--shadow)]"
+            style={{ top: menu.y + 4, left: Math.max(8, menu.x - 192) }}
+          >
+            <button type="button" className={menuRow} onClick={() => { setMenu(null); history.togglePin(menuThread); }}>
+              <span>📌</span>
+              {menuThread.pinned ? "Unpin" : "Pin"}
+            </button>
+            <button
+              type="button"
+              className={menuRow}
+              onClick={() => {
+                setMenu(null);
+                const title = window.prompt("Rename chat", menuThread.title);
+                if (title && title.trim()) history.rename(menuThread, title.trim());
+              }}
+            >
+              <span>✏️</span>
+              Rename
+            </button>
+            {history.projects.length ? (
+              <>
+                <div className="my-1 border-t border-[var(--line)]" />
+                <p className="px-2.5 pb-0.5 pt-1 text-[0.64rem] uppercase tracking-wide text-[var(--muted)]">Move to project</p>
+                {history.projects.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={menuRow}
+                    onClick={() => { setMenu(null); history.moveToProject(menuThread, p.id); }}
+                  >
+                    <span>📁</span>
+                    {p.name}
+                  </button>
+                ))}
+                {menuThread.projectId ? (
+                  <button
+                    type="button"
+                    className={menuRow}
+                    onClick={() => { setMenu(null); history.moveToProject(menuThread, null); }}
+                  >
+                    <span>↩️</span>
+                    Remove from project
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+            <div className="my-1 border-t border-[var(--line)]" />
+            <button
+              type="button"
+              className={`${menuRow} text-[#e0837a]`}
+              onClick={() => { setMenu(null); onDelete(menuThread); }}
+            >
+              <span>🗑️</span>
+              Delete
+            </button>
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

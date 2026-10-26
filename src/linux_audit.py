@@ -31,6 +31,7 @@ from typing import Any
 from src.config import Config
 from src.security_scan import HIGH, LOW, MEDIUM, PORTS, RISK_LABEL, Finding, _order, _table
 from src.server_vault import ServerLogin, VaultError, check_host
+from src.win_commands import ps_wrap
 
 logger = logging.getLogger(__name__)
 
@@ -123,17 +124,42 @@ def connect(login: ServerLogin) -> tuple[Any, str]:
     return client, seen.get("fp", "")
 
 
+def detect_os(client: Any) -> tuple[str, str]:
+    """(os_family, os_name): try Linux first (uname), then a Windows PowerShell probe. Defaults to linux
+    so a shell we cannot identify still goes down the well-tested Linux path."""
+    try:
+        _in, out, _err = client.exec_command("uname -s -r", timeout=CONNECT_TIMEOUT)
+        text = out.read().decode("utf-8", "replace").strip()
+        linux = out.channel.recv_exit_status() == 0 and bool(re.search(r"linux|darwin|bsd", text, re.I))
+    except Exception:  # noqa: BLE001 — fall through to the Windows probe
+        linux = False
+    if linux:
+        return "linux", ""
+    try:
+        probe = 'powershell -NoProfile -NonInteractive -Command "(Get-CimInstance Win32_OperatingSystem).Caption"'
+        _in, out, _err = client.exec_command(probe, timeout=CONNECT_TIMEOUT)
+        caption = out.read().decode("utf-8", "replace").strip()
+        if out.channel.recv_exit_status() == 0 and caption:
+            return "windows", caption
+    except Exception:  # noqa: BLE001
+        pass
+    return "linux", ""
+
+
 @dataclass
 class Shell:
-    """Runs the fixed commands on one connection, with or without sudo."""
+    """Runs commands on one SSH connection. Linux: a bash command with a fixed PATH, with/without sudo.
+    Windows: the command is PowerShell, run via -EncodedCommand (see win_commands.ps_wrap)."""
     client: Any
     password: str | None = field(default=None, repr=False)
     root: bool = False
-    sudo: str = "none"                  # none | passwordless | password
+    sudo: str = "none"                  # none | passwordless | password (Linux)
+    os_family: str = "linux"            # linux | windows
+    is_admin: bool = False              # Windows: the account is an Administrator
 
     def raw(self, command: str, stdin_text: str | None = None) -> tuple[int, str, str]:
-        stdin, stdout, stderr = self.client.exec_command(f"LC_ALL=C PATH=$PATH:/usr/sbin:/sbin {command}",
-                                                         timeout=COMMAND_TIMEOUT)
+        full = ps_wrap(command) if self.os_family == "windows" else f"LC_ALL=C PATH=$PATH:/usr/sbin:/sbin {command}"
+        stdin, stdout, stderr = self.client.exec_command(full, timeout=COMMAND_TIMEOUT)
         if stdin_text is not None:
             stdin.write(stdin_text)
             stdin.flush()
@@ -152,6 +178,20 @@ class Shell:
         elif self.password and self.raw("sudo -S -p '' true", stdin_text=self.password + "\n")[0] == 0:
             self.sudo = "password"
 
+    def detect_admin(self) -> None:
+        code, out, _ = self.raw("[bool](([Security.Principal.WindowsPrincipal]"
+                                "[Security.Principal.WindowsIdentity]::GetCurrent())"
+                                ".IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))")
+        self.is_admin = code == 0 and out.strip().lower() == "true"
+
+    def detect_access(self) -> str:
+        """Learn what the account may do, and return a short label for the report."""
+        if self.os_family == "windows":
+            self.detect_admin()
+            return "administrator" if self.is_admin else "standard user"
+        self.detect_sudo()
+        return "root" if self.root else f"sudo: {self.sudo}"
+
     def run(self, key: str) -> tuple[int, str, str]:
         command, needs_root = COMMANDS[key]
         if needs_root and not self.root and self.sudo == "passwordless":
@@ -164,10 +204,11 @@ class Shell:
 def _test_login(login: ServerLogin) -> dict[str, Any]:
     client, fp = connect(login)
     try:
-        shell = Shell(client, password=login.password)
-        shell.detect_sudo()
-        os_name = parse_os(shell.run("os")[1]).get("PRETTY_NAME", "Linux")
-        return {"host_key": fp, "os": os_name, "access": "root" if shell.root else f"sudo: {shell.sudo}"}
+        family, win_name = detect_os(client)
+        shell = Shell(client, password=login.password, os_family=family)
+        access = shell.detect_access()
+        os_name = (win_name or "Windows") if family == "windows" else parse_os(shell.run("os")[1]).get("PRETTY_NAME", "Linux")
+        return {"host_key": fp, "os": os_name, "access": access, "os_family": family}
     finally:
         client.close()
 

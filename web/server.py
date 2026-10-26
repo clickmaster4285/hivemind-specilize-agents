@@ -314,7 +314,8 @@ def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin))
         info = linux_audit.test_login(trial)
         login = server_vault.add(user.id, label=trial.label, host=trial.host, port=trial.port,
                                  username=trial.username, password=trial.password, private_key=trial.private_key,
-                                 key_passphrase=trial.key_passphrase, host_key=info["host_key"], mode=payload.mode)
+                                 key_passphrase=trial.key_passphrase, host_key=info["host_key"], mode=payload.mode,
+                                 os=info.get("os", ""), os_family=info.get("os_family", "linux"))
     except (server_vault.VaultError, linux_audit.AuditError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # never hang or 500: a test login can fail in many ways — say what, cleanly

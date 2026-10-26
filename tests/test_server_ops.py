@@ -49,6 +49,8 @@ def test_empty_and_oversized():
 class FakeShell:
     root = True
     sudo = "root"
+    os_family = "linux"
+    is_admin = False
 
     def __init__(self, outputs):
         self.outputs = outputs      # command substring -> (code, stdout, stderr)
@@ -56,6 +58,9 @@ class FakeShell:
 
     def detect_sudo(self):
         pass
+
+    def detect_access(self):
+        return "root"
 
     def raw(self, command, stdin_text=None):
         self.ran.append(command)
@@ -72,7 +77,7 @@ class FakeClient:
 
 def _patch_session(monkeypatch, shell):
     monkeypatch.setattr(so, "connect", lambda login: (FakeClient(), "fp"))
-    monkeypatch.setattr(so, "Shell", lambda client, password=None: shell)
+    monkeypatch.setattr(so, "Shell", lambda client, password=None, os_family="linux": shell)
 
 
 class FakeLLM:
@@ -155,15 +160,17 @@ def test_normal_changes_are_not_denied_but_are_changes(command):
     assert so.classify_command(command) is not None      # but still a change (needs the gate)
 
 
-def _operate(monkeypatch, mode, script, confirm, shell_outputs=None):
+def _operate(monkeypatch, mode, script, confirm, shell_outputs=None, os_family="linux"):
     shell = FakeShell(shell_outputs or {})
+    shell.os_family = os_family
     _patch_session(monkeypatch, shell)
     FakeLLM.script = script
     monkeypatch.setattr(so, "LLMClient", FakeLLM)
     logged: list[tuple[str, str]] = []
     monkeypatch.setattr("src.command_audit.log_command",
                         lambda **kw: logged.append((kw["command"], kw["decision"])))
-    login = so.ServerLogin(id="1", label="web01", host="192.168.1.9", port=22, username="u", password="p", mode=mode)
+    login = so.ServerLogin(id="1", label="web01", host="192.168.1.9", port=22, username="u", password="p",
+                           mode=mode, os_family=os_family)
     result = so.operate(login, "do the thing", config=Config.from_env(), user_id=7, job_id="j", confirm=confirm)
     return result, shell, logged
 
@@ -259,3 +266,26 @@ def test_confirm_times_out_without_an_answer():
 
     live.clear("job-y")
     assert live.wait_confirm("job-y", "cmd-9", timeout=0.1) is None     # nobody answered
+
+
+# ── Windows (PowerShell over SSH) — operate picks the Windows classifier by os_family ──────────────
+def test_windows_operate_runs_reads_and_confirms_changes(monkeypatch):
+    asked: list[str] = []
+    script = [("check the service", "Get-Service W3SVC"),
+              ("make the folder", "New-Item -ItemType Directory C:\inetpub\site"),
+              ("done", None)]
+    result, shell, logged = _operate(monkeypatch, "confirm", script,
+                                     confirm=lambda cid, cmd: asked.append(cmd) or True, os_family="windows")
+    assert asked == ["New-Item -ItemType Directory C:\inetpub\site"]   # only the change was confirmed
+    assert "Get-Service W3SVC" in shell.ran                              # the read-only cmdlet ran freely
+    assert result.changes == 1
+
+
+def test_windows_destructive_is_blocked_even_in_trusted(monkeypatch):
+    asked: list[str] = []
+    script = [("reboot it", "Restart-Computer -Force"), ("done", None)]
+    result, shell, logged = _operate(monkeypatch, "trusted", script,
+                                     confirm=lambda cid, cmd: asked.append(cmd) or True, os_family="windows")
+    assert asked == []                                                   # never offered — blocked outright
+    assert result.changes == 0
+    assert ("Restart-Computer -Force", "refused") in logged

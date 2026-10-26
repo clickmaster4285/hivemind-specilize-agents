@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 import threading
 import time
@@ -51,12 +52,15 @@ class Tool:
 
 TOOLS: tuple[Tool, ...] = (
     Tool("search_knowledge_base", "kb",
-         "Search MulteAgent's knowledge base of trusted documents ({sources}) and answer with citations. "
-         "Prefer this over your own memory for ANY question in these areas, even simple ones.",
+         "Search MulteAgent's own trusted documents ({sources}) and answer with citations. Use when the question "
+         "is specifically about those documents' topics.",
          {"query": "the question"}, ("query",), lambda c: c.brain_enabled),
     Tool("web_search", "web_search",
-         "Search the internet for up-to-date facts the model cannot know: news, prices, exchange rates, scores, "
-         "releases, today's events, anything recent.",
+         "Search the internet and answer WITH SOURCE LINKS. Prefer this over your own memory for substantive "
+         "factual, technical or how-to questions where citing current, authoritative sources makes the answer "
+         "trustworthy — e.g. 'how to configure a firewall', 'best practices for securing nginx', 'compare X vs Y', "
+         "specs, security guidance — and for anything recent (news, prices, releases, today's events). Not for "
+         "greetings, opinions, or creative writing.",
          {"query": "search words"}, ("query",), lambda c: bool(c.web_search_url)),
     Tool("get_weather", "weather", "Current weather and a 3-day forecast for a place.",
          {"place": "city name; empty = the user's own city"}),
@@ -124,15 +128,22 @@ SYSTEM = """{identity}
 Current date and time: {now}.
 
 You do NOT know by heart: what your knowledge base contains, today's facts (weather, prices, news),
-or the local network. For those, call the tool. Questions in the knowledge base's areas go to
-search_knowledge_base so the answer can cite sources. Use a tool also for an action (network scan),
-a file, a picture or a diagram. Otherwise answer directly.
+or the local network. For those, call the tool. For a substantive factual, technical or how-to question,
+prefer to cite sources rather than answer from memory: use search_knowledge_base when it is about your
+knowledge-base documents, otherwise web_search (it answers with source links). Use a tool also for an
+action (network scan), a file, a picture or a diagram. Keep greetings, chit-chat, opinions and creative
+writing direct (no tool).
 Never say you ran a command, created or changed a file, or did anything on a server, computer or network
 unless a tool actually did it and returned a result. If you do not have the tool for what is asked, say so
 plainly and what the user should do — do not pretend to have done it or invent command output.
 Call at most one tool. When you answer directly: follow the user's intent (greeting → short and warm,
 story → write it), reply in the user's language (English or Hinglish), never put images or image links
-in the answer, and never output TOOL lines or XML tags."""
+in the answer, and never output TOOL lines or XML tags.
+Match the answer's depth to the question. For a substantive or how-to question, structure it for clarity:
+short headings, bullet or numbered steps, a Markdown table for comparisons or structured data, and a
+Mermaid diagram (a ```mermaid fenced code block) for an architecture, flow, process or hierarchy — use
+each only where it genuinely helps. A simple question gets a sentence or two. Never force a table or
+diagram where plain prose is clearer."""
 
 _sources_cache: dict[str, Any] = {"at": 0.0, "text": ""}
 _sources_lock = threading.Lock()
@@ -202,6 +213,42 @@ class Decision:
     errors: list[str] = field(default_factory=list)
 
 
+# A deterministic nudge so clearly factual / how-to / technical questions SEARCH and cite sources instead
+# of being answered from memory (a local model does not always pick web_search on its own). Conservative:
+# it fires only for question shapes that benefit from authoritative sources, and skips anything that is
+# really an action, a local/personal question, code writing, or creative work.
+_WEB_Q = re.compile(
+    r"^\s*(how\s+(to|do|does|can|should|would)\b|what\s+(is|are|does|'s)\b|why\s+(is|are|does|do)\b|"
+    r"when\s+(did|was|is|will)\b|which\b.*\b(better|best)\b|compare\b|difference\s+between\b|"
+    r"best\s+practices?\b|steps?\s+to\b|guide\s+to\b|explain\s+how\b|is\s+it\s+(safe|possible|better|worth)\b|"
+    r"pros\s+and\s+cons\b|should\s+i\b)",
+    re.I,
+)
+_WEB_KW = re.compile(r"\b(best\s+practices?|step[- ]by[- ]step|\bvs\b|latest\s+version|current\s+version|how\s+to)\b", re.I)
+_WEB_SKIP = re.compile(
+    r"\b(you|your|yourself|multeagent)\b|"                                   # about the assistant
+    r"\bmy\s+(ip|network|server|pc|computer|machine|laptop|wifi|router)\b|"  # local / personal
+    r"\b(log\s*in|login|ssh|rdp|mstsc|connect\s+to)\b|"                      # server / remote actions
+    r"\b(write|create|generate|fix|debug|refactor)\b.{0,30}\b(code|function|script|program|class|component|regex|sql|query)\b|"
+    r"\b(story|poem|joke|lyrics|image|picture|photo|diagram|flow\s*chart|draw|paint)\b|"
+    r"\b(translate|calculate|solve|remember)\b|\bmy\s+name\b|"
+    r"\d{1,3}(\.\d{1,3}){3}",                                                # an IP address → local / network tool
+    re.I,
+)
+
+
+def _should_web_search(query: str, config: Config, specialist: "Specialist | None") -> bool:
+    """True when the message is a clear factual / how-to question that should be answered with web sources."""
+    if not config.web_search_url:
+        return False
+    if specialist is not None and "web_search" not in specialist.tools:
+        return False
+    q = (query or "").strip()
+    if len(q) < 15 or _WEB_SKIP.search(q):
+        return False
+    return bool(_WEB_Q.match(q) or _WEB_KW.search(q))
+
+
 def decide(
     query: str,
     *,
@@ -221,6 +268,10 @@ def decide(
     agent = {"agent_id": "assistant", **speaker(specialist), "role": "Direct reply", "stage": "chat", "model": model}
     started = time.perf_counter()
     opened = {"done": False}
+
+    if _should_web_search(query, config, specialist):
+        logger.info("assistant: routing a factual question to web_search (nudge)")
+        return Decision(False, "web_search", "web_search", {"query": query})
 
     def on_delta(text: str) -> None:
         if not opened["done"]:                      # the bubble appears with the first word

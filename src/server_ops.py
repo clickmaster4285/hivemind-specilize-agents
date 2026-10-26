@@ -24,6 +24,7 @@ from src.config import Config
 from src.linux_audit import AuditError, Shell, connect
 from src.llm_client import LLMClient
 from src.server_vault import ServerLogin, VaultError
+from src.win_commands import classify_windows_command, is_destructive_windows
 
 logger = logging.getLogger(__name__)
 
@@ -204,14 +205,32 @@ def is_destructive(command: str) -> str | None:
     return None
 
 
+# ── pick the classifier for the server's OS (Linux = bash, Windows = PowerShell) ───────────────────
+def classify_for(command: str, os_family: str) -> str | None:
+    """Reason the command is NOT read-only (or None if it is), using the right classifier for the OS."""
+    return classify_windows_command(command) if os_family == "windows" else classify_command(command)
+
+
+def destructive_for(command: str, os_family: str) -> str | None:
+    """Reason the command must never run (or None), using the right deny-list for the OS."""
+    return is_destructive_windows(command) if os_family == "windows" else is_destructive(command)
+
+
+def _access_line(shell: Shell) -> str:
+    """One sentence telling the model what the account may do, for the system prompt."""
+    if shell.os_family == "windows":
+        return "You are an Administrator." if shell.is_admin else "You run as a standard user (not an Administrator)."
+    return "You have root." if shell.root else f"You run as a normal user (sudo: {shell.sudo})."
+
+
 class RemoteSession:
     """A logged-in SSH connection. `run` enforces read-only; `execute` runs anything (used after approval)."""
 
     def __init__(self, login: ServerLogin):
         self.login = login
         self.client, _ = connect(login)
-        self.shell = Shell(self.client, password=login.password)
-        self.shell.detect_sudo()
+        self.shell = Shell(self.client, password=login.password, os_family=login.os_family)
+        self.shell.detect_access()
         self.runs: list[CommandRun] = []
 
     def _reconnect(self) -> None:
@@ -223,8 +242,8 @@ class RemoteSession:
             pass
         logger.info("server_ops reconnecting to %s after a dropped session", self.login.host)
         self.client, _ = connect(self.login)
-        self.shell = Shell(self.client, password=self.login.password)
-        self.shell.detect_sudo()
+        self.shell = Shell(self.client, password=self.login.password, os_family=self.login.os_family)
+        self.shell.detect_access()
 
     def _raw(self, command: str) -> tuple[int, str, str]:
         import paramiko
@@ -247,7 +266,7 @@ class RemoteSession:
 
     def run(self, command: str) -> CommandRun:
         """Read-only only (diagnose): a changing command is refused, never sent to the server."""
-        reason = classify_command(command)
+        reason = classify_for(command, self.login.os_family)
         if reason:
             run = CommandRun(command=command, refused=reason)
             self.runs.append(run)
@@ -274,6 +293,25 @@ RUN_TOOL = {
     },
 }
 
+RUN_TOOL_WIN = {
+    "type": "function",
+    "function": {
+        "name": "run_command",
+        "description": ("Run ONE read-only PowerShell command on the Windows server and get its output. Use this to "
+                        "investigate: services, event logs, disk, config, processes, network. Read-only only — a "
+                        "command that would change the server is refused. One at a time; read each result before the "
+                        "next. When you understand the issue, stop calling tools and write your findings."),
+        "parameters": {"type": "object", "required": ["command"],
+                       "properties": {"command": {"type": "string",
+                                                  "description": "the PowerShell command, e.g. Get-Service -Name W3SVC"}}},
+    },
+}
+
+
+def run_tool_for(os_family: str) -> dict:
+    return RUN_TOOL_WIN if os_family == "windows" else RUN_TOOL
+
+
 DIAGNOSE_SYSTEM = """You are an IT engineer logged in to a Linux server over SSH. {access}
 Investigate the user's request by running READ-ONLY commands with run_command, one at a time, reading
 each output before the next. Typical tools: systemctl status, journalctl, df -h, free -m, ss -tulpn,
@@ -285,6 +323,21 @@ Rules:
 - One command per step. Base the next command on what you just saw.
 - Stop when you can explain the issue (or confirm all is well). Then write a short report:
   what you checked, what you found, the likely cause, and the fix to apply (as commands the user can run).
+- Be concrete and use the real values from the output. Do not invent."""
+
+DIAGNOSE_SYSTEM_WIN = """You are an IT engineer logged in to a Windows server over SSH (PowerShell). {access}
+Investigate the user's request by running READ-ONLY PowerShell commands with run_command, one at a time,
+reading each output before the next. Typical cmdlets: Get-Service, Get-Process, Get-WinEvent / Get-EventLog,
+Get-Disk / Get-Volume, Get-NetTCPConnection, Get-ChildItem, Get-Content, Test-Path, Test-Connection, plus
+ipconfig, systeminfo, tasklist.
+
+Rules:
+- Read-only only. You cannot change anything (commands that would are refused). If the fix needs a change,
+  do NOT run it — describe it instead at the end.
+- One command per step. Base the next command on what you just saw.
+- Use PowerShell cmdlets (Verb-Noun), not bash. Stop when you can explain the issue (or confirm all is well),
+  then write a short report: what you checked, what you found, the likely cause, and the fix (as PowerShell
+  the user can run).
 - Be concrete and use the real values from the output. Do not invent."""
 
 
@@ -314,9 +367,11 @@ def diagnose(
     """The model runs read-only commands until it can answer `question`, then reports. Never changes the server."""
     model = model or config.model_fast or config.llm_model
     session = RemoteSession(login)
-    access = "You have root." if session.shell.root else f"You run as a normal user (sudo: {session.shell.sudo})."
+    access = _access_line(session.shell)
+    prompt = DIAGNOSE_SYSTEM_WIN if login.os_family == "windows" else DIAGNOSE_SYSTEM
+    run_tool = run_tool_for(login.os_family)
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": DIAGNOSE_SYSTEM.format(access=access)},
+        {"role": "system", "content": prompt.format(access=access)},
         {"role": "user", "content": f"Server: {login.label} ({login.host}). Request: {question}"},
     ]
     client = LLMClient(config)
@@ -327,7 +382,7 @@ def diagnose(
             if not should_continue():
                 result.stopped = True
                 break
-            text, calls = client.chat_tools(messages=messages, tools=[RUN_TOOL], model=model, temperature=0.1)
+            text, calls = client.chat_tools(messages=messages, tools=[run_tool], model=model, temperature=0.1)
             if not calls:
                 result.report = text
                 break
@@ -348,7 +403,7 @@ def diagnose(
             text, _ = client.chat_tools(
                 messages=[*messages, {"role": "user", "content": "Stop running commands. Write your findings now "
                                       "from what you have seen: what you checked, the likely cause, and the fix."}],
-                tools=[RUN_TOOL], model=model, temperature=0.1)
+                tools=[run_tool], model=model, temperature=0.1)
             result.report = text or "Could not finish diagnosing within the command limit."
     finally:
         session.close()
@@ -433,6 +488,19 @@ Rules:
 - At the end, write what you did, what changed, and how to verify or undo it.
 - Use real values from the output. Never invent."""
 
+OPERATE_SYSTEM_WIN = """You are an IT engineer working on a Windows server over SSH (PowerShell). {access}
+Do the user's task with run_command, one PowerShell command at a time, reading each output before the next.
+You MAY change the server (create files, edit config, install features, restart services) when the task needs it.
+
+How changes are handled on this server: {mode_note}
+Rules:
+- Read-only checks run freely. A change may need the user's approval first (you will see the result).
+- Use PowerShell cmdlets (Verb-Noun): New-Item, Set-Content, Copy-Item, Restart-Service, Install-WindowsFeature,
+  etc. Do NOT use Invoke-Expression, download-and-run, or bash — they are blocked.
+- If a change is refused or cancelled, do not retry it blindly — explain and stop, or try another way.
+- Make the smallest change that does the job. Check your work afterwards (e.g. Get-Service, Test-Path).
+- At the end, write what you did, what changed, and how to verify or undo it. Use real values; never invent."""
+
 MODE_NOTE = {
     "audit": "this server is READ-ONLY (audit mode) — every change is refused. Diagnose and describe the fix only.",
     "confirm": "each changing command is shown to the user, who clicks Run or Cancel before it executes.",
@@ -468,9 +536,11 @@ def operate(
 
     model = model or config.model_fast or config.llm_model
     session = RemoteSession(login)
-    access = "You have root." if session.shell.root else f"You run as a normal user (sudo: {session.shell.sudo})."
+    access = _access_line(session.shell)
+    prompt = OPERATE_SYSTEM_WIN if login.os_family == "windows" else OPERATE_SYSTEM
+    run_tool = run_tool_for(login.os_family)
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": OPERATE_SYSTEM.format(access=access, mode_note=MODE_NOTE[login.mode])},
+        {"role": "system", "content": prompt.format(access=access, mode_note=MODE_NOTE[login.mode])},
         {"role": "user", "content": f"Server: {login.label} ({login.host}). Task: {task}"},
     ]
     client = LLMClient(config)
@@ -487,7 +557,7 @@ def operate(
             if not should_continue():
                 result.stopped = True
                 break
-            text, calls = client.chat_tools(messages=messages, tools=[RUN_TOOL], model=model, temperature=0.1)
+            text, calls = client.chat_tools(messages=messages, tools=[run_tool], model=model, temperature=0.1)
             if not calls:
                 result.report = text
                 break
@@ -497,7 +567,7 @@ def operate(
                 messages.append({"role": "tool", "content": "No command given. Provide a command, or write your findings."})
                 continue
 
-            if classify_command(command) is None:
+            if classify_for(command, login.os_family) is None:
                 run = session.execute(command)              # read-only: runs freely
                 observation = f"exit {run.code}\n{run.output}"
             else:
@@ -511,7 +581,7 @@ def operate(
             text, _ = client.chat_tools(
                 messages=[*messages, {"role": "user", "content": "Stop now. Write what you did, what changed, "
                                       "and how to verify or undo it."}],
-                tools=[RUN_TOOL], model=model, temperature=0.1)
+                tools=[run_tool], model=model, temperature=0.1)
             result.report = text or "Reached the command limit."
     finally:
         session.close()
@@ -522,7 +592,7 @@ def _handle_change(session, command, login, confirm, audit, result) -> tuple[str
     """A changing command: deny-list → mode gate → run or refuse. Returns (observation for the model, run)."""
     import uuid as _uuid
 
-    deny = is_destructive(command)
+    deny = destructive_for(command, login.os_family)
     if deny:
         audit(command, "refused", None)
         return (f"REFUSED: this command {deny}; it is blocked for safety and will not run. Do not retry it.", None)

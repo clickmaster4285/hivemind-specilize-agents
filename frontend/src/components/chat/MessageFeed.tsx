@@ -11,25 +11,28 @@ import type { FeedItem } from "@/lib/types";
 
 // Inline Tailwind building blocks. Shared/detail widgets (msg-action, tool-drawer, answer-check,
 // brain-sources, chat-thumbs, md-body) stay global CSS.
-const feedCls =
-  "mx-auto flex w-full max-w-[1460px] flex-1 min-h-0 flex-col gap-[0.35rem] overflow-x-hidden overflow-y-auto px-4 pt-[0.55rem] pb-[0.75rem] [overscroll-behavior:contain]";
+// The scroll container is full-width (so the scrollbar sits at the Main-area edge, not against the text);
+// the content lives in a centered, comfortably-wide column inside it.
+const scrollCls =
+  "flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden px-6 pt-4 pb-5 [overscroll-behavior:contain]";
+const colCls = "mx-auto flex w-full max-w-[1040px] flex-col gap-5";
 const captionCls =
   "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[0.72rem] leading-[1.25] text-[var(--muted)]";
 
-/** The card styling depends on the row kind (and whether a system row is an error). */
+/** Claude/ChatGPT-style column: the assistant answer is plain full-width text (no card); the user's
+ *  message stays a bubble on the right; system lines are small centered pills. */
 function cardClass(kind: FeedItem["kind"], isError: boolean) {
-  const base = "min-w-0 w-fit rounded-[0.55rem] border";
   if (kind === "user") {
-    return `${base} max-w-[min(42rem,92%)] px-[0.65rem] py-[0.35rem] border-[color-mix(in_srgb,var(--copper)_40%,var(--line))] bg-[color-mix(in_srgb,var(--copper)_12%,var(--panel-2))]`;
+    return "min-w-0 w-fit max-w-[85%] rounded-2xl border px-[0.9rem] py-[0.55rem] border-[color-mix(in_srgb,var(--copper)_40%,var(--line))] bg-[color-mix(in_srgb,var(--copper)_12%,var(--panel-2))]";
   }
   if (kind === "agent") {
-    return `${base} max-w-[min(52rem,96%)] px-[0.65rem] py-[0.4rem] border-[var(--line)] bg-[rgba(34,41,51,0.92)] border-l-2 border-l-[var(--accent,var(--teal))] has-[.chat-thumbs-generated]:max-w-[min(40rem,96%)]`;
+    return "min-w-0 w-full";   // no box — the answer reads as a document in the centered column
   }
   // system
   if (isError) {
-    return `${base} max-w-[min(28rem,92%)] rounded-[0.45rem] px-[0.55rem] py-[0.15rem] border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-[rgba(214,90,74,0.12)]`;
+    return "min-w-0 w-fit max-w-[85%] rounded-[0.45rem] border px-[0.6rem] py-[0.2rem] border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-[rgba(214,90,74,0.12)]";
   }
-  return "min-w-0 w-fit max-w-[min(28rem,92%)] rounded-full border border-transparent px-[0.55rem] py-[0.15rem] bg-white/[0.045]";
+  return "min-w-0 w-fit max-w-[85%] rounded-full border border-transparent px-[0.6rem] py-[0.15rem] bg-white/[0.045]";
 }
 
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
@@ -39,20 +42,23 @@ export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetr
 
   if (feed.length === 0) {
     return (
-      <div className={feedCls}>
-        <div className="m-auto mt-[12vh] max-w-[22rem] text-center text-[var(--muted)]">
-          <strong className="mb-[0.4rem] block text-[1.2rem] text-[var(--text)] [font-family:var(--font-display)]">
-            Start a conversation
-          </strong>
-          Ask anything: IT, development or marketing questions go to the matching specialist automatically.
+      <div className={scrollCls}>
+        <div className={`${colCls} h-full`}>
+          <div className="m-auto mt-[12vh] max-w-[22rem] text-center text-[var(--muted)]">
+            <strong className="mb-[0.4rem] block text-[1.2rem] text-[var(--text)] [font-family:var(--font-display)]">
+              Start a conversation
+            </strong>
+            Ask anything: IT, development or marketing questions go to the matching specialist automatically.
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={feedCls}>
-      {feed.map((item, index) => {
+    <div className={scrollCls}>
+      <div className={colCls}>
+        {feed.map((item, index) => {
         // skip a user bubble that repeats the one just before it (same text, no images)
         const previous = feed[index - 1];
         if (
@@ -80,8 +86,9 @@ export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetr
             onEdit={onEdit}
             onRetry={onRetry}
           />
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -159,9 +166,11 @@ function MessageRow({
                 <ArtifactChips item={item} fallbackJobId={fallbackJobId} />
                 {item.body ? (
                   // streamed text renders as Markdown while it grows
-                  <MarkdownBody content={item.body} pending={item.pending && !item.streaming} />
+                  <MarkdownBody content={item.body} pending={item.pending && !item.streaming} sources={item.sources} />
                 ) : null}
-                {item.pending ? <LiveStatus text={item.statusText} startedAt={item.startedAt} /> : null}
+                {item.pending ? (
+                  <LiveStatus text={item.statusText} steps={item.steps} startedAt={item.startedAt} />
+                ) : null}
                 <VerificationNote item={item} />
                 <SourceList item={item} />
               </>

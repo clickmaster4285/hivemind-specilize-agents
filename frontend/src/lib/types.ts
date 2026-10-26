@@ -30,6 +30,7 @@ export type ServerInfo = {
   mode: ServerMode;
   expires_at: number;
   os?: string;
+  os_family?: "linux" | "windows";
   access?: string;
 };
 
@@ -178,5 +179,6 @@ export type FeedItem = {
   /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */
   startedAt?: number;
   statusText?: string;
+  steps?: string[];        // the procedure so far ("Searching the web…", "Reading 5 pages…") — shown while running
   streaming?: boolean;
 };

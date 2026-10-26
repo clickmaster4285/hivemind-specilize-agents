@@ -14,6 +14,8 @@ import {
   getActiveThreadId,
   listThreads,
   pinThread,
+  renameThread,
+  setThreadProject,
   setActiveThreadId,
   softDeleteThread,
   type ChatThread,
@@ -100,6 +102,11 @@ export function useHistory() {
   );
 
   const togglePin = useCallback((thread: ChatThread) => setThreads(pinThread(thread.id)), []);
+  const rename = useCallback((thread: ChatThread, title: string) => setThreads(renameThread(thread.id, title)), []);
+  const moveToProject = useCallback(
+    (thread: ChatThread, pid: string | null) => setThreads(setThreadProject(thread.id, pid)),
+    [],
+  );
 
   /** Hide the chat and its jobs; returns true when it was the open chat. */
   const removeThread = useCallback(
@@ -135,6 +142,8 @@ export function useHistory() {
     newProject,
     removeProject,
     togglePin,
+    rename,
+    moveToProject,
     removeThread,
     clear,
   };

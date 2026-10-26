@@ -253,6 +253,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
         tools: [],
         startedAt: Date.now(),
         statusText: "Starting…",
+        steps: [],
       },
     ];
   }
@@ -262,7 +263,10 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
     const idx = lastPendingIndex(prev, event.agent_id ? String(event.agent_id) : undefined);
     if (idx === -1) return message ? upsertStatus(prev, "Working", message) : prev;
     const next = [...prev];
-    next[idx] = { ...next[idx], statusText: message };
+    // keep the whole procedure (not just the latest line), skipping an immediate repeat
+    const prevSteps = next[idx].steps || [];
+    const steps = message && prevSteps[prevSteps.length - 1] !== message ? [...prevSteps, message] : prevSteps;
+    next[idx] = { ...next[idx], statusText: message, steps };
     return next;
   }
   // the answer as it is being written (sent a few times per second, always the full text so far)

@@ -1,12 +1,21 @@
 "use client";
 
-import { useRef, type ClipboardEvent, type DragEvent, type FormEvent, type KeyboardEvent, type RefObject } from "react";
+import {
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 
-import { IconPaperclip, IconSend, IconStop } from "@/components/chat/Icons";
+import { IconSend, IconStop } from "@/components/chat/Icons";
 import { useAutoResize } from "@/hooks/useAutoResize";
 import type { SendOptions } from "@/hooks/useChat";
 import type { PendingImagesApi } from "@/hooks/usePendingImages";
-import type { ImageForceIntent, ImageProfile } from "@/lib/api";
+import type { ImageProfile } from "@/lib/api";
 import type { EditStrength } from "@/lib/chat";
 import type { Health, RunMode } from "@/lib/types";
 
@@ -31,22 +40,57 @@ type Props = {
   imagePipeline: Health["image_pipeline"];
 };
 
-// Inline Tailwind building blocks (shared classes — msg-action, icon-btn, btn — stay global utilities).
 const iconBtn = "shrink-0 grid place-items-center w-[2.1rem] h-[2.1rem] border-0 rounded-full cursor-pointer";
 const composerIcon = `${iconBtn} bg-transparent text-[var(--muted)] hover:bg-white/[0.06] hover:text-[var(--text)]`;
 const sendBtn = `${iconBtn} bg-[linear-gradient(180deg,var(--copper)_0%,var(--copper-deep)_100%)] text-[#1a1208] enabled:hover:brightness-[1.06] disabled:opacity-45 disabled:cursor-not-allowed`;
 const stopBtn = `${iconBtn} bg-[var(--danger)] text-white`;
-const preset = "inline-flex items-center gap-[0.3rem] text-[0.72rem] text-[var(--muted)]";
-const presetSelect =
+const menuSelect =
   "w-auto min-w-0 m-0 px-[0.35rem] py-[0.2rem] text-[0.72rem] rounded-[0.4rem] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--text)]";
 
 const imageFiles = (files: FileList | null | undefined) => [...(files || [])].filter((f) => f.type.startsWith("image/"));
 
-/** The message box: text, attached images, Send / Stop, and the image / tool buttons below it. */
+function Plus() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MenuItem({
+  icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.85rem] text-[var(--text)] hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      <span className="w-5 text-center">{icon}</span>
+      <span className="flex-1">{label}</span>
+    </button>
+  );
+}
+
+/** The message box: a "+" menu (attach / generate / web / document / image ops), the text, and Send/Stop. */
 export default function Composer(props: Props) {
   const { query, onQuery, inputRef, images, editing, onCancelEdit, running, canStop, onStop, onSend } = props;
+  const { imageProfile, onImageProfile, editStrength, onEditStrength, imagePipeline } = props;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const resize = useAutoResize(inputRef, query);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const hasImages = images.images.length > 0;
+  const hasText = Boolean(query.trim());
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -77,7 +121,11 @@ export default function Composer(props: Props) {
     if (files.length) images.add(files);
   }
 
-  const hasImages = images.images.length > 0;
+  function act(opts: SendOptions) {
+    setMenuOpen(false);
+    onSend(opts);
+  }
+
   const placeholder = hasImages
     ? "Ask about the image… (optional)"
     : props.runMode === "agentic"
@@ -86,7 +134,7 @@ export default function Composer(props: Props) {
 
   return (
     <form
-      className="mx-auto w-full max-w-[860px] shrink-0 border-t border-[var(--line)] bg-[rgba(14,17,22,0.92)] px-4 pt-[0.55rem] pb-[0.7rem]"
+      className="mx-auto w-full max-w-[820px] shrink-0 border-t border-[var(--line)] bg-[rgba(14,17,22,0.92)] px-4 pt-[0.55rem] pb-[0.7rem]"
       onSubmit={onSubmit}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
@@ -132,15 +180,81 @@ export default function Composer(props: Props) {
         }}
       />
       <div className="flex items-end gap-[0.15rem] rounded-[1.15rem] border border-[var(--line)] bg-[var(--panel-2)] py-[0.2rem] pl-[0.15rem] pr-[0.25rem]">
-        <button
-          type="button"
-          className={composerIcon}
-          title="Attach image"
-          aria-label="Attach image"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <IconPaperclip />
-        </button>
+        <div className="relative">
+          <button
+            type="button"
+            className={composerIcon}
+            title="Attach and tools"
+            aria-label="Attach and tools"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            <Plus />
+          </button>
+          {menuOpen ? (
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-40 cursor-default"
+                aria-hidden
+                tabIndex={-1}
+                onClick={() => setMenuOpen(false)}
+              />
+              <div className="absolute bottom-full left-0 z-50 mb-2 w-[16rem] rounded-xl border border-[var(--line)] bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]">
+                <MenuItem
+                  icon="📎"
+                  label="Attach image"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    fileInputRef.current?.click();
+                  }}
+                />
+                <div className="my-1 border-t border-[var(--line)]" />
+                <MenuItem icon="🖼️" label="Generate image" onClick={() => act({ forceIntent: "generate" })} />
+                <MenuItem icon="🌐" label="Web search" disabled={!hasText} onClick={() => act({ forceIntent: "web_search" })} />
+                <MenuItem icon="📄" label="Create document" disabled={!hasText} onClick={() => act({ forceIntent: "doc_gen" })} />
+                {hasImages ? (
+                  <>
+                    <div className="my-1 border-t border-[var(--line)]" />
+                    <MenuItem icon="👁️" label="Describe image" onClick={() => act({ forceIntent: "describe" })} />
+                    <MenuItem icon="✏️" label="Edit image" onClick={() => act({ forceIntent: "edit" })} />
+                    <MenuItem icon="🩹" label="Inpaint" onClick={() => act({ forceIntent: "inpaint" })} />
+                  </>
+                ) : null}
+                <div className="my-1 border-t border-[var(--line)]" />
+                <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 text-[0.72rem] text-[var(--muted)]">
+                  <span>Image profile</span>
+                  <select
+                    className={menuSelect}
+                    value={imageProfile}
+                    onChange={(e) => onImageProfile(e.target.value as ImageProfile)}
+                  >
+                    <option value="fast">Fast (~30 s)</option>
+                    <option value="balanced">Balanced (~1.5 min)</option>
+                    <option value="quality">Quality (~3 min)</option>
+                  </select>
+                </div>
+                <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 text-[0.72rem] text-[var(--muted)]">
+                  <span>Edit strength</span>
+                  <select
+                    className={menuSelect}
+                    value={editStrength}
+                    onChange={(e) => onEditStrength(e.target.value as EditStrength)}
+                  >
+                    <option value="close">Keep close</option>
+                    <option value="medium">Medium</option>
+                    <option value="restyle">Restyle</option>
+                  </select>
+                </div>
+                {imagePipeline?.state ? (
+                  <p className="px-2.5 pb-1 pt-0.5 text-[0.68rem] capitalize text-[var(--muted)]">
+                    Image model: {imagePipeline.state}
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </div>
         <textarea
           ref={inputRef}
           rows={1}
@@ -170,72 +284,6 @@ export default function Composer(props: Props) {
           </button>
         )}
       </div>
-      <ToolButtons {...props} hasImages={hasImages} />
     </form>
-  );
-}
-
-/** One-click intents under the message box: image profile / strength, Describe, Generate, … */
-function ToolButtons({
-  query,
-  running,
-  onSend,
-  specialistLabel,
-  onOpenSettings,
-  imageProfile,
-  onImageProfile,
-  editStrength,
-  onEditStrength,
-  imagePipeline,
-  hasImages,
-}: Props & { hasImages: boolean }) {
-  const hasText = Boolean(query.trim());
-  const buttons: { intent: ImageForceIntent; label: string; title: string; disabled: boolean }[] = [
-    { intent: "describe", label: "Describe", title: "Vision: describe the attached image (needs Ollama)", disabled: !hasImages },
-    { intent: "generate", label: "Generate", title: "Force local SDXL text-to-image", disabled: false },
-    { intent: "edit", label: "Edit", title: "Force img2img from the attached image", disabled: !hasImages },
-    { intent: "inpaint", label: "Inpaint", title: "Inpaint: attach source + a mask_* image (white = repaint)", disabled: !hasImages },
-    { intent: "web_search", label: "Web", title: "Search the web with our local SearXNG and answer with sources", disabled: !hasText },
-    { intent: "doc_gen", label: "Document", title: "Create downloadable Word/PDF/PPT/HTML/Excel via agentic tools", disabled: !hasText },
-  ];
-  return (
-    <div className="flex flex-wrap items-center justify-start gap-x-2 gap-y-[0.35rem] pt-[0.35rem]">
-      <button type="button" className="btn ghost sm" onClick={onOpenSettings}>
-        {specialistLabel}
-      </button>
-      <label className={preset}>
-        Profile
-        <select className={presetSelect} value={imageProfile} onChange={(e) => onImageProfile(e.target.value as ImageProfile)}>
-          <option value="fast">Fast (~30 s)</option>
-          <option value="balanced">Balanced, sharper (~1.5 min)</option>
-          <option value="quality">Quality (~3 min)</option>
-        </select>
-      </label>
-      <label className={preset}>
-        Edit strength
-        <select className={presetSelect} value={editStrength} onChange={(e) => onEditStrength(e.target.value as EditStrength)}>
-          <option value="close">Keep close</option>
-          <option value="medium">Medium</option>
-          <option value="restyle">Restyle</option>
-        </select>
-      </label>
-      {buttons.map((b) => (
-        <button
-          key={b.intent}
-          type="button"
-          className="btn ghost sm"
-          disabled={running || b.disabled}
-          title={b.title}
-          onClick={() => onSend({ forceIntent: b.intent })}
-        >
-          {b.label}
-        </button>
-      ))}
-      {imagePipeline?.state ? (
-        <span className="ml-auto text-[0.7rem] capitalize text-[var(--muted)]" title={imagePipeline.error || ""}>
-          Image model: {imagePipeline.state}
-        </span>
-      ) : null}
-    </div>
   );
 }

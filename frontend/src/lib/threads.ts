@@ -98,6 +98,14 @@ export function renameThread(id: string, title: string): ChatThread[] {
   return listThreads();
 }
 
+export function setThreadProject(id: string, projectId: string | null): ChatThread[] {
+  const all = read().map((t) =>
+    t.id === id && !t.deletedAt ? { ...t, projectId, updatedAt: new Date().toISOString() } : t,
+  );
+  write(all);
+  return listThreads();
+}
+
 export function pinThread(id: string, pinned?: boolean): ChatThread[] {
   const all = read().map((t) => {
     if (t.id !== id || t.deletedAt) return t;

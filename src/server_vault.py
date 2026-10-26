@@ -48,6 +48,8 @@ class ServerLogin:
     key_passphrase: str | None = field(default=None, repr=False)
     host_key: str = ""                 # "ssh-ed25519 SHA256:…" — the fingerprint trusted when added
     mode: str = "audit"                # audit | confirm | trusted — what the agent may change (MODES)
+    os: str = ""                       # pretty OS name learned at login ("Ubuntu 24.04", "Windows Server 2022")
+    os_family: str = "linux"           # linux | windows — picks the command classifier the agent uses
     added_at: float = field(default_factory=time.time)
 
     @property
@@ -58,7 +60,8 @@ class ServerLogin:
         """What the app may show — never the secret."""
         return {"id": self.id, "label": self.label, "host": self.host, "port": self.port,
                 "username": self.username, "auth": "key" if self.private_key else "password",
-                "host_key": self.host_key, "mode": self.mode, "expires_at": int(self.expires_at)}
+                "host_key": self.host_key, "mode": self.mode, "os": self.os, "os_family": self.os_family,
+                "expires_at": int(self.expires_at)}
 
 
 _store: dict[int, dict[str, ServerLogin]] = {}
@@ -94,7 +97,7 @@ def _purge(user_id: int) -> dict[str, ServerLogin]:
 
 def add(user_id: int, *, label: str, host: str, port: int, username: str, password: str | None = None,
         private_key: str | None = None, key_passphrase: str | None = None, host_key: str = "",
-        mode: str = "audit") -> ServerLogin:
+        mode: str = "audit", os: str = "", os_family: str = "linux") -> ServerLogin:
     if not (username or "").strip():
         raise VaultError("enter the user name")
     if not (password or private_key):
@@ -106,7 +109,7 @@ def add(user_id: int, *, label: str, host: str, port: int, username: str, passwo
     login = ServerLogin(id=uuid.uuid4().hex[:12], label=(label or host).strip()[:60], host=host.strip(),
                         port=int(port), username=username.strip(), password=password or None,
                         private_key=private_key or None, key_passphrase=key_passphrase or None,
-                        host_key=host_key, mode=mode)
+                        host_key=host_key, mode=mode, os=os, os_family=os_family)
     with _lock:
         servers = _purge(user_id)
         if len(servers) >= MAX_SERVERS_PER_USER:

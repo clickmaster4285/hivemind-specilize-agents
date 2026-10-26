@@ -46,7 +46,20 @@ function mermaidCode(children: ReactNode): string | null {
 type Props = {
   content: string;
   pending?: boolean;
+  sources?: Array<{ n: number; url?: string | null }>;
 };
+
+/** Turn inline [n] citation markers into links to their source, so the source is right on the line. */
+function linkCitations(text: string, sources?: Array<{ n: number; url?: string | null }>): string {
+  if (!sources?.length) return text;
+  const byN = new Map<number, string>();
+  for (const s of sources) if (s.url && /^https?:\/\//i.test(s.url)) byN.set(s.n, s.url);
+  if (!byN.size) return text;
+  return text.replace(/\[(\d{1,3})\](?!\()/g, (m, d) => {
+    const url = byN.get(Number(d));
+    return url ? `[\\[${d}\\]](${url})` : m;
+  });
+}
 
 /** Normalize model quirks so markdown renders cleanly. */
 function normalizeMarkdown(raw: string): string {
@@ -64,7 +77,7 @@ function normalizeMarkdown(raw: string): string {
   return text;
 }
 
-export default function MarkdownBody({ content, pending }: Props) {
+export default function MarkdownBody({ content, pending, sources }: Props) {
   if (pending) {
     return (
       <div className="whitespace-pre-wrap text-[0.74rem] leading-[1.35] text-[var(--muted)] [font-family:var(--font-mono)]">
@@ -86,10 +99,10 @@ export default function MarkdownBody({ content, pending }: Props) {
           ),
           th: ({ children }) => <th className="md-th">{children}</th>,
           td: ({ children }) => <td className="md-td">{children}</td>,
-          h1: ({ children }) => <h3 className="md-h">{children}</h3>,
-          h2: ({ children }) => <h3 className="md-h">{children}</h3>,
-          h3: ({ children }) => <h4 className="md-h">{children}</h4>,
-          h4: ({ children }) => <h4 className="md-h">{children}</h4>,
+          h1: ({ children }) => <h2 className="md-h md-h1">{children}</h2>,
+          h2: ({ children }) => <h3 className="md-h md-h2">{children}</h3>,
+          h3: ({ children }) => <h4 className="md-h md-h3">{children}</h4>,
+          h4: ({ children }) => <h5 className="md-h md-h4">{children}</h5>,
           p: ({ children }) => <p className="md-p">{children}</p>,
           ul: ({ children }) => <ul className="md-ul">{children}</ul>,
           ol: ({ children }) => <ol className="md-ol">{children}</ol>,
@@ -114,7 +127,7 @@ export default function MarkdownBody({ content, pending }: Props) {
           ),
         }}
       >
-        {normalizeMarkdown(content)}
+        {linkCitations(normalizeMarkdown(content), sources)}
       </ReactMarkdown>
     </div>
   );
