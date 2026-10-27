@@ -183,8 +183,9 @@ class JobCreatePayload(BaseModel):
     depth: str | None = None
     # Options toggle: offer a few candidate approaches to pick from before writing the full answer
     options: bool = False
-    # Answer directly from the model, skipping tool/web routing (used when the user picks an approach card)
-    direct: bool = False
+    # A follow-up answer (picked an approach card, or answered a clarify form): routes normally — web
+    # search still available — but the model won't ask to clarify again.
+    followup: bool = False
 
 
 class ModelUpdatePayload(BaseModel):
@@ -453,7 +454,7 @@ def create_job_endpoint(
                 "thread_id": payload.thread_id,
                 "depth": payload.depth,
                 "options": payload.options,
-                "direct": payload.direct,
+                "followup": payload.followup,
             },
             config=config,
             priority=payload.priority if user.role == "admin" else 100,

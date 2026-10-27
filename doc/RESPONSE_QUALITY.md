@@ -241,3 +241,51 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
   routing, and the factual-question nudge sent that long instruction to web search, which found nothing.
   *Fix* — a card pick now sends `direct=true`; the worker answers it straight from the model (no web/tool
   routing). Plumbed `plain`→`direct` through api.ts / useChat / JobCreatePayload / worker.
+
+### 2026-10-27 — Auto-clarify (model asks first) + Options moved to the "+" menu
+- **New decisions:** Options shouldn't only be a manual toggle — the model should **ask clarifying
+  questions on its own** when a query is ambiguous; the user ticks options and submits, then it answers.
+  Trigger = **the model decides in its single decision call** (no extra latency on clear queries). The
+  manual Options toggle **moves into the "+" menu** (Deep stays next to Send).
+- **How (auto-clarify):** added an `ask_clarification` tool (`src/llm/assistant.py`, always offered)
+  with strict "only when genuinely ambiguous" guidance; `decide()` parses its JSON questions
+  (`_parse_clarify`) → `Decision(intent="clarify")` → the worker emits a `clarify` message (no answer
+  yet) via `_clarify`. Frontend `ClarifyForm` renders multiple-choice chips + **Submit**; submitting
+  sends a **plain/direct** follow-up (`<original> + My choices: …`) that writes the answer.
+- **Options → "+" menu:** the next-to-Send Options toggle is gone; "Answer options" is now a "+" menu
+  item (`act({ options: true })`, one-shot). `wantOptions` state removed; `SendOptions.options` drives it.
+- **Why in the first call:** the user picked it to avoid a second round-trip; the model emits either a
+  clarify tool call, a normal tool call, or a direct answer — all in one decision.
+- 5 new tests (`_parse_clarify`); 537 pass; frontend builds.
+- **Risk to watch:** this adds a tool to `decide()`'s set — re-run the LLM tool-choice eval
+  (`python -m src.llm.assistant --eval`) to confirm routing didn't regress and the model isn't
+  over-asking. Tunable via the tool's description.
+- *Deferred:* removing the "+" menu Options entry entirely once auto-clarify proves itself.
+
+### 2026-10-27 — Correction: a picked approach must still be able to web-search
+- **Symptom (user):** "what if it needs the web search then? it needs current equipment and their current
+  prices and availability." — the earlier `direct=true` fix made a card pick (e.g. "Budget Build Guide")
+  answer from the model's memory, with **no** web search → no current prices.
+- **Cause:** over-correction. The original bug was a *bad search query* (the verbose "Answer using the
+  approach … Question: …" string), not that web search was wrong for picks. `direct` threw out web search
+  entirely.
+- **Fix:** replaced `direct` with **`followup`**. A picked card / submitted clarify now **routes
+  normally — web search included when the topic needs it** — but `decide(clarify_ok=False)` drops the
+  `ask_clarification` tool so it can't loop. And the follow-up query now **leads with the original
+  question** (`<question> — <approach/choices>`) instead of instruction framing, so a web search is clean.
+- *Lesson:* don't fix a bad-query symptom by removing the capability; fix the query.
+
+### 2026-10-27 — Auto-clarify made reliable (dedicated call, not the tool)
+- **Symptom (user):** asked "ask some question and then tell me what suits" → the model wrote the
+  clarifying questions as **plain numbered text**, not the multiple-choice form.
+- **Cause:** the `ask_clarification` tool relies on the local 9B *choosing to call a tool* for a meta
+  action — it won't do that reliably; its instinct is to write the questions out.
+- **Fix:** added a **heuristic-gated dedicated call**. For decision/recommendation/setup-style requests
+  (`_might_need_clarify`: "ask me…", "i want to buy…", "which … should I", "recommend", "what suits",
+  "how do I start…"), `decide()` makes one small call (`_ask_clarifying`, `CLARIFY_SYSTEM`) that returns
+  multiple-choice questions as JSON — or `[]` if the query is actually clear → then it answers normally.
+  Reliable because it's a dedicated generation, not a tool the model may ignore. Clear/factual/greeting
+  queries skip the gate (no extra latency). `clarify_ok=False` disables it on follow-ups. The tool
+  remains as a dormant secondary path. 2 new heuristic tests; 537 pass.
+- *Lesson:* don't make a local model call a tool for a meta-action it would rather write as prose —
+  gate cheaply, then generate the structured form in a dedicated call.

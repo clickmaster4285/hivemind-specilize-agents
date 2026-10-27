@@ -150,21 +150,6 @@ def process_job(job_id: str, config: Config | None = None) -> None:
         # every prompt of this job tells the time in the user's own time zone (sent by the browser)
         set_time_zone(payload.get("client_time_zone"))
 
-        # Direct answer: picking an approach card answers from the model, skipping tool/web routing.
-        if bool(payload.get("direct")) and not (has_images or images):
-            specialist, how = resolve_specialist(payload.get("specialist"), query, config=config,
-                                                 conversation=conversation)
-            if specialist is not None:
-                on_progress({"type": "specialist_chosen", "id": specialist.id, "name": specialist.name,
-                             "accent": specialist.accent, "how": how})
-            result = run_chat(
-                query, config=config, model_plan=model_plan, on_progress=on_progress, images=[],
-                conversation=conversation, account_id=str(user_id) if user_id is not None else None,
-                job_id=job_id, specialist=specialist,
-            )
-            _finish(config, job_id, result.errors, failed=bool(result.errors and not result.output))
-            return
-
         # Deep research toggle: skip tool routing and research the topic across many sources (text-only).
         if str(payload.get("depth") or "").strip().lower() == "deep" and not (has_images or images):
             specialist, how = resolve_specialist(payload.get("specialist"), query, config=config,
@@ -205,8 +190,11 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 on_progress({"type": "specialist_chosen", "id": specialist.id, "name": specialist.name,
                              "accent": specialist.accent, "how": how})
             # the model answers directly (streamed, done) or picks a tool with its arguments
+            # a follow-up (picked an approach card, or answered a clarify form) routes normally — web
+            # search included — but must not ask to clarify again (no loop).
             decision = decide(query, job_id=job_id, config=config, conversation=conversation,
-                              on_progress=on_progress, specialist=specialist)
+                              on_progress=on_progress, specialist=specialist,
+                              clarify_ok=not bool(payload.get("followup")))
             if decision.answered:
                 _finish(config, job_id, decision.errors)
                 return

@@ -138,11 +138,12 @@ function useAppState() {
     runMode, setRunMode, imageProfile, setImageProfile, editStrength, setEditStrength,
     deep,
     toggleDeep: () => setDeep((v) => !v),
+    // Lead with the original question (keeps a web search clean); the approach/choices steer the answer.
     pickOption: (origQuery: string, card: { title: string; hint: string }) =>
-      void chat.send(`Answer using the "${card.title}" approach — ${card.hint}.\n\nQuestion: ${origQuery}`, [], { plain: true }),
+      void chat.send(`${origQuery} — ${card.title}`, [], { plain: true }),
     submitClarify: (origQuery: string, picks: { question: string; chosen: string[] }[]) => {
-      const chosen = picks.filter((p) => p.chosen.length).map((p) => `${p.question} → ${p.chosen.join(", ")}`).join("; ");
-      void chat.send(chosen ? `${origQuery}\n\nMy choices: ${chosen}` : origQuery, [], { plain: true });
+      const values = picks.flatMap((p) => p.chosen);
+      void chat.send(values.length ? `${origQuery} — ${values.join(", ")}` : origQuery, [], { plain: true });
     },
     canStop: Boolean(chat.activeJobId && chat.running),
     stop: () => void chat.stop(),

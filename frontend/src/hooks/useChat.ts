@@ -176,8 +176,9 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
         // send (opts.plain), e.g. when the user clicks an approach card and wants the full answer.
         depth: options.deep && !force && !opts.plain ? "deep" : undefined,
         options: opts.options && !force && !opts.plain ? true : undefined,
-        // a plain send (picking an approach card) is answered directly, not routed to web/tools
-        direct: opts.plain ? true : undefined,
+        // a plain send (picking an approach card / submitting a clarify form) routes normally — web
+        // search still available — but marked a follow-up so the model won't ask to clarify again.
+        followup: opts.plain ? true : undefined,
       });
       setActiveJobId(job.id);
       // the job carries thread_id, so history regroups it and the server keeps the chat's metadata;

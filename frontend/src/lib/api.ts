@@ -240,8 +240,8 @@ export async function createJob(payload: {
   depth?: string;
   /** Options toggle: offer a few candidate approaches to pick from before the full answer */
   options?: boolean;
-  /** Answer directly from the model, skipping tool/web routing (used when picking an approach card) */
-  direct?: boolean;
+  /** A follow-up answer (picked an approach card / answered a clarify form): routes normally but won't re-clarify */
+  followup?: boolean;
 }): Promise<Job> {
   // the user's own time zone (e.g. "Asia/Karachi"): answers tell their local time, no location permission
   let client_time_zone: string | undefined;

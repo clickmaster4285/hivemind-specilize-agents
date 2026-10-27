@@ -212,6 +212,43 @@ def messages_for(
     return msgs
 
 
+CLARIFY_SYSTEM = """The user's request below may be missing key information needed to answer it well.
+If so, ask 1–2 SHORT multiple-choice questions to pin down what matters (e.g. budget, scale, platform,
+goal, experience level, use case). If the request is already clear enough to answer well, ask nothing.
+
+Output ONLY a JSON array, nothing else:
+[{"question": "What is your budget?", "options": ["under $1k", "$1-3k", "$3k+"]}]
+Use 2-4 short options per question, at most 2 questions. If no clarification is needed, output exactly: []"""
+
+# Decision / recommendation / setup-style requests are the ones worth a clarify-check; a cheap gate so
+# clear factual questions and greetings never pay for the extra call.
+_CLARIFY_HINT = re.compile(
+    r"\b(ask (me|some)|what should i|which(?: one| should)?|help me|recommend|suggest|what suits|"
+    r"best .* for|i want to (?:buy|build|start|choose|make|create|set ?up|get into)|"
+    r"how (?:do|should|can) i (?:start|begin|get into|choose|pick|build|set ?up)|should i|advis[e]|advice|guide me)\b",
+    re.I,
+)
+
+
+def _might_need_clarify(query: str) -> bool:
+    q = query.strip()
+    return len(q) >= 6 and bool(_CLARIFY_HINT.search(q))
+
+
+def _ask_clarifying(query: str, config: Config, model: str) -> list[dict[str, Any]]:
+    """A dedicated call that returns multiple-choice clarifying questions (or [] if the query is clear)."""
+    from src.llm.llm_client import LLMClient
+
+    try:
+        raw = LLMClient(config).chat(system=CLARIFY_SYSTEM, user=query, model=model,
+                                     max_tokens=300, max_retries=0, temperature=0.2)
+    except Exception as exc:  # noqa: BLE001 — clarification is optional; fall back to a normal answer
+        logger.info("clarify check failed: %s", exc)
+        return []
+    match = re.search(r"\[.*\]", raw, re.S)      # pull the JSON array out of any stray prose/fences
+    return _parse_clarify(match.group(0) if match else raw)
+
+
 def _parse_clarify(args: Any) -> list[dict[str, Any]]:
     """Validate the model's clarify tool args → [{question, options:[...]}], or [] if unusable."""
     raw = args.get("questions") if isinstance(args, dict) else args
@@ -286,9 +323,12 @@ def decide(
     conversation: list[dict[str, str]] | None = None,
     on_progress: Callable[[dict], None] | None = None,
     specialist: Specialist | None = None,
+    clarify_ok: bool = True,
 ) -> Decision:
     """One model call with the tools: a direct answer streams into the chat; a tool call returns.
-    With a specialist: its instructions join the prompt and only its tools are offered."""
+    With a specialist: its instructions join the prompt and only its tools are offered.
+    clarify_ok=False (a follow-up to an approach/clarify) drops the ask_clarification tool, so the
+    model routes normally (web search still available) but cannot ask to clarify again."""
     from src.jobs.chat_runner import friendly_error
     from src.llm.llm_client import LLMClient, LLMError, LLMStopped
 
@@ -302,6 +342,14 @@ def decide(
         logger.info("assistant: routing a factual question to web_search (nudge)")
         return Decision(False, "web_search", "web_search", {"query": query})
 
+    # A decision/recommendation/setup request that's under-specified: ask multiple-choice questions first
+    # (the model is unreliable at calling a tool for this, so a dedicated call makes the choices reliably).
+    if clarify_ok and _might_need_clarify(query):
+        questions = _ask_clarifying(query, config, model)
+        if questions:
+            logger.info("assistant: asking %d clarifying questions", len(questions))
+            return Decision(False, "clarify", "ask_clarification", {"questions": questions})
+
     def on_delta(text: str) -> None:
         if not opened["done"]:                      # the bubble appears with the first word
             opened["done"] = True
@@ -311,10 +359,13 @@ def decide(
         live.set_text(job_id, "assistant", text)
 
     emit({"type": "status", "message": "Thinking…"})
+    tools = tool_schemas(config, specialist.tools if specialist else None)
+    if not clarify_ok:
+        tools = [t for t in tools if t.get("function", {}).get("name") != "ask_clarification"]
     try:
         text, calls = LLMClient(config).chat_tools(
             messages=messages_for(query, config, conversation, model, specialist),
-            tools=tool_schemas(config, specialist.tools if specialist else None), model=model,
+            tools=tools, model=model,
             on_delta=on_delta, should_continue=lambda: not live.is_stopped(job_id),
         )
     except LLMStopped as exc:

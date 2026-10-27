@@ -2,7 +2,21 @@
 
 from __future__ import annotations
 
-from src.llm.assistant import _parse_clarify
+from src.llm.assistant import _might_need_clarify, _parse_clarify
+
+
+def test_might_need_clarify_fires_on_decision_requests():
+    assert _might_need_clarify("ask some questions and then tell me what suits")
+    assert _might_need_clarify("i want to buy a system for my ai development task")
+    assert _might_need_clarify("which GPU should I get")
+    assert _might_need_clarify("recommend a laptop")
+    assert _might_need_clarify("how do I get into cybersecurity")
+
+
+def test_might_need_clarify_skips_clear_or_trivial():
+    assert not _might_need_clarify("what is the capital of France")
+    assert not _might_need_clarify("hi")
+    assert not _might_need_clarify("write a poem about the sea")
 
 
 def test_parses_json_string_args():
