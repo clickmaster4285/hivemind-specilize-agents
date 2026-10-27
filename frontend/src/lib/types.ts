@@ -160,6 +160,9 @@ export type AnswerVerification = {
 /** A candidate approach the Options toggle offers; clicking one asks for the full answer that way. */
 export type AnswerOption = { title: string; hint: string };
 
+/** A clarifying question the model asks before answering an ambiguous query; the user ticks choices. */
+export type ClarifyQuestion = { question: string; options: string[] };
+
 export type FeedItem = {
   id: string;
   kind: "user" | "agent" | "system";
@@ -182,6 +185,9 @@ export type FeedItem = {
   /** Options toggle: candidate approaches to pick from, and the original question each one answers. */
   options?: AnswerOption[];
   optionsQuery?: string;
+  /** Auto-clarify: multiple-choice questions the model asked, and the original query they refine. */
+  clarify?: ClarifyQuestion[];
+  clarifyQuery?: string;
   /** operate_server: a command waiting for the user to approve or cancel. */
   confirm?: { commandId: string; command: string; server: string; answered?: "run" | "cancel" };
   /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */

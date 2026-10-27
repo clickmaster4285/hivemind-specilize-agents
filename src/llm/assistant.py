@@ -11,6 +11,7 @@ Measured: python -m src.llm.assistant --eval   (data/assistant/eval.yaml)
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
 import sys
@@ -120,6 +121,13 @@ TOOLS: tuple[Tool, ...] = (
     Tool("about_multeagent", "about",
          "Live facts about this assistant: what is in its knowledge base ('your brain', your data, your sources), "
          "its model, and what it can do. Use whenever the user asks about you — you do not know your sources by heart."),
+    Tool("ask_clarification", "clarify",
+         "Ask the user 1–2 short multiple-choice questions FIRST — but ONLY when the request is genuinely ambiguous "
+         "or missing key information needed to answer well (unstated budget, scale, platform, goal, audience, "
+         "experience level). Do NOT use for clear questions, greetings, or anything you can reasonably answer. "
+         "After the user ticks their choices you will answer the original question using them.",
+         {"questions": 'a JSON array of 1-2 items, each {"question": "...", "options": ["choice A", "choice B", ...]} '
+          "with 2-4 short options per question"}, ("questions",)),
 )
 BY_NAME = {t.name: t for t in TOOLS}
 
@@ -176,7 +184,7 @@ def tool_schemas(config: Config, allowed: list[str] | None = None) -> list[dict[
     for tool in TOOLS:
         if not tool.available(config):
             continue
-        if allowed is not None and tool.name not in allowed and tool.name != "about_multeagent":
+        if allowed is not None and tool.name not in allowed and tool.name not in ("about_multeagent", "ask_clarification"):
             continue
         desc = tool.description.format(sources=_source_titles(config)) if "{sources}" in tool.description else None
         out.append(tool.schema(desc))
@@ -202,6 +210,27 @@ def messages_for(
         msgs.append({"role": turn["role"], "content": turn["content"][:4000]})
     msgs.append({"role": "user", "content": query})
     return msgs
+
+
+def _parse_clarify(args: Any) -> list[dict[str, Any]]:
+    """Validate the model's clarify tool args → [{question, options:[...]}], or [] if unusable."""
+    raw = args.get("questions") if isinstance(args, dict) else args
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return []
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for item in raw[:3]:
+        if not isinstance(item, dict):
+            continue
+        q = str(item.get("question") or "").strip()
+        opts = [str(o).strip() for o in (item.get("options") or []) if str(o).strip()][:5]
+        if q and len(opts) >= 2:
+            out.append({"question": q[:200], "options": opts})
+    return out
 
 
 @dataclass
@@ -293,10 +322,17 @@ def decide(
                               (exc.partial + "\n\n_— stopped —_") if exc.partial else "_Stopped._", [], "Stopped")
     except LLMError as exc:
         return _finish_direct(emit, agent, job_id, query, opened, started, friendly_error(exc, config), [str(exc)], "Error")
-    allowed = set(specialist.tools) | {"about_multeagent"} if specialist else None
+    allowed = set(specialist.tools) | {"about_multeagent", "ask_clarification"} if specialist else None
     for call in calls:
         tool = BY_NAME.get(call["name"])
         if tool and tool.available(config) and (allowed is None or tool.name in allowed):
+            if tool.name == "ask_clarification":
+                questions = _parse_clarify(call["arguments"])
+                if not questions:
+                    continue                      # malformed clarify → ignore and fall through
+                live.finish_agent(job_id, "assistant")
+                logger.info("assistant chose ask_clarification (%d questions)", len(questions))
+                return Decision(False, "clarify", "ask_clarification", {"questions": questions})
             live.finish_agent(job_id, "assistant")
             logger.info("assistant chose %s %s", tool.name, call["arguments"])
             return Decision(False, tool.intent, tool.name, dict(call["arguments"] or {}))

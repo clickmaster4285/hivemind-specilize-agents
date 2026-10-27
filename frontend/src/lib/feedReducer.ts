@@ -2,6 +2,7 @@ import type {
   AnswerOption,
   AnswerVerification,
   BrainSource,
+  ClarifyQuestion,
   ChatImage,
   JobEvent,
   FeedItem,
@@ -349,6 +350,10 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
       ? (event.options as AnswerOption[]).filter((o) => o && typeof o.title === "string")
       : undefined;
     const optionsQuery = typeof event.options_query === "string" ? event.options_query : undefined;
+    const clarify = Array.isArray(event.clarify)
+      ? (event.clarify as ClarifyQuestion[]).filter((q) => q && typeof q.question === "string" && Array.isArray(q.options))
+      : undefined;
+    const clarifyQuery = typeof event.clarify_query === "string" ? event.clarify_query : undefined;
     const hasPending = prev.some((item) => item.agentId === event.agent_id && item.pending);
     if (!hasPending) {
       return [
@@ -369,6 +374,8 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           verification,
           options,
           optionsQuery,
+          clarify,
+          clarifyQuery,
         },
       ];
     }
@@ -389,6 +396,8 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
             verification: verification || item.verification,
             options: options || item.options,
             optionsQuery: optionsQuery || item.optionsQuery,
+            clarify: clarify || item.clarify,
+            clarifyQuery: clarifyQuery || item.clarifyQuery,
           }
         : item,
     );

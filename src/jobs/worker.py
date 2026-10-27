@@ -17,7 +17,7 @@ from src.servers.security_scan import run_security_check
 from src.servers.linux_audit import run_server_audit
 from src.servers.server_ops import run_server_diagnose, run_server_operate
 from src.servers.host_check import run_host_check
-from src.llm.assistant import decide
+from src.llm.assistant import decide, speaker
 from src.llm.specialists import resolve as resolve_specialist
 from src.tools.weather import run_weather
 from src.jobs import live
@@ -60,6 +60,18 @@ def _refuse(config: Config, job_id: str, query: str, on_progress, tool: str) -> 
     on_progress({"type": "session_start", "mode": "chat", "query": query})
     on_progress({"type": "agent_start", **agent})
     on_progress({"type": "agent_done", **agent, "elapsed_seconds": 0, "output": text})
+    on_progress({"type": "session_done", "total_seconds": 0, "errors": [], "mode": "chat"})
+    _finish(config, job_id, [])
+
+
+def _clarify(config: Config, job_id: str, query: str, questions: list, on_progress, specialist) -> None:
+    """The model asked to clarify first: show the questions as a pick-list; run nothing until the user picks."""
+    agent = {"agent_id": "assistant", **speaker(specialist), "role": "Clarify", "stage": "chat"}
+    on_progress({"type": "session_start", "mode": "chat", "query": query})
+    on_progress({"type": "agent_start", **agent})
+    on_progress({"type": "agent_done", **agent, "elapsed_seconds": 0,
+                 "output": "A few quick questions so I can answer this well:",
+                 "clarify": questions, "clarify_query": query})
     on_progress({"type": "session_done", "total_seconds": 0, "errors": [], "mode": "chat"})
     _finish(config, job_id, [])
 
@@ -199,6 +211,9 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 _finish(config, job_id, decision.errors)
                 return
             intent, tool_args = decision.intent, decision.args
+            if intent == "clarify":
+                _clarify(config, job_id, query, tool_args.get("questions") or [], on_progress, specialist)
+                return
             on_progress({"type": "tool_chosen", "tool": decision.tool, "args": tool_args})
             if intent == "doc_gen":
                 mode = "agentic"

@@ -32,8 +32,6 @@ type Props = {
   onSend: (opts?: SendOptions) => void;
   deep: boolean;
   onToggleDeep: () => void;
-  wantOptions: boolean;
-  onToggleOptions: () => void;
   runMode: RunMode;
   specialistLabel: string;
   onOpenSettings: () => void;
@@ -88,7 +86,7 @@ function MenuItem({
 /** The message box: a "+" menu (attach / generate / web / document / image ops), the text, and Send/Stop. */
 export default function Composer(props: Props) {
   const { query, onQuery, inputRef, images, editing, onCancelEdit, running, canStop, onStop, onSend } = props;
-  const { deep, onToggleDeep, wantOptions, onToggleOptions } = props;
+  const { deep, onToggleDeep } = props;
   const toggleCls = (on: boolean) =>
     `shrink-0 flex h-[2.1rem] items-center gap-1 rounded-full border px-[0.6rem] text-[0.75rem] cursor-pointer ${
       on
@@ -223,6 +221,7 @@ export default function Composer(props: Props) {
                 <div className="my-1 border-t border-[var(--line)]" />
                 <MenuItem icon="🖼️" label="Generate image" onClick={() => act({ forceIntent: "generate" })} />
                 <MenuItem icon="🌐" label="Web search" disabled={!hasText} onClick={() => act({ forceIntent: "web_search" })} />
+                <MenuItem icon="⚖️" label="Answer options" disabled={!hasText} onClick={() => act({ options: true })} />
                 <MenuItem icon="📄" label="Create document" disabled={!hasText} onClick={() => act({ forceIntent: "doc_gen" })} />
                 {hasImages ? (
                   <>
@@ -286,15 +285,6 @@ export default function Composer(props: Props) {
           className={toggleCls(deep)}
         >
           <span aria-hidden>🔬</span> Deep
-        </button>
-        <button
-          type="button"
-          onClick={onToggleOptions}
-          aria-pressed={wantOptions}
-          title="Options — offer a few ways to answer this, then you pick one"
-          className={toggleCls(wantOptions)}
-        >
-          <span aria-hidden>⚖️</span> Options
         </button>
         {canStop ? (
           // Send turns into Stop: ends the model mid-answer and keeps what was written

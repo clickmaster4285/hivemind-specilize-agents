@@ -9,6 +9,69 @@ import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 
 type ItemProps = { item: FeedItem; fallbackJobId: string | null };
 
+/** Auto-clarify: the model's multiple-choice questions. Tick options, then Submit to get the answer. */
+export function ClarifyForm({
+  item,
+  onSubmit,
+}: {
+  item: FeedItem;
+  onSubmit?: (query: string, picks: { question: string; chosen: string[] }[]) => void;
+}) {
+  const questions = item.clarify || [];
+  const [picks, setPicks] = useState<Record<number, string[]>>({});
+  if (item.pending || !questions.length) return null;
+  const toggle = (qi: number, opt: string) =>
+    setPicks((prev) => {
+      const cur = prev[qi] || [];
+      return { ...prev, [qi]: cur.includes(opt) ? cur.filter((o) => o !== opt) : [...cur, opt] };
+    });
+  const anyPicked = questions.some((_, i) => (picks[i]?.length || 0) > 0);
+  const submit = () =>
+    onSubmit?.(
+      item.clarifyQuery || "",
+      questions.map((q, i) => ({ question: q.question, chosen: picks[i] || [] })),
+    );
+  return (
+    <div className="mt-[0.5rem] flex flex-col gap-[0.6rem]">
+      {questions.map((q, qi) => (
+        <div key={qi} className="flex flex-col gap-[0.3rem]">
+          <span className="text-[0.82rem] font-semibold text-[var(--text)]">{q.question}</span>
+          <div className="flex flex-wrap gap-[0.35rem]">
+            {q.options.map((opt) => {
+              const on = (picks[qi] || []).includes(opt);
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggle(qi, opt)}
+                  className={`rounded-full border px-[0.6rem] py-[0.2rem] text-[0.78rem] cursor-pointer ${
+                    on
+                      ? "border-[var(--teal)] bg-[color-mix(in_srgb,var(--teal)_18%,transparent)] text-[var(--text)]"
+                      : "border-[var(--line)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]"
+                  }`}
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <div>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!anyPicked}
+          className="rounded-[0.5rem] border border-[color-mix(in_srgb,var(--teal)_45%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_14%,var(--panel-2))] px-[0.8rem] py-[0.3rem] text-[0.8rem] text-[var(--text)] hover:brightness-[1.08] disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          Submit
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** The Options toggle's candidate approaches: click a card to get the full answer that way. */
 export function OptionCards({ item, onPick }: { item: FeedItem; onPick?: (query: string, card: AnswerOption) => void }) {
   const opts = item.options || [];

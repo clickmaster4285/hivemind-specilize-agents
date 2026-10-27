@@ -6,7 +6,7 @@ import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
 import MessageAvatar from "@/components/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
-import { AgentThumbs, ArtifactChips, OptionCards, SourceList, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
+import { AgentThumbs, ArtifactChips, ClarifyForm, OptionCards, SourceList, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, FeedItem } from "@/lib/types";
 
 // Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
@@ -35,7 +35,7 @@ function cardClass(kind: FeedItem["kind"], isError: boolean) {
 }
 
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
-export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetry, onConfirm, onPickOption }: Props) {
+export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetry, onConfirm, onPickOption, onClarifySubmit }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
 
@@ -85,6 +85,7 @@ export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetr
             onEdit={onEdit}
             onRetry={onRetry}
             onPickOption={onPickOption}
+            onClarifySubmit={onClarifySubmit}
           />
           );
         })}
@@ -101,6 +102,7 @@ type Props = {
   onRetry: () => void;
   onConfirm: (commandId: string, approved: boolean) => void;
   onPickOption: (query: string, card: AnswerOption) => void;
+  onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
 };
 
 function MessageRow({
@@ -113,6 +115,7 @@ function MessageRow({
   onEdit,
   onRetry,
   onPickOption,
+  onClarifySubmit,
 }: {
   item: FeedItem;
   isError: boolean;
@@ -123,6 +126,7 @@ function MessageRow({
   onEdit: (item: FeedItem) => void;
   onRetry: () => void;
   onPickOption: (query: string, card: AnswerOption) => void;
+  onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
 }) {
   const rowAlign = item.kind === "user" ? "justify-end" : item.kind === "system" ? "items-center justify-center" : "";
   const labelCls = `font-semibold ${isError ? "text-[#ffb4aa]" : "text-[var(--muted)]"}`;
@@ -181,6 +185,7 @@ function MessageRow({
                   <LiveStatus text={item.statusText} steps={item.steps} startedAt={item.startedAt} />
                 ) : null}
                 <OptionCards item={item} onPick={onPickOption} />
+                <ClarifyForm item={item} onSubmit={onClarifySubmit} />
                 <VerificationNote item={item} />
                 <SourceList item={item} />
               </>
