@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
 import MessageAvatar from "@/components/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
-import { AgentThumbs, ArtifactChips, ClarifyForm, FeedbackButtons, OptionCards, QuizCard, SourceList, SuggestionChips, ToolDrawer, VerificationNote, WebImages } from "@/components/chat/MessageExtras";
-import type { AnswerOption, FeedItem } from "@/lib/types";
+import { AgentThumbs, ArtifactChips, ClarifyForm, FeedbackButtons, OptionCards, QuizCard, SourceList, SpreadImage, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
+import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 
 // Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
 // The scroll container is full-width (so the scrollbar sits at the Main-area edge, not against the text);
@@ -161,6 +161,101 @@ type Props = {
   onPickSuggestion: (q: string) => void;
 };
 
+/** Split answer Markdown into blocks at blank lines, keeping fenced code (``` / ~~~, incl. mermaid)
+ *  atomic so a diagram or code block is never cut. Used to find gaps to drop images into. */
+function splitBlocks(md: string): string[] {
+  const blocks: string[] = [];
+  let buf: string[] = [];
+  let fence: string | null = null;
+  const flush = () => {
+    const t = buf.join("\n").trim();
+    if (t) blocks.push(t);
+    buf = [];
+  };
+  for (const line of md.split("\n")) {
+    if (fence) {
+      buf.push(line);
+      if (line.trimStart().startsWith(fence)) fence = null; // closing fence
+      continue;
+    }
+    const open = line.match(/^\s*(```|~~~)/);
+    if (open) {
+      fence = open[1];
+      buf.push(line);
+      continue;
+    }
+    if (line.trim() === "") {
+      if (buf.length) flush(); // blank line = block boundary (outside a fence)
+    } else {
+      buf.push(line);
+    }
+  }
+  flush();
+  return blocks;
+}
+
+/** Spread m images across n blocks → map of block index → image indices placed AFTER that block,
+ *  evenly distributed so they never all land at the end. */
+function assignGaps(n: number, m: number): Record<number, number[]> {
+  const out: Record<number, number[]> = {};
+  for (let j = 0; j < m; j++) {
+    const pos = Math.min(n - 1, Math.floor(((j + 1) * n) / (m + 1)));
+    (out[pos] ||= []).push(j);
+  }
+  return out;
+}
+
+/** The assistant answer body. Once it's done and web images have loaded, the images are spread between
+ *  the answer's blocks (near the relevant content) at varied natural sizes; while streaming, or when
+ *  there's nothing to interleave into, it falls back to plain Markdown + a varied-size strip. */
+function AnswerContent({ item, webImgs }: { item: FeedItem; webImgs: ChatImage[] }) {
+  if (!item.body) return null;
+  const done = !item.pending && !item.streaming;
+  const sources = item.sources;
+  const blocks = done && webImgs.length > 0 ? splitBlocks(item.body) : null;
+
+  // Not ready to spread (still streaming, no images, or a single block with nowhere to interleave):
+  // plain Markdown, then — if done — a varied-size strip (reusing the already-loaded images).
+  if (!blocks || blocks.length <= 1) {
+    return (
+      <>
+        <MarkdownBody content={item.body} pending={item.pending && !item.streaming} sources={sources} />
+        {done && webImgs.length > 0 ? (
+          <div className="mt-[0.5rem] flex flex-wrap items-start gap-[0.5rem]">
+            {webImgs.map((img) => (
+              <a
+                key={img.url}
+                href={img.url}
+                target="_blank"
+                rel="noreferrer"
+                title="Open image"
+                className="block h-[7rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)]"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img.url} alt={img.filename} loading="lazy" className="block h-full w-auto object-contain" />
+              </a>
+            ))}
+          </div>
+        ) : null}
+      </>
+    );
+  }
+
+  const gaps = assignGaps(blocks.length, webImgs.length);
+  return (
+    <>
+      {blocks.map((block, i) => (
+        <Fragment key={i}>
+          <MarkdownBody content={block} sources={sources} />
+          {gaps[i]?.map((imgIdx) => (
+            <SpreadImage key={webImgs[imgIdx].url} img={webImgs[imgIdx]} align={imgIdx % 2 ? "right" : "left"} />
+          ))}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 function MessageRow({
   item,
   isError,
@@ -194,6 +289,7 @@ function MessageRow({
   onPickSuggestion: (q: string) => void;
   isLastAgent: boolean;
 }) {
+  const webImgs = useWebImages(item, fallbackJobId);
   const rowAlign = item.kind === "user" ? "justify-end" : item.kind === "system" ? "items-center justify-center" : "";
   const labelCls = `font-semibold ${isError ? "text-[#ffb4aa]" : "text-[var(--muted)]"}`;
   const metaCls = isError ? "text-[#ffb4aa]" : "text-[var(--muted)]";
@@ -246,11 +342,8 @@ function MessageRow({
               <>
                 <AgentThumbs item={item} fallbackJobId={fallbackJobId} />
                 <ArtifactChips item={item} fallbackJobId={fallbackJobId} />
-                {item.body ? (
-                  // streamed text renders as Markdown while it grows
-                  <MarkdownBody content={item.body} pending={item.pending && !item.streaming} sources={item.sources} />
-                ) : null}
-                <WebImages item={item} fallbackJobId={fallbackJobId} />
+                {/* answer text; once done, web images are spread between its blocks at varied sizes */}
+                <AnswerContent item={item} webImgs={webImgs} />
                 {item.pending ? (
                   <LiveStatus text={item.statusText} steps={item.steps} startedAt={item.startedAt} />
                 ) : null}

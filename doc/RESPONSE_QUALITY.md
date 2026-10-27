@@ -404,3 +404,84 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
   server-side image search + proxy, since we block external images for privacy — a real build);
   pushing a **Mermaid diagram** into such answers; an optional **quiz**. SDXL can't make accurate part
   photos, so images mean *web image search + local proxy*, not generation.
+
+### 2026-10-27 — Inline edit (ChatGPT-style) of a user message
+- **What we built:** clicking **Edit** on a sent message turns that bubble into an in-place textarea
+  (Cancel / Send, Enter sends, Esc cancels) instead of refilling the bottom composer. Send replaces the
+  message and regenerates from there: `useChat.send` takes `editFromId`, truncates the feed at that
+  message (`baseFeed`), soft-deletes the dropped turns' jobs (`softDeleteJobs` + `history.dropJobs`), and
+  sends the trimmed `conversation`. `MessageFeed` holds `editingId` and renders `<InlineEdit>`;
+  `AppProvider.editAndResend` wires it. Frontend builds; backend unchanged (546 pass).
+- *Lesson:* edit-in-place reads as "fix this turn," so the regeneration must drop everything after it —
+  do it client-side (baseFeed) and mark the old jobs deleted so a refresh doesn't resurrect them.
+
+### 2026-10-27 — Icon library (emoji everywhere + Iconify in diagrams)
+- **Idea (user):** "a big icons library, so instead of always making a diagram we can simply use those
+  icons to denote things — in a mermaid diagram, in the chat, in docs." Chosen scope: **both** tracks.
+- **Constraint found first:** the Mermaid PNG/SVG export depends on `htmlLabels: false`
+  ([MermaidDiagram.tsx](../frontend/src/components/MermaidDiagram.tsx)) — labels are plain SVG text so
+  `svgToPng` can draw them onto a canvas. FontAwesome `fa:` icons need `htmlLabels: true` (HTML `<i>`),
+  and HTML-in-SVG (`foreignObject`) does **not** render when the SVG is drawn into a canvas → flipping
+  the flag would silently blank the exported images. So FA-in-flowchart was rejected.
+- **Track A (emoji — universal):** added prompt guidance in `assistant.SYSTEM` to denote a
+  component/status/step with a relevant emoji inline (🖥️🗄️📁⚙️🌐🔒📦 ✅/⚠️/❌ →) and to prefer a few
+  icons over a whole diagram when one would be overkill. Emoji are plain Unicode → render in chat, docs,
+  Markdown **and inside Mermaid labels**, with **no export regression**. Zero new deps.
+- **Track B (real vector icons in diagrams):** chose Mermaid **`architecture-beta`** + **Iconify packs
+  bundled locally** (no CDN, strictly local): `@iconify-json/logos` (2,282 tech/brand logos) and
+  `@iconify-json/mdi` (7,638 generic shapes) ≈ **~9,900 offline icons**. Registered via
+  `mermaid.registerIconPacks([...])` with lazy `import('@iconify-json/<pack>/icons.json')`; icons render
+  as inline SVG so the PNG/SVG export still works. Taught the model the `architecture-beta` syntax +
+  real icon names (logos:aws, logos:postgresql, mdi:server, mdi:database…) with a worked example, and
+  "if unsure of a name, use a plain flowchart instead." tsc + next build clean; 546 pass.
+- *Lesson:* "add an icon library" collided with an existing working feature (canvas export). Picking the
+  diagram type whose icons are **real SVG** (architecture-beta/Iconify) keeps export intact where an icon
+  **font** (FontAwesome via foreignObject) would have broken it. The 9B reliability risk is bounded by
+  the existing "Fix diagram" path if it emits a bad icon name.
+
+### 2026-10-27 — Images spread through the answer + diagram icons made directive (user feedback)
+- **Symptom (user):** on the rich motherboard answer, "all the images again came together, each should be
+  with the relevant content, with different sizing" and "in the diagram there is no icon used."
+- **Cause:** `WebImages` rendered every image as an identical 5.5rem **cropped square** in one strip at the
+  end of the message; and the icon guidance was only *"may use"* — the 9B drew a plain flowchart with no
+  icons.
+- **Fix — images (user chose "spread the same images through sections"):** extracted a `useWebImages` hook,
+  added `SpreadImage` (natural size, capped 15rem, alternating left/right). `MessageFeed` now has
+  `AnswerContent`: when the answer is done and images loaded, it `splitBlocks()` the Markdown at blank
+  lines (keeping ``` / mermaid fences atomic so a diagram is never cut) and `assignGaps()` spreads the
+  images evenly between blocks; while streaming or when there's only one block, it falls back to plain
+  Markdown + a varied-size strip (fixed height, natural width). No extra image searches → no added latency.
+- **Fix — diagram icons:** made the prompt **directive** — when the model draws a Mermaid flowchart of
+  parts/components/architecture it must begin each node label with a fitting emoji
+  (`A["🧠 CPU Socket"] --> B["🔗 Chipset"]`…). Emoji render in the browser view and need no htmlLabels flip.
+- **Checks:** tsc + next build clean; 546 pass. *Model behavior (does it now use icons / how the spread
+  looks) is confirmed by the user's eval + screenshots, not pytest.*
+- *Lesson:* generic topic images can't be *semantically* matched to each section without a per-section
+  search (declined for latency); spreading them across the answer's blocks at varied sizes gives the
+  "attached to the content" feel cheaply, while fence-aware splitting keeps diagrams/code intact.
+
+### 2026-10-27 — Diagrams: hard rules + a client-side parse safety net (user feedback)
+- **Symptom (user, 3 example diagrams):** "too complex, no icon, and issues." A network example rendered
+  fine but with plain boxes (no icons); an IP/subnet example **failed to parse** ("Parse error on line
+  19" — `|Layer 2 Forwarding (MAC Table)|`, parentheses inside a pipe edge-label); the "fixed" retry was
+  an unreadable sprawl (legend box, subnet box, traffic-flow subgraph, crossing dashed arrows).
+- **Cause:** (a) the 9B ignores soft "may use emoji" guidance and reaches for `classDef` colours instead;
+  (b) it over-engineers when asked for an "example"; (c) it emits invalid Mermaid (brackets/pipes in
+  labels). Prompt-tuning a 9B only partly sticks — the model is the ceiling.
+- **Fix 1 — hard prompt rules** (`assistant.SYSTEM`): a diagram must be SIMPLE and VALID — ≤7 nodes, one
+  direction, **no legend/subnet/traffic-flow boxes or nested subgraphs unless asked**; **every node label
+  must start with an emoji and NOT use classDef colours**; **parse-safe** (quote labels, 2–4 words, never
+  `( ) : | / <br>` inside a label, prefer plain `-->`); **IPs/masks/ports go in prose or a table, never in
+  nodes**. Added a clean worked office-network example. architecture-beta demoted to optional.
+- **Fix 2 — client-side safety net** (`MermaidDiagram.tsx`): `sanitizeMermaid()` runs before render and
+  normalises the common breakers (v1: strips `( ) [ ] { } "` from `|...|` edge-label text → plain
+  multi-word label), so a small model mistake *draws* instead of erroring into a Fix-diagram round-trip.
+  Deliberately minimal — only rewrites text that's invalid anyway (verified: the line-19 case is fixed,
+  valid diagrams and classDef lines are untouched). Render/Copy/Show all use the sanitised code. tsc +
+  build clean; 546 pass.
+- *Lesson:* for a weak local model, pair "author better" (prompt) with "repair at the edge" (a
+  conservative client-side sanitizer) so UX doesn't depend on the model getting syntax perfect. The real
+  ceiling for clean structured output is model capacity — see the pending model-choice discussion.
+- *Still open:* re-test the prompt on top of the net (user eval). If parse errors persist from other
+  breakers, extend `sanitizeMermaid` (e.g. quote node labels with parens). Deeper lever: a stronger local
+  model for diagram authoring (P4000 8GB limits this — `qwen2.5-coder:14b` is tight).

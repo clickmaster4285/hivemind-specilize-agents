@@ -260,13 +260,18 @@ export function AgentThumbs({ item, fallbackJobId }: ItemProps) {
   );
 }
 
-/** Web images found for an educational answer: a compact strip of uniform thumbnails, click to enlarge. */
-export function WebImages({ item, fallbackJobId }: ItemProps) {
+/** Load the web images an answer found (from the job's attachment store) into blob URLs. Returns []
+ *  until they resolve; one that fails to load is skipped. Shared by the spread-in-answer renderer and
+ *  the fallback strip. */
+export function useWebImages(item: FeedItem, fallbackJobId: string | null): ChatImage[] {
   const jobId = item.jobId || fallbackJobId;
-  const files = item.webImages || [];
   const [loaded, setLoaded] = useState<ChatImage[]>([]);
   useEffect(() => {
-    if (!files.length || !jobId) return;
+    const files = item.webImages || [];
+    if (!files.length || !jobId) {
+      setLoaded([]);
+      return;
+    }
     let cancelled = false;
     void (async () => {
       const out: ChatImage[] = [];
@@ -286,9 +291,40 @@ export function WebImages({ item, fallbackJobId }: ItemProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId, item.webImages]);
+  return loaded;
+}
+
+/** One web image at its natural size (not a cropped square), capped so it never dominates; click to
+ *  open full size. `align` lets callers alternate left/right as images are spread down the answer. */
+export function SpreadImage({ img, align = "left" }: { img: ChatImage; align?: "left" | "right" }) {
+  return (
+    <a
+      href={img.url}
+      target="_blank"
+      rel="noreferrer"
+      title="Open image"
+      className={`my-[0.6rem] block w-fit max-w-full overflow-hidden rounded-[0.5rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)] ${
+        align === "right" ? "ml-auto" : ""
+      }`}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={img.url}
+        alt={img.filename}
+        loading="lazy"
+        className="block h-auto max-h-[15rem] w-auto max-w-full object-contain"
+      />
+    </a>
+  );
+}
+
+/** Fallback when an answer has no section gaps to spread images into: a row of varied-size thumbnails
+ *  (each keeps its own aspect ratio at a fixed height), click to enlarge. */
+export function WebImages({ item, fallbackJobId }: ItemProps) {
+  const loaded = useWebImages(item, fallbackJobId);
   if (!loaded.length) return null;
   return (
-    <div className="mt-[0.5rem] flex flex-wrap gap-[0.4rem]">
+    <div className="mt-[0.5rem] flex flex-wrap items-start gap-[0.5rem]">
       {loaded.map((img) => (
         <a
           key={img.url}
@@ -296,10 +332,10 @@ export function WebImages({ item, fallbackJobId }: ItemProps) {
           target="_blank"
           rel="noreferrer"
           title="Open image"
-          className="block h-[5.5rem] w-[5.5rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)]"
+          className="block h-[7rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={img.url} alt={img.filename} loading="lazy" className="block h-full w-full object-cover" />
+          <img src={img.url} alt={img.filename} loading="lazy" className="block h-full w-auto object-contain" />
         </a>
       ))}
     </div>

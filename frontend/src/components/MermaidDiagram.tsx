@@ -1,8 +1,28 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 type Props = { code: string };
+
+/** Conservative safety net for model-written Mermaid: fix the common parse-breakers before rendering so
+ *  a small mistake draws instead of erroring into a "Fix diagram" round-trip. Deliberately minimal — it
+ *  only touches things that are invalid anyway, so it never mangles a already-valid diagram.
+ *  Rule 1: edge labels `|...|` can't contain brackets/quotes (e.g. `|Forwarding (MAC Table)|` broke the
+ *  parser); strip `(){}[]"` from the label text and collapse spaces, keeping a plain multi-word label. */
+function sanitizeMermaid(code: string): string {
+  return code
+    .split("\n")
+    .map((line) => {
+      if (/^\s*%%/.test(line)) return line; // leave directives/comments alone
+      return line.replace(/\|([^|]*)\|/g, (whole, inner: string) => {
+        const t = inner.trim();
+        if (!t) return whole;
+        const safe = t.replace(/["()[\]{}]/g, " ").replace(/\s+/g, " ").trim();
+        return safe === t ? whole : `|${safe}|`;
+      });
+    })
+    .join("\n");
+}
 
 let ready: Promise<typeof import("mermaid").default> | null = null;
 
@@ -20,6 +40,15 @@ function loadMermaid() {
       fontFamily: "Arial, Helvetica, sans-serif",
       themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
     });
+    // Icon packs for `architecture-beta` diagrams — bundled locally (no CDN), lazy-loaded with the
+    // diagram. Icons render as inline SVG, so the PNG/SVG export still works. Referenced as
+    // `logos:aws` (tech/brand logos) or `mdi:server` (generic shapes) in service(...) annotations.
+    // cast: the @iconify-json packages type their JSON default as `{} | IconifyJSON`, which does not
+    // match Mermaid's `loader: () => Promise<IconifyJSON>`; the data is a valid pack at runtime.
+    mermaid.registerIconPacks([
+      { name: "logos", loader: () => import("@iconify-json/logos/icons.json").then((m) => m.default) },
+      { name: "mdi", loader: () => import("@iconify-json/mdi/icons.json").then((m) => m.default) },
+    ] as Parameters<typeof mermaid.registerIconPacks>[0]);
     return mermaid;
   });
   return ready;
@@ -77,11 +106,12 @@ export default function MermaidDiagram({ code }: Props) {
   const [error, setError] = useState("");
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
+  const clean = useMemo(() => sanitizeMermaid(code), [code]);
 
   useEffect(() => {
     let cancelled = false;
     loadMermaid()
-      .then((mermaid) => mermaid.render(id, code))
+      .then((mermaid) => mermaid.render(id, clean))
       .then(({ svg: out }) => {
         if (!cancelled) {
           setSvg(out);
@@ -95,10 +125,10 @@ export default function MermaidDiagram({ code }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [code, id]);
+  }, [clean, id]);
 
   const copy = async () => {
-    await navigator.clipboard.writeText(code);
+    await navigator.clipboard.writeText(clean);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -146,7 +176,7 @@ export default function MermaidDiagram({ code }: Props) {
           </button>
         )}
       </div>
-      {codeVisible && <pre className="md-pre mermaid-code">{code}</pre>}
+      {codeVisible && <pre className="md-pre mermaid-code">{clean}</pre>}
     </div>
   );
 }
