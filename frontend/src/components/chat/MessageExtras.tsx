@@ -72,6 +72,67 @@ export function ClarifyForm({
   );
 }
 
+/** A short multiple-choice self-check under an educational answer: pick, then "Check answers". */
+export function QuizCard({ item }: { item: FeedItem }) {
+  const quiz = item.quiz || [];
+  const [picks, setPicks] = useState<Record<number, number>>({});
+  const [checked, setChecked] = useState(false);
+  if (item.pending || !quiz.length) return null;
+  const score = quiz.filter((q, i) => picks[i] === q.correct).length;
+  return (
+    <details
+      open
+      className="mt-[0.6rem] rounded-[0.6rem] border border-[var(--line)] bg-[color-mix(in_srgb,var(--teal)_6%,var(--panel-2))] px-[0.7rem] py-[0.5rem] text-[0.82rem]"
+    >
+      <summary className="cursor-pointer font-semibold text-[var(--muted)]">Quick self-check · {quiz.length} questions</summary>
+      <div className="mt-[0.45rem] flex flex-col gap-[0.6rem]">
+        {quiz.map((q, qi) => (
+          <div key={qi} className="flex flex-col gap-[0.25rem]">
+            <span className="font-semibold text-[var(--text)]">
+              {qi + 1}. {q.question}
+            </span>
+            <div className="flex flex-col gap-[0.2rem]">
+              {q.options.map((opt, oi) => {
+                const picked = picks[qi] === oi;
+                const isCorrect = oi === q.correct;
+                let cls = "border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]";
+                if (checked && isCorrect)
+                  cls = "border-[var(--teal)] text-[var(--text)] bg-[color-mix(in_srgb,var(--teal)_14%,transparent)]";
+                else if (checked && picked) cls = "border-[var(--danger)] text-[var(--text)]";
+                else if (picked) cls = "border-[var(--teal)] text-[var(--text)]";
+                return (
+                  <button
+                    key={oi}
+                    type="button"
+                    disabled={checked}
+                    onClick={() => setPicks((p) => ({ ...p, [qi]: oi }))}
+                    className={`rounded-[0.4rem] border px-[0.6rem] py-[0.2rem] text-left disabled:cursor-default ${cls}`}
+                  >
+                    {opt}
+                    {checked && isCorrect ? "  ✓" : ""}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        {!checked ? (
+          <button
+            type="button"
+            disabled={Object.keys(picks).length < quiz.length}
+            onClick={() => setChecked(true)}
+            className="self-start rounded-[0.5rem] border border-[color-mix(in_srgb,var(--teal)_45%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_14%,var(--panel-2))] px-[0.8rem] py-[0.3rem] text-[var(--text)] hover:brightness-[1.08] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            Check answers
+          </button>
+        ) : (
+          <span className="text-[var(--muted)]">You got {score} / {quiz.length}.</span>
+        )}
+      </div>
+    </details>
+  );
+}
+
 /** 👍 / 👎 on an answer. Fire-and-forget; the choice stays highlighted for the session. */
 export function FeedbackButtons({ jobId }: { jobId?: string | null }) {
   const [rating, setRating] = useState<"up" | "down" | null>(null);

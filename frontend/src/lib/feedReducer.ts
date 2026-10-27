@@ -3,6 +3,7 @@ import type {
   AnswerVerification,
   BrainSource,
   ClarifyQuestion,
+  QuizQuestion,
   ChatImage,
   JobEvent,
   FeedItem,
@@ -357,6 +358,11 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
     const suggestions = Array.isArray(event.suggestions)
       ? (event.suggestions as unknown[]).filter((s): s is string => typeof s === "string" && s.length > 0)
       : undefined;
+    const quiz = Array.isArray(event.quiz)
+      ? (event.quiz as QuizQuestion[]).filter(
+          (q) => q && typeof q.question === "string" && Array.isArray(q.options) && typeof q.correct === "number",
+        )
+      : undefined;
     const hasPending = prev.some((item) => item.agentId === event.agent_id && item.pending);
     if (!hasPending) {
       return [
@@ -380,6 +386,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           clarify,
           clarifyQuery,
           suggestions,
+          quiz,
         },
       ];
     }
@@ -403,6 +410,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
             clarify: clarify || item.clarify,
             clarifyQuery: clarifyQuery || item.clarifyQuery,
             suggestions: suggestions || item.suggestions,
+            quiz: quiz || item.quiz,
           }
         : item,
     );

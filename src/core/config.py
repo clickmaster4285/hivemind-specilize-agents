@@ -145,6 +145,12 @@ class Config:
     # Follow-up suggestions: clickable "ask this next" chips under each substantive answer
     suggestions_enabled: bool = True
     suggestions_count: int = 3
+    # Quiz: a short multiple-choice self-check under educational answers
+    quiz_enabled: bool = True
+    quiz_count: int = 4
+    # Web images: a small gallery of real photos (searched + proxied locally) atop educational answers
+    web_images_enabled: bool = True
+    web_images_count: int = 4
 
     @classmethod
     def from_env(cls) -> Config:
@@ -265,6 +271,10 @@ class Config:
             options_count=max(2, min(5, int(os.getenv("OPTIONS_COUNT", "3")))),
             suggestions_enabled=_bool("SUGGESTIONS_ENABLED", True),
             suggestions_count=max(2, min(5, int(os.getenv("SUGGESTIONS_COUNT", "3")))),
+            quiz_enabled=_bool("QUIZ_ENABLED", True),
+            quiz_count=max(2, min(6, int(os.getenv("QUIZ_COUNT", "4")))),
+            web_images_enabled=_bool("WEB_IMAGES_ENABLED", True),
+            web_images_count=max(1, min(8, int(os.getenv("WEB_IMAGES_COUNT", "4")))),
         )
 
     def with_model(self, model: str | None) -> Config:

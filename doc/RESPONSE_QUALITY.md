@@ -119,14 +119,45 @@ web-search). Build strictly in order; each ships green before the next starts.
 - **R3 — Quiz under educational answers.** *What:* a short multiple-choice self-check under educational
   answers. *How:* a dedicated call (`generate_quiz`, like options/suggestions) → MC questions + correct
   answers → a `QuizCard` (pick, then "check answers" reveals). Gated to educational answers. *Why:*
-  learning polish; reuses the dedicated-call + card patterns. *(status: not started)*
+  learning polish; reuses the dedicated-call + card patterns. *(status: ✅ v1 built 2026-10-27 —
+  `src/tools/quiz.py`, `QuizCard`, gated by `_is_educational` in chat_runner, `QUIZ_ENABLED/COUNT`.)*
 - **R4 — Real images (web image search + safe local proxy).** *What:* a small gallery of relevant real
   photos atop educational/visual answers. *How:* SearXNG image search → backend **fetches each image
   server-side** (polite client, size/type/time limits) and **re-serves it locally** (like attachments)
   → the frontend shows the *local* URL (passes `isOwnImage`, so no external load, no IP leak). Gated to
   topics where images help; **we** control the search (not the model emitting URLs). *Why:* the biggest
   visual gap; highest effort; a *careful* relaxation of the no-external-image rule, kept safe by the
-  proxy. *Risks:* privacy (mitigated), storage, relevance. *(status: not started)*
+  proxy. *Risks:* privacy (mitigated), storage, relevance. *(status: ✅ v1 built 2026-10-27 —
+  `src/tools/web_images.py` with an **SSRF guard** (blocks private/loopback/link-local hosts) +
+  size/type/time limits; saved to the job's attachment store and served by the existing authed
+  endpoint; emitted as `images` → `AgentThumbs`; `WEB_IMAGES_ENABLED/COUNT`. Gated by `_is_educational`.)*
+
+### 2026-10-27 — R3 (quiz) + R4 (real images) built
+- **R3 quiz:** educational answers (gated by `_is_educational` — parts of / explain / how X works / …)
+  now get a dedicated `generate_quiz` call → an interactive `QuizCard` (pick, then "Check answers" shows
+  correct/score). `QUIZ_ENABLED/COUNT`.
+- **R4 images:** the same educational answers get a small gallery of **real photos** — SearXNG image
+  search → each image **fetched server-side** (SSRF guard blocks private/loopback/link-local; content-type
+  must be an image; ≤5 MB; timeouts) → saved into the job's attachment store → served by the existing
+  authed `/attachments` endpoint → shown via `AgentThumbs`. The browser never touches the external URL, so
+  no IP leak. `WEB_IMAGES_ENABLED/COUNT`.
+- **Cost (honest):** an educational answer can now trigger up to three extra calls after the text —
+  suggestions + quiz + image fetch (~several seconds). They run *after* the answer is streamed, so reading
+  isn't blocked, but the message finalises later; each is config-gated and best-effort. If it feels heavy,
+  turn off `QUIZ_ENABLED` / `WEB_IMAGES_ENABLED` or we emit the extras as separate post-answer events.
+- 7 new tests (quiz parse, SSRF guard, educational gate via existing paths); 546 pass; frontend builds.
+
+### 2026-10-27 — Validated (user): "parts of a motherboard" now rich & grounded
+- **Measured (user run):** the same query that was a plain 58s "Direct reply" now returns **Web search ·
+  45s** with: 4 relevant labeled motherboard images (proxied), a cited structured parts+functions answer,
+  a Sources table (3 cited / 4 found), a 4-question quiz, follow-up chips, and 👍/👎. Everything from the
+  R-plan firing together. User verdict: "check the response" (👍).
+- **The one trade-off = latency.** ~45s because the extras stack *after* the answer: web answer (~25–30s)
+  → images (search+fetch) → quiz → suggestions. The text streams first so reading isn't blocked, but the
+  message stays "pending" until the extras finish (~15s tail).
+- **Optimizations on the table (not yet done):** (a) emit the answer's `agent_done` first, then stream
+  `images`/`quiz`/`suggestions` as *separate* post-answer events so the message completes at ~30s and the
+  extras pop in after; (b) parallelize the image fetch in `gather_web_images` (currently sequential).
 
 ### P2 — Suggestions + feedback  *(status: suggestions v1 built 2026-10-27; feedback = R1 above)*
 - **Suggestions — done.** After a substantive answer (>120 chars, not the options list), a small

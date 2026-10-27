@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
@@ -17,8 +18,21 @@ from src.jobs import live
 from src.core.conversation import format_conversation_block, normalize_conversation
 from src.llm.llm_client import LLMClient, LLMStopped
 from src.llm.ollama_mgmt import model_loaded
+from src.tools.quiz import generate_quiz
 from src.tools.suggestions import generate_suggestions
 from src.tools.web_search import WebSearchError, answer_from_web
+
+# "parts of / explain / how X works / difference between …" — answers that benefit from a quiz and images.
+_EDUCATIONAL = re.compile(
+    r"\b(parts?\s+of|components?\s+of|types?\s+of|features?\s+of|overview\s+of|architecture\s+of|"
+    r"explain|explained|what\s+(is|are)|how\s+\w+.*\bworks?\b|how\s+to|guide\s+to|teach|learn|"
+    r"difference\s+between|examples?\s+of|introduction\s+to)\b",
+    re.I,
+)
+
+
+def _is_educational(query: str) -> bool:
+    return bool(_EDUCATIONAL.search(query or ""))
 
 log = logging.getLogger(__name__)
 
@@ -302,6 +316,22 @@ def run_chat(
                                         model=model, n=config.suggestions_count)
             if sugg:
                 extra["suggestions"] = sugg
+        # Educational extras (R3/R4): a self-check quiz, and relevant web images, for explain/learn answers.
+        if "options" not in extra and len(output.strip()) > 120 and _is_educational(query) and not live.is_stopped(job_id):
+            if config.quiz_enabled:
+                _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Building a quick quiz…"})
+                quiz = generate_quiz(query, output, client_chat=lambda **kw: client.chat(**kw),
+                                     model=model, n=config.quiz_count)
+                if quiz:
+                    extra["quiz"] = quiz
+            if config.web_images_enabled:
+                from src.tools.web_images import gather_web_images
+
+                _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Finding relevant images…"})
+                imgs = gather_web_images(query, job_id, config, n=config.web_images_count)
+                if imgs:
+                    # the feed reducer reads `images` → item.imageFiles → AgentThumbs loads them locally
+                    extra["images"] = [{"filename": i["filename"], "mime": i["mime"]} for i in imgs]
         elapsed = time.perf_counter() - started
         live.finish_agent(job_id, "assistant")       # the final text replaces the streamed one
         _emit(
