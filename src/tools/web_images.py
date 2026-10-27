@@ -12,6 +12,7 @@ import ipaddress
 import json
 import logging
 import socket
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -94,19 +95,21 @@ def gather_web_images(query: str, job_id: str, config: Config, n: int = 4) -> li
     urls = search_images(query, config, n * 3)
     if not urls:
         return []
+    # fetch all candidates concurrently — one slow or blocked image must not hold up the rest
+    with ThreadPoolExecutor(max_workers=min(8, len(urls))) as pool:
+        fetched = list(pool.map(_fetch, urls))
     folder = Path(config.artifacts_dir) / job_id / "images"
     folder.mkdir(parents=True, exist_ok=True)
     saved: list[dict[str, str]] = []
-    for url in urls:
+    for got in fetched:                                  # keep search order; take the first n that succeeded
         if len(saved) >= n:
             break
-        got = _fetch(url)
         if not got:
             continue
         mime, blob = got
         stored = f"web_{len(saved) + 1:02d}{_ALLOWED[mime]}"
         (folder / stored).write_bytes(blob)
-        saved.append({"filename": stored, "mime": mime, "relpath": f"{job_id}/images/{stored}", "source": url})
+        saved.append({"filename": stored, "mime": mime, "relpath": f"{job_id}/images/{stored}"})
     if saved:
         _attach_to_job(config, job_id, saved)
     return saved

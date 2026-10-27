@@ -159,6 +159,17 @@ web-search). Build strictly in order; each ships green before the next starts.
   `images`/`quiz`/`suggestions` as *separate* post-answer events so the message completes at ~30s and the
   extras pop in after; (b) parallelize the image fetch in `gather_web_images` (currently sequential).
 
+### 2026-10-27 — Both latency fixes done
+- **(a) Answer completes first; extras stream in after.** `run_chat` now emits `agent_done` (answer +
+  sources + verification) as soon as the text is done, *then* computes suggestions/quiz/images and emits a
+  separate **`answer_extras`** event; the reducer merges it into the last answer. So the message is "done"
+  at ~answer time and the chips/quiz/images pop in a few seconds later instead of holding the message
+  "pending". (Status spinners for the extras removed — the message is no longer pending.)
+- **(b) Images fetched concurrently.** `gather_web_images` now downloads all candidates in a
+  `ThreadPoolExecutor` and keeps the first N that succeed (in search order), instead of one at a time.
+- Additive; 546 tests pass; frontend builds. The ~45s total is unchanged, but the *perceived* finish is
+  now ~answer-time, with extras arriving after.
+
 ### P2 — Suggestions + feedback  *(status: suggestions v1 built 2026-10-27; feedback = R1 above)*
 - **Suggestions — done.** After a substantive answer (>120 chars, not the options list), a small
   dedicated call (`src/tools/suggestions.py`, the reliable pattern) produces `SUGGESTIONS_COUNT` short

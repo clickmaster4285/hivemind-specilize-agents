@@ -42,10 +42,9 @@ Everything shares one idea: **create a job, classify it, run it in the backgroun
      - `mode` — Auto / Chat / Debate / Agentic / Mixed
      - `images[]` — optional attachments
      - model override, agent ids, etc.
-3. After the job is created, the UI opens an **SSE stream** on  
-   `GET /api/jobs/{job_id}/events`.
+3. After the job is created, the UI opens an **SSE stream** on`GET /api/jobs/{job_id}/events`.
 4. Each event updates the feed (status, agent bubbles, errors, image thumbs).
-5. Generated images are loaded later via  
+5. Generated images are loaded later via
    `GET /api/jobs/{job_id}/attachments/{filename}`.
 
 The frontend does **not** call Ollama or SDXL directly. It only talks to the API.
@@ -70,14 +69,14 @@ At this layer the system only cares about: *who is calling*, *is the payload val
 
 When a job is created, the backend does this in order:
 
-| Step | What happens |
-|------|----------------|
-| 1. Guards | Per-user active jobs, queue depth, daily quota |
-| 2. Classify | `classify_query(query, mode, has_images=...)` |
-| 3. Model plan | Pick chat / vision / image labels (`resolve_model_plan`) |
-| 4. Persist job | Row in DB with `status=queued`, mode, payload, model plan |
-| 5. Save uploads | User images → `artifacts/{job_id}/images/` |
-| 6. Events | `job_queued`, `route_decided` written for the SSE client |
+| Step            | What happens                                                 |
+| --------------- | ------------------------------------------------------------ |
+| 1. Guards       | Per-user active jobs, queue depth, daily quota               |
+| 2. Classify     | `classify_query(query, mode, has_images=...)`              |
+| 3. Model plan   | Pick chat / vision / image labels (`resolve_model_plan`)   |
+| 4. Persist job  | Row in DB with `status=queued`, mode, payload, model plan  |
+| 5. Save uploads | User images → `artifacts/{job_id}/images/`                |
+| 6. Events       | `job_queued`, `route_decided` written for the SSE client |
 
 Important rules here:
 
@@ -101,15 +100,15 @@ This layer answers:
 
 ### Intents
 
-| Intent | Meaning |
-|--------|---------|
-| `chat` | Normal text reply |
-| `creative` | Story/poem-style chat |
-| `vision` | Look at an attached image (needs Ollama vision model) |
-| `image_gen` | Draw or edit a picture with local SDXL |
+| Intent         | Meaning                                                                               |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `chat`       | Normal text reply                                                                     |
+| `creative`   | Story/poem-style chat                                                                 |
+| `vision`     | Look at an attached image (needs Ollama vision model)                                 |
+| `image_gen`  | Draw or edit a picture with local SDXL                                                |
 | `web_search` | Search the internet **on request** (local SearXNG → top pages → cited answer) |
-| `debate` | Optimist / Cynic / Consensus board |
-| `agentic` | Planner + tools loop |
+| `debate`     | Optimist / Cynic / Consensus board                                                    |
+| `agentic`    | Planner + tools loop                                                                  |
 
 ### Decision order (simplified)
 
@@ -177,7 +176,7 @@ Does **not** use Ollama for drawing.
 1. Optional **prompt polish** (`src/image_prompt.py`) — local text cleanup, no LLM.
 2. Take the shared GPU lock (`llm_slot`) so chat and SDXL do not fight.
 3. Load SDXL once per process (singleton):
-   - **txt2img** — text only → new image  
+   - **txt2img** — text only → new image
    - **img2img** — attached image + text + `IMAGE_STRENGTH`
 4. Save PNG under `artifacts/{job_id}/images/`.
 5. Emit `agent_done` with `images: [{ filename, mime }]`.
@@ -208,28 +207,28 @@ Optional args: `template` (`report` | `one_pager` | `pitch`), and `images` / `im
 
 ## Layer 7 — Shared infrastructure
 
-| Piece | File | Role |
-|-------|------|------|
-| Config | `src/config.py` | Env / `.env` → runtime settings |
-| LLM client | `src/llm_client.py` | Talks to Ollama-compatible API |
-| GPU lock | `src/llm_lock.py` | `LLM_SLOTS` semaphore for LLM **and** SDXL |
-| Attachments | `src/attachments.py` | Validate, save, load base64 / PIL |
-| Events / DB | `src/jobs.py`, models | Job + event log for SSE and history |
+| Piece       | File                    | Role                                               |
+| ----------- | ----------------------- | -------------------------------------------------- |
+| Config      | `src/config.py`       | Env / `.env` → runtime settings                 |
+| LLM client  | `src/llm_client.py`   | Talks to Ollama-compatible API                     |
+| GPU lock    | `src/llm_lock.py`     | `LLM_SLOTS` semaphore for LLM **and** SDXL |
+| Attachments | `src/attachments.py`  | Validate, save, load base64 / PIL                  |
+| Events / DB | `src/jobs.py`, models | Job + event log for SSE and history                |
 
 ### Important env knobs (images)
 
-| Variable | Role |
-|----------|------|
-| `MODEL_IMAGE_PATH` | Path to SDXL `.safetensors` |
-| `IMAGE_WIDTH` / `IMAGE_HEIGHT` | Default 768 |
-| `IMAGE_STEPS` / `IMAGE_GUIDANCE` | Quality vs speed |
-| `IMAGE_STRENGTH` | img2img change amount (e.g. 0.35–0.55) |
-| `IMAGE_PROMPT_POLISH` | Local prompt cleanup on/off |
-| `MODEL_VISION` | Vision chat model name |
-| `MODEL_FAST` | Fast classifier / light chat |
-| `LLM_BASE_URL` | Ollama (or compatible) base URL |
-| `LLM_SLOTS` | Concurrent GPU “slots” |
-| `ARTIFACTS_DIR` | Where images and job files live |
+| Variable                             | Role                                    |
+| ------------------------------------ | --------------------------------------- |
+| `MODEL_IMAGE_PATH`                 | Path to SDXL `.safetensors`           |
+| `IMAGE_WIDTH` / `IMAGE_HEIGHT`   | Default 768                             |
+| `IMAGE_STEPS` / `IMAGE_GUIDANCE` | Quality vs speed                        |
+| `IMAGE_STRENGTH`                   | img2img change amount (e.g. 0.35–0.55) |
+| `IMAGE_PROMPT_POLISH`              | Local prompt cleanup on/off             |
+| `MODEL_VISION`                     | Vision chat model name                  |
+| `MODEL_FAST`                       | Fast classifier / light chat            |
+| `LLM_BASE_URL`                     | Ollama (or compatible) base URL         |
+| `LLM_SLOTS`                        | Concurrent GPU “slots”                |
+| `ARTIFACTS_DIR`                    | Where images and job files live         |
 
 ---
 
@@ -258,7 +257,7 @@ The feed reducer turns these into bubbles. For generated images, `AgentThumbs` f
 1. UI → `POST /api/jobs` (no images).
 2. Router heuristics → `image_gen`, `image_mode=txt2img`.
 3. Worker → `run_image_gen` → polish prompt → SDXL txt2img.
-4. PNG saved → SSE → thumb in feed.  
+4. PNG saved → SSE → thumb in feed.
    **Ollama not required.**
 
 ### 2) Attach Compass screenshot + “only change MongoDB to MySQL and regenerate”
@@ -266,7 +265,7 @@ The feed reducer turns these into bubbles. For generated images, `AgentThumbs` f
 1. Images saved as attachments.
 2. Router → `image_gen`, `image_mode=img2img` (not vision).
 3. Worker → img2img with strength from config.
-4. New PNG streamed back.  
+4. New PNG streamed back.
    Layout may shift; not a perfect text-only edit.
 
 ### 3) Attach screenshot + “what’s in this image?”
@@ -285,16 +284,16 @@ The feed reducer turns these into bubbles. For generated images, `AgentThumbs` f
 
 ## Mental model (one sentence per layer)
 
-| Layer | One-liner |
-|-------|-----------|
-| UI | Capture message, create job, listen for events. |
-| API | Authenticate and accept the job. |
-| Jobs | Classify, plan models, store files, enqueue. |
-| Router | Decide *what kind* of work and *how* to draw. |
-| Worker | Claim job and dispatch to the right runner. |
-| Executor | Call Ollama and/or local SDXL; emit progress. |
-| Lock / artifacts | Fair GPU use; persist images. |
-| SSE / feed | Stream results so the chat updates live. |
+| Layer            | One-liner                                         |
+| ---------------- | ------------------------------------------------- |
+| UI               | Capture message, create job, listen for events.   |
+| API              | Authenticate and accept the job.                  |
+| Jobs             | Classify, plan models, store files, enqueue.      |
+| Router           | Decide *what kind* of work and *how* to draw. |
+| Worker           | Claim job and dispatch to the right runner.       |
+| Executor         | Call Ollama and/or local SDXL; emit progress.     |
+| Lock / artifacts | Fair GPU use; persist images.                     |
+| SSE / feed       | Stream results so the chat updates live.          |
 
 ---
 
@@ -302,4 +301,6 @@ The feed reducer turns these into bubbles. For generated images, `AgentThumbs` f
 
 - Quick start & image setup: [README.md](README.md)
 - Speed / efficiency checklist (tiers, status): [IMPROVEMENT_ROADMAP.md](IMPROVEMENT_ROADMAP.md)
-- Broader product / architecture notes: [FULL_PROJECT_PLAN.md](FULL_PROJECT_PLAN.md)
+- Broader product / architecture notes: [FULL_PROJECT_PLAN.md
+
+  Fast/Deep + Options + auto-clarify + suggestions + feedback (R1) + quiz (R3) + real images (R4)](FULL_PROJECT_PLAN.md)

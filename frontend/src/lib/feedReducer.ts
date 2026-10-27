@@ -323,6 +323,40 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
     }
     return upsertStatus(next, "File ready", `${filename} — download below`);
   }
+  if (type === "answer_extras") {
+    // post-answer extras streamed separately (see RESPONSE_QUALITY.md) → merge into the last answer
+    const suggestions = Array.isArray(event.suggestions)
+      ? (event.suggestions as unknown[]).filter((s): s is string => typeof s === "string" && s.length > 0)
+      : undefined;
+    const quiz = Array.isArray(event.quiz)
+      ? (event.quiz as QuizQuestion[]).filter(
+          (q) => q && typeof q.question === "string" && Array.isArray(q.options) && typeof q.correct === "number",
+        )
+      : undefined;
+    const imageFiles = Array.isArray(event.images)
+      ? (event.images as { filename?: string; mime?: string }[])
+          .filter((img) => img && img.filename)
+          .map((img) => ({ filename: String(img.filename), mime: img.mime }))
+      : undefined;
+    let lastAgent = -1;
+    for (let i = prev.length - 1; i >= 0; i--) {
+      if (prev[i].kind === "agent") {
+        lastAgent = i;
+        break;
+      }
+    }
+    if (lastAgent < 0) return prev;
+    return prev.map((item, i) =>
+      i === lastAgent
+        ? {
+            ...item,
+            suggestions: suggestions ?? item.suggestions,
+            quiz: quiz ?? item.quiz,
+            imageFiles: imageFiles ?? item.imageFiles,
+          }
+        : item,
+    );
+  }
   if (type === "agent_done") {
     const rawOut = event.output;
     const asText =

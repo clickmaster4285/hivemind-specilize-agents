@@ -307,31 +307,6 @@ def run_chat(
         else:
             output = chat(system=system, user=user_msg, model=model, images=pics or None)
         result.output = output
-        # Follow-up suggestions (P2): a small dedicated call after a substantial answer (not for the
-        # options card list, and not when the user stopped). Best-effort — never blocks the answer.
-        if (config.suggestions_enabled and "options" not in extra and len(output.strip()) > 120
-                and not live.is_stopped(job_id)):
-            _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Suggesting follow-ups…"})
-            sugg = generate_suggestions(query, output, client_chat=lambda **kw: client.chat(**kw),
-                                        model=model, n=config.suggestions_count)
-            if sugg:
-                extra["suggestions"] = sugg
-        # Educational extras (R3/R4): a self-check quiz, and relevant web images, for explain/learn answers.
-        if "options" not in extra and len(output.strip()) > 120 and _is_educational(query) and not live.is_stopped(job_id):
-            if config.quiz_enabled:
-                _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Building a quick quiz…"})
-                quiz = generate_quiz(query, output, client_chat=lambda **kw: client.chat(**kw),
-                                     model=model, n=config.quiz_count)
-                if quiz:
-                    extra["quiz"] = quiz
-            if config.web_images_enabled:
-                from src.tools.web_images import gather_web_images
-
-                _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Finding relevant images…"})
-                imgs = gather_web_images(query, job_id, config, n=config.web_images_count)
-                if imgs:
-                    # the feed reducer reads `images` → item.imageFiles → AgentThumbs loads them locally
-                    extra["images"] = [{"filename": i["filename"], "mime": i["mime"]} for i in imgs]
         elapsed = time.perf_counter() - started
         live.finish_agent(job_id, "assistant")       # the final text replaces the streamed one
         _emit(
@@ -349,6 +324,33 @@ def run_chat(
                 **extra,
             },
         )
+        # Post-answer extras (suggestions, quiz, images): computed AFTER the answer is finalised and sent
+        # as a SEPARATE event, so the message completes at once and the extras pop in a few seconds later.
+        try:
+            if "options" not in extra and len(output.strip()) > 120 and not live.is_stopped(job_id):
+                post: dict[str, Any] = {}
+                if config.suggestions_enabled:
+                    sugg = generate_suggestions(query, output, client_chat=lambda **kw: client.chat(**kw),
+                                                model=model, n=config.suggestions_count)
+                    if sugg:
+                        post["suggestions"] = sugg
+                if _is_educational(query):
+                    if config.quiz_enabled:
+                        quiz = generate_quiz(query, output, client_chat=lambda **kw: client.chat(**kw),
+                                             model=model, n=config.quiz_count)
+                        if quiz:
+                            post["quiz"] = quiz
+                    if config.web_images_enabled:
+                        from src.tools.web_images import gather_web_images
+
+                        imgs = gather_web_images(query, job_id, config, n=config.web_images_count)
+                        if imgs:
+                            # reducer reads `images` → item.imageFiles → AgentThumbs loads them locally
+                            post["images"] = [{"filename": i["filename"], "mime": i["mime"]} for i in imgs]
+                if post:
+                    _emit(on_progress, {"type": "answer_extras", "agent_id": "assistant", **post})
+        except Exception as exc:  # noqa: BLE001 — extras are optional; never affect the emitted answer
+            log.warning("post-answer extras failed: %s", exc)
     except WebSearchError as exc:
         # the message already says what to do (start the container, set WEB_SEARCH_URL)
         result.errors.append(str(exc))
