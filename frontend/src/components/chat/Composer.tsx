@@ -30,6 +30,10 @@ type Props = {
   canStop: boolean;
   onStop: () => void;
   onSend: (opts?: SendOptions) => void;
+  deep: boolean;
+  onToggleDeep: () => void;
+  wantOptions: boolean;
+  onToggleOptions: () => void;
   runMode: RunMode;
   specialistLabel: string;
   onOpenSettings: () => void;
@@ -84,6 +88,13 @@ function MenuItem({
 /** The message box: a "+" menu (attach / generate / web / document / image ops), the text, and Send/Stop. */
 export default function Composer(props: Props) {
   const { query, onQuery, inputRef, images, editing, onCancelEdit, running, canStop, onStop, onSend } = props;
+  const { deep, onToggleDeep, wantOptions, onToggleOptions } = props;
+  const toggleCls = (on: boolean) =>
+    `shrink-0 flex h-[2.1rem] items-center gap-1 rounded-full border px-[0.6rem] text-[0.75rem] cursor-pointer ${
+      on
+        ? "border-[var(--teal)] bg-[color-mix(in_srgb,var(--teal)_18%,transparent)] text-[var(--text)]"
+        : "border-[var(--line)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]"
+    }`;
   const { imageProfile, onImageProfile, editStrength, onEditStrength, imagePipeline } = props;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const resize = useAutoResize(inputRef, query);
@@ -267,6 +278,24 @@ export default function Composer(props: Props) {
           required={!hasImages}
           className="m-0 min-h-[2.2rem] max-h-[16rem] flex-1 resize-none border-0 bg-transparent px-[0.35rem] py-2 text-[0.9rem] leading-[1.35] font-[inherit] text-[var(--text)] shadow-none outline-none overflow-y-auto placeholder:text-[var(--muted)]"
         />
+        <button
+          type="button"
+          onClick={onToggleDeep}
+          aria-pressed={deep}
+          title="Deep research — plan sub-queries and search many sources in depth (slower, ~1–2 min)"
+          className={toggleCls(deep)}
+        >
+          <span aria-hidden>🔬</span> Deep
+        </button>
+        <button
+          type="button"
+          onClick={onToggleOptions}
+          aria-pressed={wantOptions}
+          title="Options — offer a few ways to answer this, then you pick one"
+          className={toggleCls(wantOptions)}
+        >
+          <span aria-hidden>⚖️</span> Options
+        </button>
         {canStop ? (
           // Send turns into Stop: ends the model mid-answer and keeps what was written
           <button type="button" className={stopBtn} title="Stop" aria-label="Stop" onClick={onStop}>

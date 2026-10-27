@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import math
 import re
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
@@ -180,12 +181,15 @@ def answer_from_web(
     conversation_block: str = "",
 ) -> tuple[str, list[dict]]:
     """→ (answer with [n] citations, sources for the UI)."""
+    t0 = time.perf_counter()
     status("Searching the web…")
     hits = search(question, config)
+    t_search = time.perf_counter()
     if not hits:
         return "The web search found nothing for this question. Try other words.", []
     status(f"Reading {min(len(hits), MAX_PAGES)} web pages…")
     passages = gather(question, hits, config)
+    t_read = time.perf_counter()
     if not passages:
         return "The web results could not be read. Try again or rephrase the question.", []
     numbered = "\n\n".join(
@@ -195,6 +199,11 @@ def answer_from_web(
     )
     user = f"{conversation_block}## Web passages\n\n{numbered}\n\n## Question\n{question}"
     text = chat(system=WEB_SYSTEM.format(now=now), user=user, model=model, temperature=0.2)
+    # P0 tool-phase split (doc/RESPONSE_QUALITY.md): where the web-search wait goes.
+    logger.info(
+        "web_timing search=%.2fs read=%.2fs synth=%.2fs pages=%d passages=%d",
+        t_search - t0, t_read - t_search, time.perf_counter() - t_read, min(len(hits), MAX_PAGES), len(passages),
+    )
     from src.brain.answer import cited_numbers
 
     cited = cited_numbers(text, len(passages))

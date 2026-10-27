@@ -119,6 +119,8 @@ def run_chat(
     job_id: str | None = None,
     about: bool = False,
     web_search: bool = False,
+    deep: bool = False,
+    options: bool = False,
     should_continue: Callable[[], bool] | None = None,
     specialist: Specialist | None = None,
 ) -> ChatResult:
@@ -131,8 +133,10 @@ def run_chat(
     config = config or Config.from_env()
     model_plan = model_plan or {}
     pics = [img for img in (images or []) if img]
-    use_web = web_search and not pics
-    use_brain = use_brain and not pics and not about and not use_web
+    deep = deep and not pics                       # Deep research is a web-only, text-only path
+    options = options and not pics and not deep     # Options offers approach cards before the answer
+    use_web = web_search and not pics and not deep and not options
+    use_brain = use_brain and not pics and not about and not use_web and not deep and not options
     if pics:
         model = model_plan.get("vision") or config.model_vision or config.llm_model
         system = VISION_SYSTEM
@@ -140,7 +144,13 @@ def run_chat(
     else:
         model = model_plan.get("worker") or model_plan.get("planner") or config.model_fast or config.llm_model
         system = CHAT_SYSTEM
-        role = "Web search" if use_web else ("Searching knowledge base" if use_brain else "Direct reply")
+        role = (
+            "Deep research" if deep
+            else "Options" if options
+            else "Web search" if use_web
+            else "Searching knowledge base" if use_brain
+            else "Direct reply"
+        )
     # The model has no clock: always tell it the current date and time.
     if about and not pics:
         system = about_system(config, current_time_text(), model)
@@ -208,7 +218,39 @@ def run_chat(
         prior = format_conversation_block(history)
         user_msg = f"{prior}\n\n## Current message\n{query}" if prior else query
         extra: dict[str, Any] = {}
-        if use_web:
+        if deep:
+            from src.tools.deep_research import deep_research
+
+            text, sources = deep_research(
+                query,
+                config,
+                client_chat=lambda **kw: client.chat(**kw),
+                chat=chat,
+                model=model,
+                now=current_time_text(),
+                status=lambda message: _emit(
+                    on_progress, {"type": "status", "agent_id": "assistant", "message": message}
+                ),
+                conversation_block=prior,
+                should_continue=keep_going,
+            )
+            output = text
+            role = "Deep research"
+            extra = {"grounded": bool(sources), "sources": sources}
+        elif options:
+            from src.tools.answer_options import generate_options
+
+            _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Thinking of a few approaches…"})
+            cards = generate_options(query, client_chat=lambda **kw: client.chat(**kw),
+                                     model=model, n=config.options_count)
+            if cards:
+                output = "Here are a few ways I can answer this — pick one:"
+                role = "Options"
+                extra = {"options": cards, "options_query": query}
+            else:
+                output = chat(system=system, user=user_msg, model=model)   # fall back to a normal answer
+                role = "Direct reply"
+        elif use_web:
             text, sources = answer_from_web(
                 query,
                 config,

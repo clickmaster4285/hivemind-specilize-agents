@@ -5,9 +5,31 @@ import { useEffect, useState } from "react";
 
 import { fetchJobAttachment } from "@/lib/api";
 import { errorText, timeAgo } from "@/lib/chat";
-import type { ChatImage, FeedItem } from "@/lib/types";
+import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 
 type ItemProps = { item: FeedItem; fallbackJobId: string | null };
+
+/** The Options toggle's candidate approaches: click a card to get the full answer that way. */
+export function OptionCards({ item, onPick }: { item: FeedItem; onPick?: (query: string, card: AnswerOption) => void }) {
+  const opts = item.options || [];
+  if (item.pending || !opts.length) return null;
+  const query = item.optionsQuery || "";
+  return (
+    <div className="mt-[0.5rem] flex flex-col gap-[0.4rem]">
+      {opts.map((o, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onPick?.(query, o)}
+          className="flex flex-col items-start gap-[0.1rem] rounded-[0.6rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.5rem] text-left hover:border-[var(--teal)] hover:bg-[color-mix(in_srgb,var(--teal)_8%,var(--panel-2))]"
+        >
+          <span className="text-[0.85rem] font-semibold text-[var(--text)]">{o.title}</span>
+          {o.hint ? <span className="text-[0.76rem] text-[var(--muted)]">{o.hint}</span> : null}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /** Images an answer produced; loaded from the job's files when the event only named them. */
 export function AgentThumbs({ item, fallbackJobId }: ItemProps) {

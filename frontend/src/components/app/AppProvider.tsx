@@ -33,6 +33,8 @@ function useAppState() {
   const [allowOverflow] = useState(true);
   const [imageProfile, setImageProfile] = useState<ImageProfile>("fast");
   const [editStrength, setEditStrength] = useState<EditStrength>("medium");
+  const [deep, setDeep] = useState(false);          // Deep research toggle (next to Send)
+  const [wantOptions, setWantOptions] = useState(false);   // Options toggle (one-shot: armed until sent)
   const queryRef = useRef<HTMLTextAreaElement | null>(null);
 
   const chat = useChat(
@@ -45,10 +47,13 @@ function useAppState() {
       allowOverflow,
       imageProfile,
       editStrength,
+      deep,
+      wantOptions,
     },
     () => {
       setQuery("");
       images.clear();
+      setWantOptions(false);          // Options is one-shot: it disarms after the question is sent
     },
   );
 
@@ -134,6 +139,11 @@ function useAppState() {
     auth, health, models, specialists, history, images, chat,
     query, setQuery, queryRef,
     runMode, setRunMode, imageProfile, setImageProfile, editStrength, setEditStrength,
+    deep, wantOptions,
+    toggleDeep: () => { setDeep((v) => !v); setWantOptions(false); },        // Deep & Options are exclusive
+    toggleOptions: () => { setWantOptions((v) => !v); setDeep(false); },
+    pickOption: (origQuery: string, card: { title: string; hint: string }) =>
+      void chat.send(`Answer using the "${card.title}" approach — ${card.hint}.\n\nQuestion: ${origQuery}`, [], { plain: true }),
     canStop: Boolean(chat.activeJobId && chat.running),
     stop: () => void chat.stop(),
     send, newChat, cancelEdit, beginEdit, retry, onConfirm, deleteThread,

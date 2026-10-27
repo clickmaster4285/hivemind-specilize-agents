@@ -34,9 +34,13 @@ export type JobOptions = {
   allowOverflow: boolean;
   imageProfile: ImageProfile;
   editStrength: EditStrength;
+  /** Deep research toggle: research the topic across many sources */
+  deep: boolean;
+  /** Options toggle: offer candidate approaches to pick from before the full answer */
+  wantOptions: boolean;
 };
 
-export type SendOptions = { retry?: boolean; forceIntent?: ImageForceIntent };
+export type SendOptions = { retry?: boolean; forceIntent?: ImageForceIntent; plain?: boolean };
 
 /**
  * The open conversation: its messages (feed), the running job, sending, streaming and Stop.
@@ -170,6 +174,12 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
         image_strength: force === "edit" || force === "inpaint" ? strengthValue(options.editStrength) : undefined,
         // tag the job with its chat so history can regroup the conversation after a reload/login
         thread_id: threadId,
+        // Deep / Options toggles — skipped for one-shot composer actions (force) and for a plain
+        // send (opts.plain), e.g. when the user clicks an approach card and wants the full answer.
+        depth: options.deep && !force && !opts.plain ? "deep" : undefined,
+        options: options.wantOptions && !force && !opts.plain ? true : undefined,
+        // a plain send (picking an approach card) is answered directly, not routed to web/tools
+        direct: opts.plain ? true : undefined,
       });
       setActiveJobId(job.id);
       // the job carries thread_id, so history regroups it and the server keeps the chat's metadata;

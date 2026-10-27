@@ -24,6 +24,7 @@ for the Fast/Deep program and keeps the roadmap in sync.
 | D3 | **Depth is user-triggered**, never automatic. **Deep** and **Options** are visible toggles **next to the Send button** (like the existing Web toggle). | User chose predictability over the system guessing. Toggles next to Send are discoverable (vs buried in the "+" menu). |
 | D4 | **"Options" = multiple candidate answers.** Implemented as **approach cards → expand**: 2–3 short one-line approaches first, user picks one, then the full answer is written. | Generating 2–3 *full* answers locally ≈ 2–3× the time. Short cards are cheap and arguably better UX than three walls of text. |
 | D5 | **Order: hard first.** P0 instrument → P1 speed → P3 deep mode → P4 options → P2 suggestions + feedback. | Tackle the hard speed/depth work while focus is high; the cheap, independent polish (suggestions, feedback) lands last. |
+| D6 | **Keep the default answer's richness/length** (~20–25 s is acceptable); do **not** trim generation for speed. The **Deep** button is *not* a conciseness switch — it triggers **in-depth research across many sources**. (Decided 2026-10-27 after measuring that generation, not tools, owns the time — and the user is fine paying it for a good default answer.) | The default already gives a good grounded answer; speed there is good enough. Depth should *add* sources/analysis on demand, not change the default. → P1 micro-opts (prompt trim, routing, caching) are **deferred**; **P3 Deep mode is next.** |
 
 ---
 
@@ -63,8 +64,11 @@ Facts from the code that shape this work:
 - **Done so far:** `src/jobs/chat_runner.py` now records **time-to-first-token** and whether the model
   was **cold/warm** at the start, emits them on `agent_done`/`session_done`, and logs one line per job:
   `timing job=… role=… warm=… ttft=…s total=…s`. The existing `elapsed_seconds`/`total_seconds` stay.
-- **Still open:** tool-phase split (search vs synth), queue-wait (job `created_at`→`started_at`), the
-  agentic path (`src/agentic/`), and surfacing TTFT/warm in the UI.
+- **Done (web tool-phase split):** `src/tools/web_search.py` now logs
+  `web_timing search=…s read=…s synth=…s pages=N passages=M` — the three phases of a web answer.
+  Combined with the `timing … ttft=…` line it decomposes the ~11 s web TTFT.
+- **Still open:** decide()/tool-choice time, queue-wait (job `created_at`→`started_at`), the agentic
+  path (`src/agentic/`), and surfacing TTFT/warm in the UI.
 
 ### P1 — Speed quick wins  *(status: in progress)*
 - **Smarter `keep_alive` policy — done.** Chat calls now send an explicit `keep_alive`
@@ -77,14 +81,26 @@ Facts from the code that shape this work:
   only when needed (watch the ISSUES_LOG #3 eviction trap); **trim the prompt** (cap conversation
   history, slim the system prompt); **cache** embeddings / recent queries / web results.
 
-### P3 — Deep mode  *(status: not started)*  — behind the **Deep** toggle
-- Pipeline: **understand** (intent, entities, what's missing) → **plan** → **research**
-  (budgeted iterative SearXNG: ≤2 rounds, ≤5 pages) → **deep thinking** (re-enable Qwen thinking)
-  → **synthesize** with citations. Each step streams to `LiveStatus`.
-- Bounded hard, because strictly local.
+### P3 — Deep mode  *(status: v1 built 2026-10-27)*  — behind the **Deep** toggle
+Per D6, Deep = **research a topic in depth across many sources** (the default stays as-is). Design:
+- **Trigger:** a **Deep** toggle next to Send (like the Web button); sets `depth="deep"` on the job.
+- **Pipeline:** **understand/plan** (one small call → 2–4 focused sub-queries) → **research**
+  (for each sub-query: SearXNG + read pages; more than the default — target ~10–12 pages / ~8–10
+  passages total, deduped; optional 2nd round if coverage is thin) → **synthesize** a thorough,
+  well-sourced report (the rich table+diagram format is *wanted* here; optionally re-enable Qwen
+  thinking) with citations. Every step streams to `LiveStatus`.
+- **Bounded** because strictly local: hard caps on sub-queries, pages, and rounds (config knobs) so a
+  deep answer is a minute-ish, not open-ended.
+- Reuses the existing `src/tools/web_search.py` machinery (search/gather/bm25) with bigger budgets.
 
-### P4 — Options  *(status: not started)*  — behind the **Options** toggle
-- Approach cards → expand (see D4). Lives in `Composer` / `MessageFeed`.
+### P4 — Options  *(status: v1 built 2026-10-27)*  — behind the **Options** toggle
+- Approach cards → expand (D4). A one-shot **Options** toggle next to Send (disarms after sending);
+  the job carries `options=true` → the worker runs `run_chat(options=True)` →
+  `src/tools/answer_options.py` generates 2–3 `Title | hint` cards (one model call) → shown as clickable
+  cards under the message (`OptionCards` in `MessageExtras`). Clicking a card sends a **plain** follow-up
+  (`Answer using the "<title>" approach … Question: <original>`) that writes the full answer.
+- Deep and Options are mutually exclusive toggles; if the model returns no parseable cards it falls back
+  to a normal answer.
 
 ### P2 — Suggestions + feedback  *(status: not started, independent)*
 - **Suggestions:** 3 clickable follow-up chips after each answer (`MessageExtras`).
@@ -137,3 +153,91 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
 - **How to validate (your run):** restart the API, send the first message — P0 should now log
   `warm=true` (was `warm=false` cold before). Compare TTFT first-vs-second message.
 - *Still open (P1):* fast/strong routing, prompt trim, caching.
+
+### 2026-10-27 — Measured: keep-warm validated; the bottleneck moved to the web-search phase
+- **Measured (user run):** `Warmed … qwen3.5:9b` logged at startup; **every** chat job logged
+  `warm=True`, even one right after an image job unloaded Ollama. → keep-warm works; **cold-load is no
+  longer the steady-state bottleneck — stop optimizing there.**
+- **New finding:** for Web-search answers, time-to-first-token was **~9–14 s while warm**
+  (ttft 10.2 / 9.0 / 13.9 s; totals 19.5 / 38.0 / 22.4 s). Since the model is warm, that pre-answer wait
+  is the **tool phase** (`decide()` → SearXNG → fetch/read pages), *not* model load. The 38 s job wrote
+  a long table+diagram (generation-bound). A plain Direct reply was ~6 s ("hi"); a long Direct reply
+  (processor) ~24 s (generation-bound). Time is also **wasted fetching robots-blocked pages**
+  (reddit, quora), and many factual questions route to web search (the nudge), each paying the ~11 s.
+- **Decision:** next is the P0 **tool-phase split** — instrument the web-search path into
+  decide / search / fetch / synth-start — then attack the biggest chunk (likely parallelize + cap page
+  fetches, skip known robots-blocked domains). Long-answer generation is largely model-bound (local 9B).
+
+### 2026-10-27 — P0: web-search tool-phase split added
+- **What we did:** `answer_from_web` now logs `web_timing search=…s read=…s synth=…s pages=N
+  passages=M`. `search` = SearXNG; `read` = fetching/ranking pages (capped at `READ_BUDGET_SECONDS=6`);
+  `synth` = the model writing the answer. Additive; 526 tests pass.
+- **How it decomposes TTFT:** run_chat's `ttft` is measured from the answer start and the first token
+  appears after search+read, so **synth-to-first-token ≈ ttft − search − read**, and `web_timing.synth`
+  is the full generation time. Read `web_timing` right above each job's `timing` line.
+- **Next:** get one real `web_timing` sample to see whether the ~11 s is search, read, or synth, then
+  pick the P1 web lever (parallel/cap fetch, skip robots-blocked, faster SearXNG, shorter synth prompt).
+
+### 2026-10-27 — Measured: web tools are fine; the cost is answer-generation length
+- **web_timing (two real samples):** search ~1.3 s, read 1.9–3.8 s, **synth 22–29 s**; ttft ~6.5 s,
+  total 27–32 s. So ttft ≈ search + read + ~1.7 s; the rest is **streaming a long answer**.
+- **Conclusion — hypothesis flipped:** the web fetch is *not* the bottleneck. The cost is the model
+  writing a long, richly-formatted answer every time (Direct Answer + bullets + Summary Table + a
+  Mermaid diagram). On the local 9B that's ~25 s of generation. (Read is also doing wasted work:
+  reddit/quora/linustechtips are fetched then rejected by robots.txt and fall back to their snippet.)
+- **Levers:** (1) *clean, no quality hit* — skip known robots-blocked domains before fetching (saves
+  the wasted round-trip + a little read/ttft). (2) *the big win, a quality call* — **shorter default
+  answers**: this IS the Fast lane. Make tables/diagrams opt-in (Deep), default to a concise answer →
+  cuts synth from ~25 s toward ~8–10 s.
+- **Decision pending (user):** quick conciseness tune to the synth prompts now (fast default; the rich
+  report moves to the Deep lane later), vs. keep today's richness and get speed only once the
+  Fast/Deep toggle is built (P3).
+
+### 2026-10-27 — Decision: keep the default; build Deep research next (D6)
+- **User call:** "~20 s we can bear … the deep research/thinking is happening when [the user] clicks …
+  search a topic in depth from a lot of sources." → **keep the default answer's richness** (don't trim
+  generation); the **Deep** button means *research across many sources*, not a conciseness mode.
+- **Consequence:** P1 micro-opts (prompt trim, fast/strong routing, caching) are **deferred** — current
+  speed is acceptable. **P3 Deep mode is now the active work** (see §3 for the design).
+- *Lesson:* the measurement reframed the whole phase — "faster" wasn't the real ask; "deeper on demand,
+  default stays good" was. Measuring first (P0) is what surfaced that.
+
+### 2026-10-27 — P3: Deep research mode (v1) built
+- **What we built:** a **Deep** toggle next to Send (`Composer.tsx`) → the job carries `depth="deep"`
+  → the worker short-circuits tool routing and runs `run_chat(deep=True)` →
+  **`src/tools/deep_research.py`**: plan ~4 focused sub-queries (one small model call) → search each on
+  SearXNG + read pages (reusing `web_search.search/gather`) → pool, de-dupe, BM25-rank against the
+  original question, cap to `DEEP_MAX_PASSAGES` (12) → write one thorough, well-sourced report with
+  citations. Every step streams to `LiveStatus` ("Planning… / Searching 2/4: … / Reading… / Writing a
+  sourced report from N passages across M sites…"). Logs `deep_timing research=…s synth=…s …`.
+- **Config:** `DEEP_SUBQUERIES` (4), `DEEP_MAX_PASSAGES` (12) — the "Thorough" budget, tunable.
+- **Scope (v1):** web-only, text-only; single research round (no 2nd round yet); no Qwen hidden
+  "thinking" (the planning step + thorough synthesis is the "deep thinking"). 4 new tests (plan/dedupe);
+  530 tests pass; frontend builds.
+- **Validate (your run):** toggle **Deep**, ask a topic, watch the live steps + the `deep_timing` line;
+  expect ~1–2 min and a sources table with many sites.
+- *Next:* P4 — **Options** toggle (multiple candidate answers → approach cards → expand).
+
+### 2026-10-27 — P3 Deep validated by the user
+- **Measured (user run):** "deep dive on GDDR5 vs HBM vs HBM3" → **Deep research · 127.4s**, a thorough
+  multi-section report (direct answer, 4 sections, comparison table, architecture diagram) with
+  **10 cited sources from 12 found** across ~9 distinct sites. User verdict: "this is better."
+- **Conclusion:** Deep v1 delivers the "research across many sources" the ask called for, within the
+  ~1–2 min Thorough budget. Deferred refinements (2nd round, deep-think) remain optional, not needed yet.
+
+### 2026-10-27 — P4: Options (approach cards) built
+- **What we built:** a one-shot **Options** toggle next to Send (disarms after sending; mutually
+  exclusive with Deep). The job carries `options=true` → worker → `run_chat(options=True)` →
+  `src/tools/answer_options.py` asks the model for 2–3 `Title | hint` approaches (one call) → emitted on
+  `agent_done` as `options`/`options_query` → `OptionCards` renders clickable cards → clicking sends a
+  **plain** follow-up that writes the full answer that way. Config: `OPTIONS_COUNT` (3).
+- **Robustness:** unparseable/no cards → normal answer; the `plain` send-flag stops a card click from
+  re-triggering Options or Deep. 2 new tests (parser); 532 tests pass; frontend builds.
+- **Validate (your run):** toggle **Options**, ask something open-ended (e.g. "how should I structure a
+  home network?") → pick a card → full answer. This completes the original seven-item plan except
+  **P2 (suggestions + feedback)**, which is the remaining cheap polish.
+- **Bug fix (same day, user test):** *Symptom* — clicking a card answered "The web search found nothing."
+  *Cause* — the composed follow-up ("Answer using the X approach … Question: …") still went through
+  routing, and the factual-question nudge sent that long instruction to web search, which found nothing.
+  *Fix* — a card pick now sends `direct=true`; the worker answers it straight from the model (no web/tool
+  routing). Plumbed `plain`→`direct` through api.ts / useChat / JobCreatePayload / worker.

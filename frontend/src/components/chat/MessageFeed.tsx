@@ -6,8 +6,8 @@ import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
 import MessageAvatar from "@/components/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
-import { AgentThumbs, ArtifactChips, SourceList, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
-import type { FeedItem } from "@/lib/types";
+import { AgentThumbs, ArtifactChips, OptionCards, SourceList, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
+import type { AnswerOption, FeedItem } from "@/lib/types";
 
 // Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
 // The scroll container is full-width (so the scrollbar sits at the Main-area edge, not against the text);
@@ -35,7 +35,7 @@ function cardClass(kind: FeedItem["kind"], isError: boolean) {
 }
 
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
-export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetry, onConfirm }: Props) {
+export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetry, onConfirm, onPickOption }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
 
@@ -84,6 +84,7 @@ export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetr
             running={running}
             onEdit={onEdit}
             onRetry={onRetry}
+            onPickOption={onPickOption}
           />
           );
         })}
@@ -99,6 +100,7 @@ type Props = {
   onEdit: (item: FeedItem) => void;
   onRetry: () => void;
   onConfirm: (commandId: string, approved: boolean) => void;
+  onPickOption: (query: string, card: AnswerOption) => void;
 };
 
 function MessageRow({
@@ -110,6 +112,7 @@ function MessageRow({
   running,
   onEdit,
   onRetry,
+  onPickOption,
 }: {
   item: FeedItem;
   isError: boolean;
@@ -119,6 +122,7 @@ function MessageRow({
   running: boolean;
   onEdit: (item: FeedItem) => void;
   onRetry: () => void;
+  onPickOption: (query: string, card: AnswerOption) => void;
 }) {
   const rowAlign = item.kind === "user" ? "justify-end" : item.kind === "system" ? "items-center justify-center" : "";
   const labelCls = `font-semibold ${isError ? "text-[#ffb4aa]" : "text-[var(--muted)]"}`;
@@ -176,6 +180,7 @@ function MessageRow({
                 {item.pending ? (
                   <LiveStatus text={item.statusText} steps={item.steps} startedAt={item.startedAt} />
                 ) : null}
+                <OptionCards item={item} onPick={onPickOption} />
                 <VerificationNote item={item} />
                 <SourceList item={item} />
               </>

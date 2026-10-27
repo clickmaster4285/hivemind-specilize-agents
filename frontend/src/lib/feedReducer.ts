@@ -1,4 +1,5 @@
 import type {
+  AnswerOption,
   AnswerVerification,
   BrainSource,
   ChatImage,
@@ -344,6 +345,10 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
       v && typeof v.checked === "number" && typeof v.supported === "number"
         ? { ...v, unsupported: v.unsupported || [], unclear: v.unclear || [] }
         : undefined;
+    const options = Array.isArray(event.options)
+      ? (event.options as AnswerOption[]).filter((o) => o && typeof o.title === "string")
+      : undefined;
+    const optionsQuery = typeof event.options_query === "string" ? event.options_query : undefined;
     const hasPending = prev.some((item) => item.agentId === event.agent_id && item.pending);
     if (!hasPending) {
       return [
@@ -362,6 +367,8 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           sources,
           grounded,
           verification,
+          options,
+          optionsQuery,
         },
       ];
     }
@@ -380,6 +387,8 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
             sources: sources || item.sources,
             grounded: grounded ?? item.grounded,
             verification: verification || item.verification,
+            options: options || item.options,
+            optionsQuery: optionsQuery || item.optionsQuery,
           }
         : item,
     );

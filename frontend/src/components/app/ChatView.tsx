@@ -24,6 +24,7 @@ export default function ChatView() {
         onEdit={(item) => void app.beginEdit(item)}
         onRetry={() => void app.retry()}
         onConfirm={app.onConfirm}
+        onPickOption={app.pickOption}
       />
 
       <Composer
@@ -37,6 +38,10 @@ export default function ChatView() {
         canStop={app.canStop}
         onStop={app.stop}
         onSend={app.send}
+        deep={app.deep}
+        onToggleDeep={app.toggleDeep}
+        wantOptions={app.wantOptions}
+        onToggleOptions={app.toggleOptions}
         runMode={app.runMode}
         specialistLabel={app.specialists.label}
         onOpenSettings={() => router.push("/settings")}

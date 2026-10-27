@@ -179,6 +179,12 @@ class JobCreatePayload(BaseModel):
     # Which chat this job belongs to (client-generated id). Lets history regroup a conversation's jobs
     # into one chat after a reload/login, instead of one chat per job.
     thread_id: str | None = None
+    # "deep" = the Deep research toggle: research the topic across many sources (src/tools/deep_research.py)
+    depth: str | None = None
+    # Options toggle: offer a few candidate approaches to pick from before writing the full answer
+    options: bool = False
+    # Answer directly from the model, skipping tool/web routing (used when the user picks an approach card)
+    direct: bool = False
 
 
 class ModelUpdatePayload(BaseModel):
@@ -445,6 +451,9 @@ def create_job_endpoint(
                 "image_profile": payload.image_profile,
                 "image_strength": payload.image_strength,
                 "thread_id": payload.thread_id,
+                "depth": payload.depth,
+                "options": payload.options,
+                "direct": payload.direct,
             },
             config=config,
             priority=payload.priority if user.role == "admin" else 100,

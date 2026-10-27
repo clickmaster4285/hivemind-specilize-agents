@@ -236,6 +236,12 @@ export async function createJob(payload: {
   image_strength?: number;
   /** The chat this job belongs to, so history can regroup the conversation after a reload */
   thread_id?: string;
+  /** "deep" = the Deep research toggle (research the topic across many sources) */
+  depth?: string;
+  /** Options toggle: offer a few candidate approaches to pick from before the full answer */
+  options?: boolean;
+  /** Answer directly from the model, skipping tool/web routing (used when picking an approach card) */
+  direct?: boolean;
 }): Promise<Job> {
   // the user's own time zone (e.g. "Asia/Karachi"): answers tell their local time, no location permission
   let client_time_zone: string | undefined;
