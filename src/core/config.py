@@ -88,6 +88,11 @@ class Config:
     api_port: int
     # Ollama "think" flag: None = model default, False = answer directly, True = reason first
     llm_think: bool | None = None
+    # Keep the chat model warm between messages (Ollama keep_alive, e.g. "30m" / "-1" / "0"); "" = Ollama
+    # default (~5 min). Image jobs still unload it (IMAGE_UNLOAD_OLLAMA) to free VRAM for SDXL.
+    llm_keep_alive: str = "30m"
+    # Preload the chat model when the API starts, so the first message isn't a cold load (~10 s).
+    llm_warm_on_start: bool = True
     # Knowledge brain (Postgres + pgvector). Owner URL runs migrations; the app connects as brain_app.
     brain_database_url: str = ""
     brain_app_password: str = ""
@@ -216,6 +221,8 @@ class Config:
             api_host=os.getenv("API_HOST", "0.0.0.0"),
             api_port=int(os.getenv("API_PORT", "8787")),
             llm_think=_optional_bool("LLM_THINK"),
+            llm_keep_alive=(os.getenv("LLM_KEEP_ALIVE", "30m")).strip(),
+            llm_warm_on_start=_bool("LLM_WARM_ON_START", True),
             brain_database_url=os.getenv("BRAIN_DATABASE_URL", ""),
             brain_app_password=os.getenv("BRAIN_APP_PASSWORD", ""),
             model_embed=os.getenv("MODEL_EMBED", "qwen3-embedding:0.6b"),

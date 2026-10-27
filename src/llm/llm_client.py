@@ -107,6 +107,8 @@ class LLMClient:
             payload["options"]["num_predict"] = max_tokens
         if cfg.llm_think is not None:
             payload["think"] = cfg.llm_think
+        if cfg.llm_keep_alive:
+            payload["keep_alive"] = cfg.llm_keep_alive
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
@@ -155,6 +157,8 @@ class LLMClient:
         }
         if cfg.llm_think is not None:
             payload["think"] = cfg.llm_think
+        if cfg.llm_keep_alive:
+            payload["keep_alive"] = cfg.llm_keep_alive
         keep_going = should_continue or (lambda: True)
         url = f"{cfg.llm_base_url}/api/chat"
         text, calls = "", []
@@ -221,6 +225,8 @@ class LLMClient:
         }
         if cfg.llm_think is not None:
             payload["think"] = cfg.llm_think
+        if cfg.llm_keep_alive:
+            payload["keep_alive"] = cfg.llm_keep_alive
         keep_going = should_continue or (lambda: True)
         last_error: Exception | None = None
         attempt = 0

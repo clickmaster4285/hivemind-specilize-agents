@@ -329,6 +329,61 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*
   mode; an audit log (`app.command_log`). Completes P0–P2 of `doc/requirment.md`. **Live-test pending** (the user
   runs the first real server session). ~130 new tests.
 
+### 41. One chat split into many single-prompt chats after refresh / login — 2026-10-26 → 27
+- **Symptom:** start a chat, send ~10 prompts, then refresh or log out/in → that one chat became 10
+  separate single-prompt chats in the sidebar.
+- **Cause:** the chat→message grouping lived **only** in the browser's `localStorage`. The open
+  conversation is held in memory so it *looked* like one chat during the session, but on reload
+  `ensureThreadsForJobs` had no durable grouping to rebuild from and made one thread per job.
+- **Fix (two parts):** (1) every job now carries a **`thread_id`** stored in its payload and surfaced
+  by `job_to_dict`; the client groups jobs by it (`buildThreads`). (2) Chat **threads + projects moved
+  server-side** — `chat_threads` / `projects` tables, `src/history_store.py`, and `/api/history`,
+  `/api/threads/{id}`, `/api/projects` — so titles, pins and project assignment sync across devices,
+  with a one-time localStorage→server migration on first login. New tests: `test_jobs_thread.py`,
+  `test_history_store.py`.
+- *Lesson:* client state that must survive reload / re-login / another device belongs on the server
+  keyed by user; `localStorage` is only for per-device conveniences. See [CHAT_HISTORY_DECISION.md](CHAT_HISTORY_DECISION.md).
+
+### 42. `src/` reorganised into domain packages — the import-rewrite traps — 2026-10-27
+- **What:** 42 flat `src/*.py` modules grouped into `core/ llm/ jobs/ servers/ images/ tools/`
+  (`brain/`, `agentic/` unchanged); 41 `git mv` renames + imports rewritten across `src/ web/ tests/`.
+- **Trap 1 — `from src import X` missed by a dotted find-replace.** *Symptom:* `test_about.py` →
+  `ImportError: cannot import name 'about' from 'src'`. *Cause:* `from src import about` isn't a
+  `src.about` dotted ref, so a sed over `src\.X` skipped it. *Fix:* a Python migration script that also
+  rewrites `from src import X[, Y as Z]` → `from src.PKG import …`, plus **string** refs
+  (`python -m src.image_service`, test `monkeypatch("src.artifacts…")`).
+- **Trap 2 — `__file__`-relative path broke.** *Symptom:* `config.ROOT` would point at `src/` instead
+  of the project root. *Cause:* `ROOT = Path(__file__).resolve().parent.parent` with `config.py` moved
+  one folder deeper. *Fix:* added one more `.parent`; verified `ROOT = D:\multeagent` and `data/` resolves.
+- *Lesson:* moving Python modules means rewriting **all three** reference forms (dotted,
+  `from src import X`, string literals) and every `__file__`-relative path; the 526-test suite proved it.
+
+### 43. Couldn't see where response latency went (P0, response-quality) — 2026-10-27
+- **Symptom:** no way to say which part of a slow answer was slow — only end-to-end `total_seconds`
+  was recorded.
+- **Cause:** the chat path (`src/jobs/chat_runner.py`) logged `elapsed`/`total` but not
+  **time-to-first-token** nor whether the model was **cold** (and the chat model is deliberately
+  unloaded to give VRAM to SDXL — see IMPROVEMENT_ROADMAP Tier 1, so cold loads are likely).
+- **Fix:** `chat_runner` now records TTFT + cold/warm, logs one line per job
+  (`timing job=… role=… warm=… ttft=…s total=…s`) and emits the fields on `agent_done`/`session_done`.
+  Additive; 526 tests still pass. First step of the Fast/Deep program — [RESPONSE_QUALITY.md](RESPONSE_QUALITY.md).
+- *Lesson:* measure before optimizing; TTFT (not total) is the perceived speed, and cold-load is the
+  prime suspect to confirm before changing the unload policy.
+
+### 44. Chat UI polish + source presentation — 2026-10-26 → 27
+- **Layout / loading / flow** (commit `4929bb4`): fixed the overall chat layout and loading states and
+  smoothed the source-selection step so a web-backed answer flows cleanly (search → cited answer) with
+  runtime web search.
+- **Citation chips redesigned** (commit `d53d0a9` + this session): inline `[n]` markers now collapse
+  into one **source pill** — favicon + site name, `+N` for the rest — with a hover card listing every
+  source in the group, plus an end-of-answer sources table, replacing the tiny number-only chips.
+- **CSS → inline Tailwind:** the chat components' styles moved out of `globals.css` into inline
+  Tailwind (citation chip/hover card, sources table, live-status, tool drawer, answer-check, thumbs),
+  shrinking `globals.css`. *Not a bug — a maintainability refactor, logged for the record.*
+- *Status note:* the device-persistence (`thread_id`) item batched with these is **done, not
+  in-progress** — see #41 (server-side threads/projects + cross-device sync). Tool live-testing is
+  still ongoing (as with #40).
+
 ---
 
 ## Open issues

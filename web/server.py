@@ -64,6 +64,13 @@ async def lifespan(_app: FastAPI):
     with session_scope(config) as session:
         sync_models_from_ollama(session, config, probe_details=True)
     start_inprocess_worker(config)
+    if config.llm_warm_on_start:
+        # Preload the chat model so the first message isn't a cold load (own thread; never blocks startup).
+        import threading
+
+        from src.llm.ollama_mgmt import warm_model
+
+        threading.Thread(target=warm_model, args=(config,), name="chat-model-warm", daemon=True).start()
     # Keep the knowledge brain fresh: re-check sources whose refresh_every has passed
     from src.brain.scheduler import start_scheduler
 

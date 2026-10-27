@@ -176,21 +176,32 @@ def run_chat(
     )
 
     keep_going = should_continue or (lambda: not live.is_stopped(job_id))
-    first_piece = {"seen": False}
+    first_piece = {"seen": False, "at": 0.0}
+    # P0 speed instrumentation (doc/RESPONSE_QUALITY.md): was the model cold when we started, and how
+    # long until the first visible token. model_warm is captured on the first chat() call only.
+    timing: dict[str, Any] = {"model_warm": None}
 
     def on_delta(text: str) -> None:
         if not first_piece["seen"]:
             first_piece["seen"] = True
+            first_piece["at"] = time.perf_counter()
             _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Writing…"})
         live.set_text(job_id, "assistant", text)
 
     def chat(**kwargs: Any) -> str:
         """client.chat, streamed, with a status that says whether the model must load first."""
         target = kwargs.get("model") or model
+        warm = model_loaded(config, target)
+        if timing["model_warm"] is None:
+            timing["model_warm"] = warm
         _emit(on_progress, {"type": "status", "agent_id": "assistant",
-                            "message": "Thinking…" if model_loaded(config, target)
+                            "message": "Thinking…" if warm
                             else f"Loading {target} into memory (about 10 s)…"})
         return client.chat(on_delta=on_delta, should_continue=keep_going, **kwargs)
+
+    def ttft() -> float | None:
+        """Seconds from start to the first visible token (None if nothing streamed)."""
+        return round(first_piece["at"] - started, 3) if first_piece["seen"] else None
 
     try:
         history = normalize_conversation(conversation)
@@ -250,6 +261,8 @@ def run_chat(
                 "role": role,
                 "stage": "chat",
                 "elapsed_seconds": elapsed,
+                "first_token_seconds": ttft(),
+                "model_warm": timing["model_warm"],
                 "output": output,
                 **extra,
             },
@@ -281,11 +294,18 @@ def run_chat(
         )
 
     result.total_seconds = time.perf_counter() - started
+    # P0: one timing line per job, so speed work is driven by data, not guesses (doc/RESPONSE_QUALITY.md §5).
+    log.info(
+        "timing job=%s role=%s warm=%s ttft=%s total=%.2fs",
+        job_id, role, timing["model_warm"], ttft(), round(result.total_seconds, 2),
+    )
     _emit(
         on_progress,
         {
             "type": "session_done",
             "total_seconds": result.total_seconds,
+            "first_token_seconds": ttft(),
+            "model_warm": timing["model_warm"],
             "errors": result.errors,
             "mode": "chat",
         },

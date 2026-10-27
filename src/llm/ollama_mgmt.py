@@ -65,6 +65,30 @@ def unload_ollama_models(config: Config | None = None) -> list[str]:
     return unloaded
 
 
+def warm_model(config: Config | None = None, model: str | None = None) -> bool:
+    """Preload the chat model into memory so the first real message isn't a cold load.
+
+    Best-effort: a tiny generate with the configured keep_alive. Never raises — if Ollama is down the
+    first message just pays the usual load cost. Returns True when the warm request succeeded.
+    """
+    config = config or Config.from_env()
+    base = (config.llm_base_url or "").rstrip("/")
+    name = (model or config.model_fast or config.llm_model or "").strip()
+    if not base or not name:
+        return False
+    try:
+        requests.post(
+            f"{base}/api/generate",
+            json={"model": name, "prompt": "", "keep_alive": config.llm_keep_alive or "30m"},
+            timeout=60,
+        )
+        logger.info("Warmed Ollama chat model into memory: %s", name)
+        return True
+    except Exception as exc:  # noqa: BLE001 — warming is optional
+        logger.info("Could not warm %s: %s", name, exc)
+        return False
+
+
 def model_loaded(config: Config, model: str) -> bool:
     """Is the model already in (GPU) memory? A cold model needs ~10 s before the first word.
     When Ollama cannot be asked, answer True: better no "loading" notice than a wrong one."""
