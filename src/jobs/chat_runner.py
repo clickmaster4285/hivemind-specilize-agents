@@ -17,6 +17,7 @@ from src.jobs import live
 from src.core.conversation import format_conversation_block, normalize_conversation
 from src.llm.llm_client import LLMClient, LLMStopped
 from src.llm.ollama_mgmt import model_loaded
+from src.tools.suggestions import generate_suggestions
 from src.tools.web_search import WebSearchError, answer_from_web
 
 log = logging.getLogger(__name__)
@@ -292,6 +293,15 @@ def run_chat(
         else:
             output = chat(system=system, user=user_msg, model=model, images=pics or None)
         result.output = output
+        # Follow-up suggestions (P2): a small dedicated call after a substantial answer (not for the
+        # options card list, and not when the user stopped). Best-effort — never blocks the answer.
+        if (config.suggestions_enabled and "options" not in extra and len(output.strip()) > 120
+                and not live.is_stopped(job_id)):
+            _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Suggesting follow-ups…"})
+            sugg = generate_suggestions(query, output, client_chat=lambda **kw: client.chat(**kw),
+                                        model=model, n=config.suggestions_count)
+            if sugg:
+                extra["suggestions"] = sugg
         elapsed = time.perf_counter() - started
         live.finish_agent(job_id, "assistant")       # the final text replaces the streamed one
         _emit(

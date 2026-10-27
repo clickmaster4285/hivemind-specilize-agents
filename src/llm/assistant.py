@@ -290,7 +290,13 @@ _WEB_Q = re.compile(
     r"pros\s+and\s+cons\b|should\s+i\b)",
     re.I,
 )
-_WEB_KW = re.compile(r"\b(best\s+practices?|step[- ]by[- ]step|\bvs\b|latest\s+version|current\s+version|how\s+to)\b", re.I)
+_WEB_KW = re.compile(
+    r"\b(best\s+practices?|step[- ]by[- ]step|\bvs\b|latest\s+version|current\s+version|how\s+to|"
+    # reference / educational shapes that benefit from authoritative, cited sources
+    r"parts\s+of|components?\s+of|types?\s+of|kinds?\s+of|features?\s+of|overview\s+of|"
+    r"architecture\s+of|examples?\s+of|explained)\b|\bhow\s+\w+.*\bworks?\b",
+    re.I,
+)
 _WEB_SKIP = re.compile(
     r"\b(you|your|yourself|multeagent)\b|"                                   # about the assistant
     r"\bmy\s+(ip|network|server|pc|computer|machine|laptop|wifi|router)\b|"  # local / personal

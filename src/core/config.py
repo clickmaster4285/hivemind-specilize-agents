@@ -142,6 +142,9 @@ class Config:
     deep_max_passages: int = 12
     # Options toggle: how many candidate approaches to offer before writing the full answer
     options_count: int = 3
+    # Follow-up suggestions: clickable "ask this next" chips under each substantive answer
+    suggestions_enabled: bool = True
+    suggestions_count: int = 3
 
     @classmethod
     def from_env(cls) -> Config:
@@ -260,6 +263,8 @@ class Config:
             deep_subqueries=max(1, min(8, int(os.getenv("DEEP_SUBQUERIES", "4")))),
             deep_max_passages=max(4, min(24, int(os.getenv("DEEP_MAX_PASSAGES", "12")))),
             options_count=max(2, min(5, int(os.getenv("OPTIONS_COUNT", "3")))),
+            suggestions_enabled=_bool("SUGGESTIONS_ENABLED", True),
+            suggestions_count=max(2, min(5, int(os.getenv("SUGGESTIONS_COUNT", "3")))),
         )
 
     def with_model(self, model: str | None) -> Config:

@@ -6,7 +6,7 @@ import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
 import MessageAvatar from "@/components/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
-import { AgentThumbs, ArtifactChips, ClarifyForm, OptionCards, SourceList, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
+import { AgentThumbs, ArtifactChips, ClarifyForm, OptionCards, SourceList, SuggestionChips, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, FeedItem } from "@/lib/types";
 
 // Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
@@ -35,7 +35,7 @@ function cardClass(kind: FeedItem["kind"], isError: boolean) {
 }
 
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
-export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetry, onConfirm, onPickOption, onClarifySubmit }: Props) {
+export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetry, onConfirm, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
 
@@ -86,6 +86,8 @@ export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetr
             onRetry={onRetry}
             onPickOption={onPickOption}
             onClarifySubmit={onClarifySubmit}
+            onPickSuggestion={onPickSuggestion}
+            isLastAgent={index === lastAgentIdx}
           />
           );
         })}
@@ -103,6 +105,7 @@ type Props = {
   onConfirm: (commandId: string, approved: boolean) => void;
   onPickOption: (query: string, card: AnswerOption) => void;
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
+  onPickSuggestion: (q: string) => void;
 };
 
 function MessageRow({
@@ -116,6 +119,8 @@ function MessageRow({
   onRetry,
   onPickOption,
   onClarifySubmit,
+  onPickSuggestion,
+  isLastAgent,
 }: {
   item: FeedItem;
   isError: boolean;
@@ -127,6 +132,8 @@ function MessageRow({
   onRetry: () => void;
   onPickOption: (query: string, card: AnswerOption) => void;
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
+  onPickSuggestion: (q: string) => void;
+  isLastAgent: boolean;
 }) {
   const rowAlign = item.kind === "user" ? "justify-end" : item.kind === "system" ? "items-center justify-center" : "";
   const labelCls = `font-semibold ${isError ? "text-[#ffb4aa]" : "text-[var(--muted)]"}`;
@@ -188,6 +195,7 @@ function MessageRow({
                 <ClarifyForm item={item} onSubmit={onClarifySubmit} />
                 <VerificationNote item={item} />
                 <SourceList item={item} />
+                {isLastAgent ? <SuggestionChips item={item} onPick={onPickSuggestion} /> : null}
               </>
             )}
             {showToolbar ? (

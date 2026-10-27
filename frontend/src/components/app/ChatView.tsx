@@ -26,6 +26,7 @@ export default function ChatView() {
         onConfirm={app.onConfirm}
         onPickOption={app.pickOption}
         onClarifySubmit={app.submitClarify}
+        onPickSuggestion={app.pickSuggestion}
       />
 
       <Composer

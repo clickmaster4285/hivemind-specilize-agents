@@ -72,6 +72,26 @@ export function ClarifyForm({
   );
 }
 
+/** Follow-up suggestions under an answer: click a chip to ask that next. */
+export function SuggestionChips({ item, onPick }: { item: FeedItem; onPick?: (q: string) => void }) {
+  const sugg = item.suggestions || [];
+  if (item.pending || !sugg.length) return null;
+  return (
+    <div className="mt-[0.6rem] flex flex-wrap gap-[0.4rem]">
+      {sugg.map((s, i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onPick?.(s)}
+          className="rounded-full border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.3rem] text-[0.78rem] text-[var(--muted)] hover:border-[var(--teal)] hover:text-[var(--text)]"
+        >
+          {s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** The Options toggle's candidate approaches: click a card to get the full answer that way. */
 export function OptionCards({ item, onPick }: { item: FeedItem; onPick?: (query: string, card: AnswerOption) => void }) {
   const opts = item.options || [];

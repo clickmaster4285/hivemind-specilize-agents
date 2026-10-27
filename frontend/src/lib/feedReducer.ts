@@ -354,6 +354,9 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
       ? (event.clarify as ClarifyQuestion[]).filter((q) => q && typeof q.question === "string" && Array.isArray(q.options))
       : undefined;
     const clarifyQuery = typeof event.clarify_query === "string" ? event.clarify_query : undefined;
+    const suggestions = Array.isArray(event.suggestions)
+      ? (event.suggestions as unknown[]).filter((s): s is string => typeof s === "string" && s.length > 0)
+      : undefined;
     const hasPending = prev.some((item) => item.agentId === event.agent_id && item.pending);
     if (!hasPending) {
       return [
@@ -376,6 +379,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           optionsQuery,
           clarify,
           clarifyQuery,
+          suggestions,
         },
       ];
     }
@@ -398,6 +402,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
             optionsQuery: optionsQuery || item.optionsQuery,
             clarify: clarify || item.clarify,
             clarifyQuery: clarifyQuery || item.clarifyQuery,
+            suggestions: suggestions || item.suggestions,
           }
         : item,
     );

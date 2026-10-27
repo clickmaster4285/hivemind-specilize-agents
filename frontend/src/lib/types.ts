@@ -188,6 +188,8 @@ export type FeedItem = {
   /** Auto-clarify: multiple-choice questions the model asked, and the original query they refine. */
   clarify?: ClarifyQuestion[];
   clarifyQuery?: string;
+  /** Follow-up suggestions: short "ask this next" questions shown as clickable chips under the answer. */
+  suggestions?: string[];
   /** operate_server: a command waiting for the user to approve or cancel. */
   confirm?: { commandId: string; command: string; server: string; answered?: "run" | "cancel" };
   /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */

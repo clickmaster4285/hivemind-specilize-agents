@@ -102,9 +102,12 @@ Per D6, Deep = **research a topic in depth across many sources** (the default st
 - Deep and Options are mutually exclusive toggles; if the model returns no parseable cards it falls back
   to a normal answer.
 
-### P2 — Suggestions + feedback  *(status: not started, independent)*
-- **Suggestions:** 3 clickable follow-up chips after each answer (`MessageExtras`).
-- **Feedback:** 👍/👎 + optional note per answer. New `feedback` table
+### P2 — Suggestions + feedback  *(status: suggestions v1 built 2026-10-27; feedback next)*
+- **Suggestions — done.** After a substantive answer (>120 chars, not the options list), a small
+  dedicated call (`src/tools/suggestions.py`, the reliable pattern) produces `SUGGESTIONS_COUNT` short
+  follow-up questions → attached to `agent_done` as `suggestions` → `SuggestionChips` renders them under
+  the **last** answer; clicking one asks it as a normal new question (routes as usual). `SUGGESTIONS_ENABLED`.
+- **Feedback — next.** 👍/👎 + optional note per answer. New `feedback` table
   (`job_id, user_id, rating, note, created_at`, via `create_all`). Phase 1 capture + show;
   Phase 2 (later) use it (e.g. re-rank/avoid down-voted sources).
 
@@ -289,3 +292,29 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
   remains as a dormant secondary path. 2 new heuristic tests; 537 pass.
 - *Lesson:* don't make a local model call a tool for a meta-action it would rather write as prose —
   gate cheaply, then generate the structured form in a dedicated call.
+
+### 2026-10-27 — P2 part 1: follow-up suggestions built
+- **What we built:** after a substantive answer, `src/tools/suggestions.py` makes one small dedicated
+  call (same reliable pattern) → 3 short "ask this next" questions → attached to `agent_done` as
+  `suggestions` → `SuggestionChips` shows them under the **last** answer; a click asks that question
+  normally. Config `SUGGESTIONS_ENABLED` / `SUGGESTIONS_COUNT`. Skipped for the options card list and
+  short/stopped answers.
+- **Cost:** one extra small call (~1s warm) after a substantive answer, with a "Suggesting follow-ups…"
+  status; the answer is already streamed so it only delays the final chips, not the reading.
+- **Test note:** the verify tests count every chat call through a fake client, so `_run` now sets
+  `suggestions_enabled=False` to isolate verification. 4 new tests; 541 pass; frontend builds.
+- *Next:* P2 part 2 — 👍/👎 feedback (capture-first).
+
+### 2026-10-27 — Richer answers: reference queries now cite sources
+- **Symptom (user, vs ChatGPT):** "parts of mother board" → a plain, uncited "Direct reply" (58s, and
+  the 9B even duplicated the BIOS section) — no sources, no visuals.
+- **Cause:** the web nudge only matched "what is / how to / compare…"; a bare noun phrase ("parts of X")
+  slipped through, so the IT specialist (which *does* have web_search) answered from memory.
+- **Fix (done):** broadened `_WEB_KW` to catch reference/educational shapes — "parts of X",
+  "components of", "types of", "features of", "overview of", "architecture of", "explained",
+  "how X works" — so they web-search and come back **cited + structured** (and grounding curbs the
+  duplicate-section glitch). Diagram/local/code requests still skip web (`_WEB_SKIP`). Re-run the eval.
+- **Still open (the visual gap vs ChatGPT), decision pending:** per-section **real photos** (needs a
+  server-side image search + proxy, since we block external images for privacy — a real build);
+  pushing a **Mermaid diagram** into such answers; an optional **quiz**. SDXL can't make accurate part
+  photos, so images mean *web image search + local proxy*, not generation.

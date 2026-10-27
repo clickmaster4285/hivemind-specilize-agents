@@ -145,6 +145,8 @@ function useAppState() {
       const values = picks.flatMap((p) => p.chosen);
       void chat.send(values.length ? `${origQuery} — ${values.join(", ")}` : origQuery, [], { plain: true });
     },
+    // a follow-up suggestion is a fresh question — route it normally (web/clarify as usual)
+    pickSuggestion: (q: string) => void chat.send(q, []),
     canStop: Boolean(chat.activeJobId && chat.running),
     stop: () => void chat.stop(),
     send, newChat, cancelEdit, beginEdit, retry, onConfirm, deleteThread,

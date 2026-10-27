@@ -74,8 +74,9 @@ def grounded(monkeypatch):
 
 def _run(config: Config):
     events: list[dict] = []
-    result = chat_runner.run_chat("which ports does DNS use", config=config, use_brain=True,
-                                  on_progress=events.append)
+    # these tests isolate the verification step; follow-up suggestions are a separate model call
+    result = chat_runner.run_chat("which ports does DNS use", config=replace(config, suggestions_enabled=False),
+                                  use_brain=True, on_progress=events.append)
     return result, events, next(e for e in events if e["type"] == "agent_done")
 
 
