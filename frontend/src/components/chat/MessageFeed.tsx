@@ -1,12 +1,12 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
 import MessageAvatar from "@/components/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
-import { AgentThumbs, ArtifactChips, ClarifyForm, FeedbackButtons, OptionCards, QuizCard, SourceList, SuggestionChips, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
+import { AgentThumbs, ArtifactChips, ClarifyForm, FeedbackButtons, OptionCards, QuizCard, SourceList, SuggestionChips, ToolDrawer, VerificationNote, WebImages } from "@/components/chat/MessageExtras";
 import type { AnswerOption, FeedItem } from "@/lib/types";
 
 // Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
@@ -34,10 +34,56 @@ function cardClass(kind: FeedItem["kind"], isError: boolean) {
   return "min-w-0 w-fit max-w-[85%] rounded-full border border-transparent px-[0.6rem] py-[0.15rem] bg-white/[0.045]";
 }
 
+/** Inline edit of a user message (ChatGPT-style): the bubble becomes a textarea with Cancel / Send. */
+function InlineEdit({ initial, onCancel, onSend }: { initial: string; onCancel: () => void; onSend: (text: string) => void }) {
+  const [text, setText] = useState(initial);
+  const trimmed = text.trim();
+  return (
+    <div className="w-full rounded-2xl border border-[color-mix(in_srgb,var(--copper)_45%,var(--line))] bg-[var(--panel-2)] px-[0.8rem] py-[0.6rem]">
+      <textarea
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            if (trimmed) onSend(trimmed);
+          } else if (e.key === "Escape") {
+            onCancel();
+          }
+        }}
+        rows={Math.min(10, Math.max(1, text.split("\n").length))}
+        className="w-full resize-none border-0 bg-transparent text-[0.86rem] leading-[1.4] text-[var(--text)] outline-none placeholder:text-[var(--muted)]"
+      />
+      <div className="mt-[0.45rem] flex justify-end gap-[0.4rem]">
+        <button type="button" className="msg-action" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="msg-action !border-[var(--copper)] !bg-[color-mix(in_srgb,var(--copper)_16%,var(--panel-2))] !text-[var(--text)] disabled:!opacity-45"
+          disabled={!trimmed}
+          onClick={() => onSend(trimmed)}
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
-export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetry, onConfirm, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
+export default function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onConfirm, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Keep the newest message in view: on open (feed replaced), on new turns, and while an answer streams.
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const last = feed[feed.length - 1];
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [feed.length, last?.id, last?.body?.length, last?.pending, last?.streaming]);
 
   if (feed.length === 0) {
     return (
@@ -82,7 +128,13 @@ export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetr
             showToolbar={item.kind === "user" || index === lastAgentIdx || isLastError}
             canRetry={!running && (index === lastUserIdx || index === lastAgentIdx || isLastError)}
             running={running}
-            onEdit={onEdit}
+            editing={editingId === item.id}
+            onStartEdit={() => setEditingId(item.id)}
+            onCancelEdit={() => setEditingId(null)}
+            onSubmitEdit={(text) => {
+              setEditingId(null);
+              onEditSend(item, text);
+            }}
             onRetry={onRetry}
             onPickOption={onPickOption}
             onClarifySubmit={onClarifySubmit}
@@ -91,6 +143,7 @@ export default function MessageFeed({ feed, running, activeJobId, onEdit, onRetr
           />
           );
         })}
+        <div ref={bottomRef} aria-hidden />
       </div>
     </div>
   );
@@ -100,7 +153,7 @@ type Props = {
   feed: FeedItem[];
   running: boolean;
   activeJobId: string | null;
-  onEdit: (item: FeedItem) => void;
+  onEditSend: (item: FeedItem, text: string) => void;
   onRetry: () => void;
   onConfirm: (commandId: string, approved: boolean) => void;
   onPickOption: (query: string, card: AnswerOption) => void;
@@ -115,7 +168,10 @@ function MessageRow({
   showToolbar,
   canRetry,
   running,
-  onEdit,
+  editing,
+  onStartEdit,
+  onCancelEdit,
+  onSubmitEdit,
   onRetry,
   onPickOption,
   onClarifySubmit,
@@ -128,7 +184,10 @@ function MessageRow({
   showToolbar: boolean;
   canRetry: boolean;
   running: boolean;
-  onEdit: (item: FeedItem) => void;
+  editing: boolean;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSubmitEdit: (text: string) => void;
   onRetry: () => void;
   onPickOption: (query: string, card: AnswerOption) => void;
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
@@ -140,9 +199,12 @@ function MessageRow({
   const metaCls = isError ? "text-[#ffb4aa]" : "text-[var(--muted)]";
   return (
     <article
-      className={`flex w-full max-w-full items-start ${rowAlign}`}
+      className={`flex w-full max-w-full items-start ${editing ? "" : rowAlign}`}
       style={item.accent ? ({ ["--accent"]: item.accent } as CSSProperties) : undefined}
     >
+      {editing && item.kind === "user" ? (
+        <InlineEdit initial={item.body} onCancel={onCancelEdit} onSend={onSubmitEdit} />
+      ) : (
       <div className={cardClass(item.kind, isError)}>
         {item.kind === "system" ? (
           <p className={`m-0 text-[0.72rem] leading-[1.25] ${isError ? "text-[#ffb4aa]" : "text-[var(--muted)]"}`}>
@@ -188,6 +250,7 @@ function MessageRow({
                   // streamed text renders as Markdown while it grows
                   <MarkdownBody content={item.body} pending={item.pending && !item.streaming} sources={item.sources} />
                 ) : null}
+                <WebImages item={item} fallbackJobId={fallbackJobId} />
                 {item.pending ? (
                   <LiveStatus text={item.statusText} steps={item.steps} startedAt={item.startedAt} />
                 ) : null}
@@ -205,7 +268,7 @@ function MessageRow({
             {showToolbar ? (
               <div className={`mt-[0.35rem] flex flex-wrap gap-[0.3rem] ${item.kind === "user" ? "justify-end" : ""}`}>
                 {item.kind === "user" ? (
-                  <button type="button" className="msg-action" disabled={running} onClick={() => onEdit(item)}>
+                  <button type="button" className="msg-action" disabled={running} onClick={onStartEdit}>
                     Edit
                   </button>
                 ) : null}
@@ -220,6 +283,7 @@ function MessageRow({
           </>
         )}
       </div>
+      )}
     </article>
   );
 }

@@ -22,7 +22,9 @@ type Props = {
 const sectionHead = "flex items-center justify-between gap-2";
 const sectionTitle = "m-0 text-[0.95rem] [font-family:var(--font-display)]";
 const list = "list-none m-0 px-[0.15rem] pb-[0.2rem] flex flex-1 min-h-0 flex-col gap-[0.3rem] overflow-x-hidden overflow-y-auto [overscroll-behavior:contain]";
-const navActive = "bg-[rgba(208,138,60,0.1)] border-[color-mix(in_srgb,var(--copper)_35%,var(--line))]";
+// `!` forces these over navBase's `bg-transparent border-transparent` (Tailwind resolves by CSS order,
+// not class order, so without `!` the active highlight was being overridden and never showed).
+const navActive = "!bg-[color-mix(in_srgb,var(--copper)_20%,var(--panel-2))] !border-[var(--copper)]";
 const navHover = "hover:bg-[rgba(208,138,60,0.1)] hover:border-[color-mix(in_srgb,var(--copper)_35%,var(--line))]";
 const navBase = `w-full border border-transparent bg-transparent text-left font-[inherit] text-[var(--text)] rounded-[0.65rem] cursor-pointer ${navHover}`;
 const navRow = `${navBase} flex items-center gap-[0.15rem] py-[0.2rem] pl-[0.15rem] pr-[0.25rem]`;

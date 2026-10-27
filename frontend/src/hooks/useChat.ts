@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { cancelJob, createJob, getJobHistory, streamJobEvents, type ImageForceIntent, type ImageProfile } from "@/lib/api";
+import { cancelJob, createJob, getJobHistory, softDeleteJobs, streamJobEvents, type ImageForceIntent, type ImageProfile } from "@/lib/api";
 import {
   attachmentsFromJob,
   conversationFromFeed,
@@ -38,7 +38,13 @@ export type JobOptions = {
   deep: boolean;
 };
 
-export type SendOptions = { retry?: boolean; forceIntent?: ImageForceIntent; plain?: boolean; options?: boolean };
+export type SendOptions = {
+  retry?: boolean;
+  forceIntent?: ImageForceIntent;
+  plain?: boolean;
+  options?: boolean;
+  editFromId?: string;
+};
 
 /**
  * The open conversation: its messages (feed), the running job, sending, streaming and Stop.
@@ -141,6 +147,19 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
       history.noteThread(threadId, titleFromQuery(titleSeed), history.projectId);
       history.selectThread(threadId);
     }
+    // Inline edit: replace this message and everything after it, dropping those turns' jobs.
+    let baseFeed = feed;
+    if (opts.editFromId) {
+      const idx = feed.findIndex((f) => f.id === opts.editFromId);
+      if (idx >= 0) {
+        baseFeed = feed.slice(0, idx);
+        const dropIds = [...new Set(feed.slice(idx).map((f) => f.jobId).filter(Boolean))] as string[];
+        if (dropIds.length) {
+          void softDeleteJobs(dropIds).catch(() => undefined);
+          history.dropJobs(dropIds);
+        }
+      }
+    }
     const chatImages: ChatImage[] = images.map((img) => ({ url: img.url, filename: img.file.name, mime: img.mime }));
     setRunning(true);
     setEditingFromId(null);
@@ -149,7 +168,12 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
       setFeed((prev) => upsertStatus(prev, "Regenerating", "Sending the last query again…"));
     } else {
       setFeed((prev) =>
-        appendUserMessage(prev, trimmed || IMAGE_QUESTION, `${options.mode} · ${options.specialistLabel}`, chatImages),
+        appendUserMessage(
+          opts.editFromId ? baseFeed : prev,
+          trimmed || IMAGE_QUESTION,
+          `${options.mode} · ${options.specialistLabel}`,
+          chatImages,
+        ),
       );
     }
     onSent();
@@ -165,8 +189,7 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
         model: options.model || undefined,
         allow_overflow: options.allowOverflow,
         images: payloadImages,
-        // prior turns only — the feed here is still the one from before this message
-        conversation: conversationFromFeed(feed),
+        conversation: conversationFromFeed(baseFeed),
         force_intent: force,
         image_profile: options.imageProfile,
         image_strength: force === "edit" || force === "inpaint" ? strengthValue(options.editStrength) : undefined,
@@ -181,6 +204,7 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
         followup: opts.plain ? true : undefined,
       });
       setActiveJobId(job.id);
+      history.addJob(job);          // keep this chat's job in state now, so switching away & back won't drop it
       // the job carries thread_id, so history regroups it and the server keeps the chat's metadata;
       // a new chat started inside a project joins that project.
       if (isNewThread && history.projectId) history.moveToProject(threadId, history.projectId);

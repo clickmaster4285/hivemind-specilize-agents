@@ -345,8 +345,8 @@ def run_chat(
 
                         imgs = gather_web_images(query, job_id, config, n=config.web_images_count)
                         if imgs:
-                            # reducer reads `images` → item.imageFiles → AgentThumbs loads them locally
-                            post["images"] = [{"filename": i["filename"], "mime": i["mime"]} for i in imgs]
+                            # a distinct key so the UI shows these as a small thumbnail strip, not the big gallery
+                            post["web_images"] = [{"filename": i["filename"], "mime": i["mime"]} for i in imgs]
                 if post:
                     _emit(on_progress, {"type": "answer_extras", "agent_id": "assistant", **post})
         except Exception as exc:  # noqa: BLE001 — extras are optional; never affect the emitted answer

@@ -68,6 +68,18 @@ export function useHistory() {
     return data;
   }, []);
 
+  // Put a just-created job into state at once (before refreshJobs lists it) so its chat keeps it even if
+  // the user switches away and comes back before the answer finishes.
+  const addJob = useCallback((job: Job) => {
+    setJobs((prev) => (prev.some((j) => j.id === job.id) ? prev : [job, ...prev]));
+  }, []);
+
+  // Drop jobs from state (an inline edit replaced a message and the turns after it).
+  const dropJobs = useCallback((ids: string[]) => {
+    const set = new Set(ids);
+    setJobs((prev) => prev.filter((j) => !set.has(j.id)));
+  }, []);
+
   /** Load chat/project metadata from the server; on first run, migrate any old browser-stored history. */
   const loadHistory = useCallback(async () => {
     let hist = await fetchHistory();
@@ -199,6 +211,8 @@ export function useHistory() {
     filter,
     setFilter,
     refreshJobs,
+    addJob,
+    dropJobs,
     loadHistory,
     noteThread,
     selectThread,

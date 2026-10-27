@@ -333,8 +333,8 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           (q) => q && typeof q.question === "string" && Array.isArray(q.options) && typeof q.correct === "number",
         )
       : undefined;
-    const imageFiles = Array.isArray(event.images)
-      ? (event.images as { filename?: string; mime?: string }[])
+    const webImages = Array.isArray(event.web_images)
+      ? (event.web_images as { filename?: string; mime?: string }[])
           .filter((img) => img && img.filename)
           .map((img) => ({ filename: String(img.filename), mime: img.mime }))
       : undefined;
@@ -352,7 +352,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
             ...item,
             suggestions: suggestions ?? item.suggestions,
             quiz: quiz ?? item.quiz,
-            imageFiles: imageFiles ?? item.imageFiles,
+            webImages: webImages ?? item.webImages,
           }
         : item,
     );

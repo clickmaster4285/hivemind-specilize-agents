@@ -170,6 +170,24 @@ web-search). Build strictly in order; each ships green before the next starts.
 - Additive; 546 tests pass; frontend builds. The ~45s total is unchanged, but the *perceived* finish is
   now ~answer-time, with extras arriving after.
 
+### 2026-10-27 — Chat-view polish (user feedback)
+- **Images too big / dominant → small strip.** Web images were going through `imageFiles` → `AgentThumbs`
+  (max 36rem, at the top). Now emitted under a distinct `web_images` key → a new `WebImages` component
+  renders a compact strip of uniform 5.5rem thumbnails **under the answer text** (click to enlarge).
+  Generated images still use `AgentThumbs`.
+- **Open chat not shown as active →** the real cause: `navBase` has `bg-transparent border-transparent`,
+  and Tailwind resolves conflicts by CSS source order (not class order), so it was silently overriding
+  `navActive` — the highlight never rendered. Fixed with the `!` important modifier on the active bg/border
+  (copper tint + copper border now win).
+- **Opened chats scrolled to the top →** `MessageFeed` now scrolls a bottom anchor into view on open /
+  new turns / while streaming, so you land on the latest message.
+- **Switch-away-and-back lost the message →** `openThread` rebuilds from `thread.jobIds`, which only had
+  jobs from the last `refreshJobs`; a just-sent job wasn't there yet. `send` now calls `history.addJob`
+  immediately so the job is in state (and grouped into its chat) at once. *Known remaining edge:* if you
+  switch while an answer is still streaming, the live stream can briefly apply to the wrong feed — a
+  deeper per-chat-stream fix, noted for later.
+- 546 tests pass; frontend builds.
+
 ### P2 — Suggestions + feedback  *(status: suggestions v1 built 2026-10-27; feedback = R1 above)*
 - **Suggestions — done.** After a substantive answer (>120 chars, not the options list), a small
   dedicated call (`src/tools/suggestions.py`, the reliable pattern) produces `SUGGESTIONS_COUNT` short

@@ -260,6 +260,52 @@ export function AgentThumbs({ item, fallbackJobId }: ItemProps) {
   );
 }
 
+/** Web images found for an educational answer: a compact strip of uniform thumbnails, click to enlarge. */
+export function WebImages({ item, fallbackJobId }: ItemProps) {
+  const jobId = item.jobId || fallbackJobId;
+  const files = item.webImages || [];
+  const [loaded, setLoaded] = useState<ChatImage[]>([]);
+  useEffect(() => {
+    if (!files.length || !jobId) return;
+    let cancelled = false;
+    void (async () => {
+      const out: ChatImage[] = [];
+      for (const f of files) {
+        if (!f.filename) continue;
+        try {
+          const url = await fetchJobAttachment(jobId, f.filename);
+          out.push({ url, filename: f.filename, mime: f.mime || "image/jpeg" });
+        } catch {
+          // skip one that won't load
+        }
+      }
+      if (!cancelled) setLoaded(out);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, item.webImages]);
+  if (!loaded.length) return null;
+  return (
+    <div className="mt-[0.5rem] flex flex-wrap gap-[0.4rem]">
+      {loaded.map((img) => (
+        <a
+          key={img.url}
+          href={img.url}
+          target="_blank"
+          rel="noreferrer"
+          title="Open image"
+          className="block h-[5.5rem] w-[5.5rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)]"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={img.url} alt={img.filename} loading="lazy" className="block h-full w-full object-cover" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 /** Download buttons for the files a job wrote (documents, scan tables). */
 export function ArtifactChips({ item, fallbackJobId }: ItemProps) {
   const jobId = item.jobId || fallbackJobId;

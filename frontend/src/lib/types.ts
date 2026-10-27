@@ -195,6 +195,8 @@ export type FeedItem = {
   suggestions?: string[];
   /** A short multiple-choice self-check under an educational answer. */
   quiz?: QuizQuestion[];
+  /** Web images found for an educational answer: small thumbnails loaded from the job's attachments. */
+  webImages?: { filename: string; mime?: string }[];
   /** operate_server: a command waiting for the user to approve or cancel. */
   confirm?: { commandId: string; command: string; server: string; answered?: "run" | "cancel" };
   /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */

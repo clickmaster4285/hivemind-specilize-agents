@@ -21,7 +21,7 @@ export default function ChatView() {
         feed={app.chat.feed}
         running={app.chat.running}
         activeJobId={app.chat.activeJobId}
-        onEdit={(item) => void app.beginEdit(item)}
+        onEditSend={app.editAndResend}
         onRetry={() => void app.retry()}
         onConfirm={app.onConfirm}
         onPickOption={app.pickOption}

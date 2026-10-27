@@ -109,6 +109,11 @@ function useAppState() {
     queryRef.current?.focus();
   }
 
+  // Inline edit (ChatGPT-style): resend the edited text as if this message replaced the original.
+  function editAndResend(item: FeedItem, text: string) {
+    if (text.trim()) void chat.send(text.trim(), [], { editFromId: item.id });
+  }
+
   async function retry() {
     const last = chat.lastUserMessage();
     if (!last || chat.running) return;
@@ -149,7 +154,7 @@ function useAppState() {
     pickSuggestion: (q: string) => void chat.send(q, []),
     canStop: Boolean(chat.activeJobId && chat.running),
     stop: () => void chat.stop(),
-    send, newChat, cancelEdit, beginEdit, retry, onConfirm, deleteThread,
+    send, newChat, cancelEdit, beginEdit, editAndResend, retry, onConfirm, deleteThread,
   };
 }
 
