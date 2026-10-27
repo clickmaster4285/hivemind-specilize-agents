@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.core.models_db import ChatThreadRow, ProjectRow
+from src.core.models_db import ChatThreadRow, Feedback, ProjectRow
 
 # marks "field not provided" in a partial update, so project_id can be set to None explicitly
 _UNSET: Any = object()
@@ -133,6 +133,20 @@ def rename_project(session: Session, user_id: int, project_id: str, name: str) -
         return None
     row.name = name.strip()[:200] or row.name
     return row
+
+
+def set_feedback(session: Session, user_id: int, job_id: str, rating: str, note: str | None = None) -> str:
+    """Record (or update) the user's 👍/👎 on one answer. Returns the stored rating ("up"/"down")."""
+    value = "up" if str(rating).strip().lower() in {"up", "1", "true", "like", "good", "thumbs_up"} else "down"
+    row = session.scalar(select(Feedback).where(Feedback.user_id == user_id, Feedback.job_id == job_id))
+    if row is None:
+        session.add(Feedback(user_id=user_id, job_id=job_id, rating=value, note=(note or None)))
+    else:
+        row.rating = value
+        if note is not None:
+            row.note = note or None
+        row.created_at = _utcnow()
+    return value
 
 
 def import_history(

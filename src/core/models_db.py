@@ -118,6 +118,21 @@ class ProjectRow(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class Feedback(Base):
+    """A user's 👍/👎 (and optional note) on one answer. One row per (user, job); re-rating updates it."""
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(String(36), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    rating: Mapped[str] = mapped_column(String(8))              # "up" | "down"
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_feedback_user_job"),)
+
+
 class ChatThreadRow(Base):
     """A chat's metadata (title, pin, project, deletion), per user, so history syncs across devices.
     The chat's messages are its jobs, grouped by the job payload's thread_id — not stored here."""

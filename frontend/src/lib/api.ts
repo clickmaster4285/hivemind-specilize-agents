@@ -341,6 +341,11 @@ export async function deleteProjectApi(id: string): Promise<void> {
   await request(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+/** Record the user's 👍/👎 (and optional note) on one answer. */
+export async function sendFeedback(jobId: string, rating: "up" | "down", note?: string): Promise<void> {
+  await request("/api/feedback", { method: "POST", body: JSON.stringify({ job_id: jobId, rating, note }) });
+}
+
 export async function fetchJobAttachment(jobId: string, filename: string): Promise<string> {
   const response = await fetch(
     apiUrl(`/api/jobs/${encodeURIComponent(jobId)}/attachments/${encodeURIComponent(filename)}`),

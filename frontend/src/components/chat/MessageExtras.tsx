@@ -3,7 +3,7 @@
 /** The parts shown under a message: generated images, downloads, the source check, sources, tools. */
 import { useEffect, useState } from "react";
 
-import { fetchJobAttachment } from "@/lib/api";
+import { fetchJobAttachment, sendFeedback } from "@/lib/api";
 import { errorText, timeAgo } from "@/lib/chat";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 
@@ -68,6 +68,39 @@ export function ClarifyForm({
           Submit
         </button>
       </div>
+    </div>
+  );
+}
+
+/** 👍 / 👎 on an answer. Fire-and-forget; the choice stays highlighted for the session. */
+export function FeedbackButtons({ jobId }: { jobId?: string | null }) {
+  const [rating, setRating] = useState<"up" | "down" | null>(null);
+  if (!jobId) return null;
+  const pick = (r: "up" | "down") => {
+    setRating(r);
+    void sendFeedback(jobId, r).catch(() => undefined);
+  };
+  return (
+    <div className="mt-[0.4rem] flex items-center gap-[0.3rem]">
+      <button
+        type="button"
+        onClick={() => pick("up")}
+        aria-pressed={rating === "up"}
+        title="Good answer"
+        className={`msg-action ${rating === "up" ? "!border-[var(--teal)] !text-[var(--text)]" : ""}`}
+      >
+        👍
+      </button>
+      <button
+        type="button"
+        onClick={() => pick("down")}
+        aria-pressed={rating === "down"}
+        title="Needs work"
+        className={`msg-action ${rating === "down" ? "!border-[var(--danger)] !text-[var(--text)]" : ""}`}
+      >
+        👎
+      </button>
+      {rating ? <span className="text-[0.72rem] text-[var(--muted)]">Thanks — noted.</span> : null}
     </div>
   );
 }

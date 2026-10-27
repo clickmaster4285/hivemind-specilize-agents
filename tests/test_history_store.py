@@ -75,6 +75,19 @@ def test_rename_project(session):
     assert hs.rename_project(session, 2, proj.id, "x") is None  # not the owner
 
 
+def test_set_feedback_upserts_and_normalizes(session):
+    from src.core.models_db import Feedback
+
+    assert hs.set_feedback(session, 1, "job1", "up") == "up"
+    assert hs.set_feedback(session, 1, "job1", "down", note="wrong parts") == "down"   # re-rate updates
+    rows = session.query(Feedback).all()
+    assert len(rows) == 1                                   # one row per (user, job)
+    assert rows[0].rating == "down" and rows[0].note == "wrong parts"
+    # a different user's rating on the same job is its own row
+    hs.set_feedback(session, 2, "job1", "like")
+    assert session.query(Feedback).count() == 2
+
+
 def test_import_is_one_time(session):
     projects = [{"id": "p1", "name": "Imported"}]
     threads = [

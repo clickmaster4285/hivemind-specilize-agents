@@ -102,7 +102,33 @@ Per D6, Deep = **research a topic in depth across many sources** (the default st
 - Deep and Options are mutually exclusive toggles; if the model returns no parseable cards it falls back
   to a normal answer.
 
-### P2 — Suggestions + feedback  *(status: suggestions v1 built 2026-10-27; feedback next)*
+### Richer answers (R1–R4) — ordered plan  *(agreed 2026-10-27, build in this order)*
+Goal: close the remaining gap vs ChatGPT-style answers (sources already done — reference queries now
+web-search). Build strictly in order; each ships green before the next starts.
+
+- **R1 — Feedback (👍/👎).** *What:* thumbs up/down (+ optional note) on each answer. *How:* a `feedback`
+  table (`id, job_id, user_id, rating, note, created_at`, via `create_all`); `POST /api/feedback`;
+  buttons in the message toolbar; per-session state so the choice sticks. *Why:* finishes P2, cheap,
+  independent. *(status: ✅ v1 built 2026-10-27 — `Feedback` table + `set_feedback` + `/api/feedback`
+  + `FeedbackButtons` under each answer. Rating only for now; the note field exists server-side for a
+  later inline "what was off?". 542 tests pass.)*
+- **R2 — Diagram in educational answers.** *What:* "parts of / how X works / architecture of" answers
+  include a Mermaid diagram where it helps. *How:* strengthen the web/answer synthesis prompt to add a
+  ```mermaid block for structural/architectural topics (we already render them). *Why:* quick, accurate,
+  fully local, high visual value. *(status: not started)*
+- **R3 — Quiz under educational answers.** *What:* a short multiple-choice self-check under educational
+  answers. *How:* a dedicated call (`generate_quiz`, like options/suggestions) → MC questions + correct
+  answers → a `QuizCard` (pick, then "check answers" reveals). Gated to educational answers. *Why:*
+  learning polish; reuses the dedicated-call + card patterns. *(status: not started)*
+- **R4 — Real images (web image search + safe local proxy).** *What:* a small gallery of relevant real
+  photos atop educational/visual answers. *How:* SearXNG image search → backend **fetches each image
+  server-side** (polite client, size/type/time limits) and **re-serves it locally** (like attachments)
+  → the frontend shows the *local* URL (passes `isOwnImage`, so no external load, no IP leak). Gated to
+  topics where images help; **we** control the search (not the model emitting URLs). *Why:* the biggest
+  visual gap; highest effort; a *careful* relaxation of the no-external-image rule, kept safe by the
+  proxy. *Risks:* privacy (mitigated), storage, relevance. *(status: not started)*
+
+### P2 — Suggestions + feedback  *(status: suggestions v1 built 2026-10-27; feedback = R1 above)*
 - **Suggestions — done.** After a substantive answer (>120 chars, not the options list), a small
   dedicated call (`src/tools/suggestions.py`, the reliable pattern) produces `SUGGESTIONS_COUNT` short
   follow-up questions → attached to `agent_done` as `suggestions` → `SuggestionChips` renders them under

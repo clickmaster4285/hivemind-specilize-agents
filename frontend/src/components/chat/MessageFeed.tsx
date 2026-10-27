@@ -6,7 +6,7 @@ import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
 import MessageAvatar from "@/components/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
-import { AgentThumbs, ArtifactChips, ClarifyForm, OptionCards, SourceList, SuggestionChips, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
+import { AgentThumbs, ArtifactChips, ClarifyForm, FeedbackButtons, OptionCards, SourceList, SuggestionChips, ToolDrawer, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, FeedItem } from "@/lib/types";
 
 // Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
@@ -196,6 +196,9 @@ function MessageRow({
                 <VerificationNote item={item} />
                 <SourceList item={item} />
                 {isLastAgent ? <SuggestionChips item={item} onPick={onPickSuggestion} /> : null}
+                {!item.pending && !item.options?.length && !item.clarify?.length ? (
+                  <FeedbackButtons jobId={item.jobId || fallbackJobId} />
+                ) : null}
               </>
             )}
             {showToolbar ? (

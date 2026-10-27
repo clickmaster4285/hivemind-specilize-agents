@@ -149,6 +149,12 @@ class HistoryImportPayload(BaseModel):
     projects: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class FeedbackPayload(BaseModel):
+    job_id: str
+    rating: str                 # "up" | "down"
+    note: str | None = None
+
+
 class ImageAttachmentIn(BaseModel):
     filename: str = "image.png"
     mime: str = "image/png"
@@ -552,6 +558,21 @@ def import_history_endpoint(
     result = history_store.import_history(db, user.id, threads=payload.threads, projects=payload.projects)
     db.commit()
     return result
+
+
+@app.post("/api/feedback")
+def submit_feedback(
+    payload: FeedbackPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Record the user's 👍/👎 (and optional note) on one answer (job)."""
+    job_id = payload.job_id.strip()
+    if not job_id:
+        raise HTTPException(status_code=400, detail="job_id required")
+    rating = history_store.set_feedback(db, user.id, job_id, payload.rating, payload.note)
+    db.commit()
+    return {"ok": True, "rating": rating}
 
 
 @app.post("/api/projects")
