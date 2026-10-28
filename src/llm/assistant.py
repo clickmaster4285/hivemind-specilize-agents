@@ -25,6 +25,7 @@ import yaml
 
 from src.jobs import live
 from src.core.config import ROOT, Config
+from src.llm.diagram_rules import DIAGRAM_RULES
 
 if TYPE_CHECKING:
     from src.llm.specialists import Specialist
@@ -155,29 +156,7 @@ diagram where plain prose is clearer.
 To denote a component, status or step lightly, use a relevant emoji inline — 🖥️ server, 🗄️ database,
 📁 file, ⚙️ process, 🌐 network, 🔒 security, 📦 package, ✅/⚠️/❌ status, → flow. Prefer a few apt icons
 over a diagram when a diagram would be overkill.
-When you DO draw a Mermaid diagram, keep it SIMPLE and VALID — a broken or cluttered diagram is worse
-than none:
-- Small: at most ~7 nodes, one direction (`flowchart LR` or `flowchart TD`). No legend box, no
-  subnet/detail boxes, no nested subgraphs, no example "traffic flow" — unless the user explicitly asks.
-- Icons: begin EVERY node label with one fitting emoji — `S["🖥️ Server"]`, `W["💻 PC"]`,
-  `N["🔀 Switch"]`, `R["🛡️ Router"]`, `I["🌐 Internet"]`. Do NOT use classDef colours in place of icons.
-- Parse-safe: always wrap a node label in double quotes and keep it short (2–4 words). Never put `(` `)`
-  `:` `|` `/` or `<br>` inside any label. Prefer plain `-->` arrows with NO edge text; if an edge really
-  needs a word use `A -->|"Ethernet"| B` — one short quoted word, no punctuation.
-- Detail like IP addresses, masks or ports goes in the prose or a small Markdown table, NEVER inside the
-  diagram nodes.
-A simple office network, done right:
-```mermaid
-flowchart TD
-  PC1["💻 PC 1"] --> SW["🔀 Switch"]
-  PC2["💻 PC 2"] --> SW
-  SRV["🖥️ File Server"] --> SW
-  SW --> FW["🛡️ Router/Firewall"]
-  FW --> NET["🌐 Internet"]
-```
-For a pure infrastructure topology you may instead use `architecture-beta` with real icons
-(`service x(mdi:server)[Server]`, packs `mdi:` and `logos:`), but only when you can keep it small and
-valid; otherwise use the emoji flowchart above."""
+""" + DIAGRAM_RULES
 
 _sources_cache: dict[str, Any] = {"at": 0.0, "text": ""}
 _sources_lock = threading.Lock()

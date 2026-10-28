@@ -115,7 +115,7 @@ web-search). Build strictly in order; each ships green before the next starts.
 - **R2 — Diagram in educational answers.** *What:* "parts of / how X works / architecture of" answers
   include a Mermaid diagram where it helps. *How:* strengthen the web/answer synthesis prompt to add a
   ```mermaid block for structural/architectural topics (we already render them). *Why:* quick, accurate,
-  fully local, high visual value. *(status: not started)*
+  fully local, high visual value. *(status: ✅ v1 built 2026-10-28 — see log entry below.)*
 - **R3 — Quiz under educational answers.** *What:* a short multiple-choice self-check under educational
   answers. *How:* a dedicated call (`generate_quiz`, like options/suggestions) → MC questions + correct
   answers → a `QuizCard` (pick, then "check answers" reveals). Gated to educational answers. *Why:*
@@ -529,3 +529,29 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
 - **Decision:** keep **single-model `qwen3.5:9b`** for everything. The quality win came from the prompt
   hard-rules + sanitizer, which ship on the model we already run. `MODEL_STRONG` stays = `MODEL_FAST`.
   Re-open only if a *much* stronger coder fits ≤8GB at full GPU (14B does not). See [[model-routing-plan]].
+
+### 2026-10-28 — R2: diagrams in educational/web answers, with shared parse-safe rules
+- **What:** structural/educational answers ("how X works", "parts of …", "architecture of …", a process
+  or data flow) now proactively include a small Mermaid diagram — and crucially a *valid, icon'd* one.
+- **The real fix was de-duplication.** This session's hard diagram rules (SIMPLE, emoji-on-every-node,
+  parse-safe quoted labels) lived only in `assistant.SYSTEM` — so the **web synthesis path**
+  (`WEB_SYSTEM`), which emits most educational answers (the validated "parts of a motherboard" went
+  through Web search), would have regressed to the old failure modes (parse errors, no icons). Extracted
+  the block into one source of truth: **`src/llm/diagram_rules.py` → `DIAGRAM_RULES`**, now imported by
+  both `assistant.py` and `web_search.py`. No drift possible.
+- **Proactive directive (web path):** `WEB_SYSTEM` previously mentioned a diagram only "for a flow or
+  architecture where it helps"; now it says to INCLUDE a small diagram for how-it-works / parts-of /
+  architecture / process / data-flow questions, skipping only plain facts or unstructured lists — and the
+  diagram stays grounded in the cited passages.
+- **Scope kept tight:** the brain `GROUNDED_SYSTEM` is deliberately citation-strict and ~150 words
+  ("stop when the facts stop"), so diagrams were **not** forced there — that would fight its design.
+  `GENERAL_SYSTEM` (general-knowledge fallback) left alone for now; can add later if wanted.
+- **Why this is safe/cheap:** no new model, no extra call, no latency — the diagram is produced inside the
+  existing synthesis call. The client sanitizer + `mermaid.parse` safety net (MermaidDiagram.tsx) still
+  backstops any slip. Consistent with the 2026-10-28 decision: diagram quality comes from these rules, not
+  a second model.
+- Verified: both prompts import and embed `DIAGRAM_RULES`; `.format()` templates render (no stray braces);
+  **546 pytest pass, 2 skipped**. Prompt-only + one leaf module; nothing else touched.
+- *Next in line:* R-plan is now fully built (R1 feedback ✅, R2 diagrams ✅, R3 quiz ✅, R4 images ✅).
+  Remaining optional threads: feedback **phase 2** (use 👍/👎 to re-rank/avoid down-voted sources), and the
+  deferred per-chat-stream fix (switching chats mid-stream can apply the live stream to the wrong feed).

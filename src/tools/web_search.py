@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 import requests
 
 from src.core.config import Config
+from src.llm.diagram_rules import DIAGRAM_RULES
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +44,11 @@ Rules:
 - Reply in the language of the question (English or Hinglish). Never put images or image links in the answer.
 - Match the depth to the question: a quick fact → 2-5 sentences; a how-to, comparison, or "from scratch"
   question → a structured answer (direct answer first, then short headings, numbered steps or bullets, a
-  Markdown table for comparisons, and a Mermaid diagram — a ```mermaid fenced block — for a flow or
-  architecture where it helps). Keep every statement cited; never force a table or diagram where prose is
-  clearer."""
+  Markdown table for comparisons). Keep every statement cited; never force a table where prose is clearer.
+- When the question is about how something works, the parts of something, an architecture, a process or a
+  data flow, INCLUDE a small Mermaid diagram (a ```mermaid fenced block) — it is the clearest way to show
+  structure, and it is grounded in the cited passages. Skip it only for a plain fact or an unstructured
+  list.""" + "\n\n" + DIAGRAM_RULES
 
 
 class WebSearchError(RuntimeError):
