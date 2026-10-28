@@ -485,3 +485,47 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
 - *Still open:* re-test the prompt on top of the net (user eval). If parse errors persist from other
   breakers, extend `sanitizeMermaid` (e.g. quote node labels with parens). Deeper lever: a stronger local
   model for diagram authoring (P4000 8GB limits this — `qwen2.5-coder:14b` is tight).
+
+### 2026-10-27 — Model-choice: deep benchmark harness built (decision: 2-model routing, pending data)
+- **Why:** the 9B is the ceiling for clean diagrams / structured output. User wants **2-model routing**
+  (keep `qwen3.5:9b` for prose via `MODEL_FAST`, route diagram/structured calls to a coder model via
+  `MODEL_STRONG`) — but to compare on real numbers first. 8GB P4000 can hold one model resident; a second
+  means a model-swap load (~2-5s) on each switch, so the data must justify it.
+- **Installed candidates:** `qwen2.5-coder:7b` (4.7GB, fits 100% GPU), `qwen2.5-coder:14b` (9.0GB, spills
+  to CPU on 8GB — a data point), vs current `qwen3.5:9b` (6.6GB).
+- **Built `src/llm/bench_models.py`** (`python -m src.llm.bench_models`), a deep 4-dimension compare:
+  1. **Diagrams, really validated** — every generated Mermaid block parsed headless via
+     `frontend/scripts/validate_mermaid.mjs` (jsdom + `mermaid.parse`, no browser), **raw** AND **after
+     `sanitizeMermaid`**, so we see both "raw valid%" and "valid after safety net%" (verified: a paren
+     edge-label is raw-invalid → sanitized-valid). Plus nodes, emoji%, classDef%, clutter%.
+  2. **Answer quality** — a fixed judge model scores prose 1-5 (correctness/structure/clarity/
+     completeness), reported overall + by language (the dimension at risk moving off the general 9B).
+  3. **Consistency** — multiple runs; per-prompt render pass-rate (all vs any) + min/med/max latency.
+  4. **Hinglish + instruction-adherence** — EN+Hinglish prompts; ≤7 nodes / emoji-on-nodes / no-classDef
+     / no-IP-in-node compliance.
+  Reuses the real generators (`generate_options/quiz/suggestions`, `_ask_clarifying`). New dev dep:
+  `jsdom` (frontend). Harness verified end-to-end without LLM calls (dry-run + real validator + report);
+  546 pytest pass. **User runs the long LLM eval** (`--out doc/model_bench.md`); Claude runs only pytest.
+- *Next:* user runs the bench → if coder-7b wins diagrams/JSON without tanking prose, wire routing
+  (`MODEL_STRONG=qwen2.5-coder:7b`) for the diagram + meta calls; measure the swap cost in practice.
+
+### 2026-10-28 — Model benchmark run → DECISION: no routing, stay single-model on `qwen3.5:9b`
+- **User ran the bench** (`--runs 2`, judge `qwen3.5:9b`): 9b vs coder-7b, then 9b vs coder-7b vs coder-14b.
+  Full report in [model_bench.md](model_bench.md). The routing premise did **not** survive the data.
+- **Diagram validity is no longer model-dependent — all three are 100% raw-valid AND 100%
+  valid-after-sanitize.** The parse-error problem we set out to solve is solved by the **hard prompt rules
+  + client sanitizer**, not by a coder model. A second model buys nothing on validity.
+- **On icon discipline (what we actually want), the 9B wins:** emoji-on-nodes **89–92%** (9b) vs **70%**
+  (coder-7b *and* coder-14b). coder-7b holds node count tighter (≤7 nodes 90%) but drops the icons.
+- **coder-7b is clearly worse on prose, badly on Hinglish:** judge overall 4.2–4.6 vs 9b's 5.0; **Hinglish
+  3.25→4.25 vs 9b's 5.0**; tanked RAID correctness (2/5). It also **timed out twice mid-run** (judged 88%).
+- **coder-7b's only edge is speed** (~13–16s/diagram vs ~21s). coder-14b has near-9B quality (Hinglish 4.81)
+  but **74s/diagram at 41% GPU / 59% CPU** — confirmed not viable resident on 8GB.
+- **Why routing is an actively bad trade here:** the P4000 holds ONE model; routing prose↔diagram per
+  request forces an Ollama reload on every switch — **the bench timeouts were exactly that thrashing**
+  (alternating models evicted/reloaded). In production that's a 2–5s+ stall per boundary, *plus* worse
+  icons and worse Hinglish, to fix a problem already fixed for free. (`clarify%` 50%→25% is noise — only
+  4 calls/model; ignore it.)
+- **Decision:** keep **single-model `qwen3.5:9b`** for everything. The quality win came from the prompt
+  hard-rules + sanitizer, which ship on the model we already run. `MODEL_STRONG` stays = `MODEL_FAST`.
+  Re-open only if a *much* stronger coder fits ≤8GB at full GPU (14B does not). See [[model-routing-plan]].
