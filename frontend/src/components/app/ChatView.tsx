@@ -23,6 +23,7 @@ export default function ChatView() {
         activeJobId={app.chat.activeJobId}
         onEditSend={app.editAndResend}
         onRetry={() => void app.retry()}
+        onRegenerate={(reason) => void app.regenerate(reason)}
         onConfirm={app.onConfirm}
         onPickOption={app.pickOption}
         onClarifySubmit={app.submitClarify}

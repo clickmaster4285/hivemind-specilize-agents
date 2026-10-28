@@ -44,6 +44,8 @@ export type SendOptions = {
   plain?: boolean;
   options?: boolean;
   editFromId?: string;
+  /** "Try again, better": the user's reason for a 👎, steered into this regenerate (feedback phase 2) */
+  refine?: string;
 };
 
 /**
@@ -210,6 +212,8 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
         // send (opts.plain), e.g. when the user clicks an approach card and wants the full answer.
         depth: options.deep && !force && !opts.plain ? "deep" : undefined,
         options: opts.options && !force && !opts.plain ? true : undefined,
+        // regenerate-with-reason: carries the 👎 reason so the retry addresses it (not shown as a turn)
+        refine: opts.refine || undefined,
         // a plain send (picking an approach card / submitting a clarify form) routes normally — web
         // search still available — but marked a follow-up so the model won't ask to clarify again.
         followup: opts.plain ? true : undefined,

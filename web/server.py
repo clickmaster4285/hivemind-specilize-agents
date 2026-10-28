@@ -192,6 +192,8 @@ class JobCreatePayload(BaseModel):
     # A follow-up answer (picked an approach card, or answered a clarify form): routes normally — web
     # search still available — but the model won't ask to clarify again.
     followup: bool = False
+    # "Try again, better": the user's reason for a 👎, steered into this regenerate (feedback phase 2)
+    refine: str | None = None
 
 
 class ModelUpdatePayload(BaseModel):
@@ -461,6 +463,7 @@ def create_job_endpoint(
                 "depth": payload.depth,
                 "options": payload.options,
                 "followup": payload.followup,
+                "refine": payload.refine,
             },
             config=config,
             priority=payload.priority if user.role == "admin" else 100,

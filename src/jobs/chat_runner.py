@@ -98,6 +98,16 @@ def _emit(cb: ProgressCallback | None, event: dict[str, Any]) -> None:
         cb(event)
 
 
+def build_refine_note(reason: str) -> str:
+    """The hidden instruction added when the user asks to regenerate a down-voted answer with a reason
+    (feedback phase 2). It is prepended to the model's context, not shown as a user message, so the retry
+    addresses what the user flagged without a visible extra turn."""
+    reason = (reason or "").strip()
+    return ("[Revision request: your previous answer to this question was rated not helpful — reason: "
+            f"{reason}. Write a better answer that directly fixes this: keep what was right, change what "
+            "the reason points to. Do not apologise or mention this rating; just answer better.]")
+
+
 def _verify(answer: Any, *, client: LLMClient, model: str, job_id: str | None,
             status: Callable[[str], None]) -> dict[str, Any] | None:
     """Check a knowledge-base answer against its sources (src/brain/verify.py) after it is written.
@@ -138,6 +148,7 @@ def run_chat(
     options: bool = False,
     should_continue: Callable[[], bool] | None = None,
     specialist: Specialist | None = None,
+    refine: str | None = None,
 ) -> ChatResult:
     """about=True: a question about MulteAgent itself, answered from live facts with no brain search.
     web_search=True: the user asked to search the internet — SearXNG + the top pages (src/web_search.py).
@@ -231,6 +242,11 @@ def run_chat(
     try:
         history = normalize_conversation(conversation)
         prior = format_conversation_block(history)
+        if refine:
+            # a "Try again, better" regenerate: steer every path (direct, web, brain, deep) with the
+            # user's reason, carried as context rather than a visible extra user turn.
+            note = build_refine_note(refine)
+            prior = f"{prior}\n\n{note}" if prior else note
         user_msg = f"{prior}\n\n## Current message\n{query}" if prior else query
         extra: dict[str, Any] = {}
         if deep:

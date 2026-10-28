@@ -1,7 +1,7 @@
 "use client";
 
 /** The parts shown under a message: generated images, downloads, the source check, sources, tools. */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { fetchJobAttachment, sendFeedback } from "@/lib/api";
 import { errorText, timeAgo } from "@/lib/chat";
@@ -133,35 +133,233 @@ export function QuizCard({ item }: { item: FeedItem }) {
   );
 }
 
-/** 👍 / 👎 on an answer. Fire-and-forget; the choice stays highlighted for the session. */
-export function FeedbackButtons({ jobId }: { jobId?: string | null }) {
-  const [rating, setRating] = useState<"up" | "down" | null>(null);
-  if (!jobId) return null;
-  const pick = (r: "up" | "down") => {
-    setRating(r);
-    void sendFeedback(jobId, r).catch(() => undefined);
-  };
+/** Why an answer was unhelpful — short, single-select reasons (kept close to what users recognise). */
+const DOWN_REASONS = [
+  "Visual is unhelpful or broken",
+  "Incorrect or incomplete",
+  "Not what I asked for",
+  "Slow or buggy",
+  "Style or tone",
+  "Safety or legal concern",
+  "Other",
+];
+
+/** Markdown → speakable plain text: drop code blocks, links, images and markup so "Read aloud" sounds
+ *  natural instead of reading `#`, `*` and URLs. */
+function speakable(md: string): string {
+  return (md || "")
+    .replace(/```[\s\S]*?```/g, ". code block. ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^[#>\s-]*\|.*\|$/gm, " ")          // table rows
+    .replace(/[#>*_~`|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const Icon = {
+  copy: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  ),
+  speaker: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  ),
+  stop: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+  ),
+  share: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" />
+    </svg>
+  ),
+  retry: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+    </svg>
+  ),
+};
+
+/** One icon button in the answer action bar. */
+function ActionIcon({
+  title, onClick, active, disabled, children,
+}: { title: string; onClick: () => void; active?: boolean; disabled?: boolean; children: ReactNode }) {
   return (
-    <div className="mt-[0.4rem] flex items-center gap-[0.3rem]">
-      <button
-        type="button"
-        onClick={() => pick("up")}
-        aria-pressed={rating === "up"}
-        title="Good answer"
-        className={`msg-action ${rating === "up" ? "!border-[var(--teal)] !text-[var(--text)]" : ""}`}
-      >
-        👍
-      </button>
-      <button
-        type="button"
-        onClick={() => pick("down")}
-        aria-pressed={rating === "down"}
-        title="Needs work"
-        className={`msg-action ${rating === "down" ? "!border-[var(--danger)] !text-[var(--text)]" : ""}`}
-      >
-        👎
-      </button>
-      {rating ? <span className="text-[0.72rem] text-[var(--muted)]">Thanks — noted.</span> : null}
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex h-[1.9rem] w-[1.9rem] items-center justify-center rounded-[0.4rem] hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:opacity-40 ${
+        active ? "bg-[var(--panel-2)] text-[var(--text)]" : "text-[var(--muted)]"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** The action bar under an answer: Copy · 👍 · 👎 · Read aloud · Share · Try again. 👍 is fire-and-forget;
+ *  👎 records at once, then opens a panel to capture the reason (stored as the feedback note) and offers
+ *  "Try again, better" to regenerate steered by that reason (feedback phase 2). Read aloud uses the
+ *  browser's SpeechSynthesis (local, no cloud); Share uses the Web Share API, falling back to copy. */
+export function AnswerActions({
+  text,
+  jobId,
+  onRetry,
+  onRegenerate,
+}: {
+  text: string;
+  jobId?: string | null;
+  onRetry?: () => void;
+  onRegenerate?: (reason: string) => void;
+}) {
+  const [rating, setRating] = useState<"up" | "down" | null>(null);
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState<string | null>(null);
+  const [details, setDetails] = useState("");
+  const [sent, setSent] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+
+  // stop any speech if the answer unmounts (chat switch, new turn) so it doesn't keep talking
+  useEffect(() => () => {
+    try { window.speechSynthesis?.cancel(); } catch { /* unsupported */ }
+  }, []);
+
+  const noteText = () => {
+    const r = reason || "";
+    const d = details.trim();
+    return d ? (r ? `${r} — ${d}` : d) : r;
+  };
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard blocked */ }
+  };
+  const readAloud = () => {
+    const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+    if (!synth) return;
+    if (speaking) { synth.cancel(); setSpeaking(false); return; }
+    const u = new SpeechSynthesisUtterance(speakable(text).slice(0, 4000));
+    u.onend = () => setSpeaking(false);
+    u.onerror = () => setSpeaking(false);
+    synth.cancel();
+    synth.speak(u);
+    setSpeaking(true);
+  };
+  const share = async () => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({ text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }
+    } catch { /* user cancelled the share sheet */ }
+  };
+  const up = () => {
+    setRating("up");
+    setOpen(false);
+    if (jobId) void sendFeedback(jobId, "up").catch(() => undefined);
+  };
+  const down = () => {
+    setRating("down");
+    setSent(false);
+    setOpen(true);
+    // record the 👎 right away, so the signal isn't lost if the panel is dismissed without a reason
+    if (jobId) void sendFeedback(jobId, "down").catch(() => undefined);
+  };
+  const store = () => {
+    const note = noteText();
+    if (jobId && note) void sendFeedback(jobId, "down", note).catch(() => undefined);
+    setSent(true);
+    setOpen(false);
+  };
+  const tryAgainBetter = () => {
+    store();
+    onRegenerate?.(noteText() || reason || "not helpful");
+  };
+  const canAct = Boolean(reason) || details.trim().length > 0;
+
+  return (
+    <div className="mt-[0.4rem]">
+      <div className="flex items-center gap-[0.15rem]">
+        <ActionIcon title={copied ? "Copied" : "Copy response"} onClick={copy} active={copied}>
+          {Icon.copy}
+        </ActionIcon>
+        {jobId ? (
+          <>
+            <ActionIcon title="Good response" onClick={up} active={rating === "up"}>👍</ActionIcon>
+            <ActionIcon title="Needs work" onClick={down} active={rating === "down"}>👎</ActionIcon>
+          </>
+        ) : null}
+        <ActionIcon title={speaking ? "Stop" : "Read aloud"} onClick={readAloud} active={speaking}>
+          {speaking ? Icon.stop : Icon.speaker}
+        </ActionIcon>
+        <ActionIcon title="Share" onClick={share}>{Icon.share}</ActionIcon>
+        {onRetry ? <ActionIcon title="Try again" onClick={onRetry}>{Icon.retry}</ActionIcon> : null}
+        {rating === "up" || sent ? (
+          <span className="ml-[0.3rem] text-[0.72rem] text-[var(--muted)]">Thanks — noted.</span>
+        ) : null}
+      </div>
+      {open ? (
+        <div className="mt-[0.5rem] max-w-[32rem] rounded-[0.6rem] border border-[var(--line)] bg-[var(--panel-2)] p-[0.7rem]">
+          <div className="mb-[0.5rem] text-[0.8rem] font-medium text-[var(--text)]">What was off?</div>
+          <div className="flex flex-wrap gap-[0.35rem]">
+            {DOWN_REASONS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setReason((cur) => (cur === r ? null : r))}
+                aria-pressed={reason === r}
+                className={`rounded-full border px-[0.7rem] py-[0.28rem] text-[0.76rem] ${
+                  reason === r
+                    ? "border-[var(--teal)] bg-[var(--panel)] text-[var(--text)]"
+                    : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={details}
+            onChange={(e) => setDetails(e.target.value)}
+            rows={2}
+            placeholder="Share details (optional)"
+            className="mt-[0.5rem] w-full resize-y rounded-[0.5rem] border border-[var(--line)] bg-[var(--panel)] p-[0.5rem] text-[0.8rem] text-[var(--text)] placeholder:text-[var(--muted)]"
+          />
+          <div className="mt-[0.5rem] flex items-center justify-end gap-[0.35rem]">
+            <button type="button" className="msg-action" onClick={() => setOpen(false)}>
+              Dismiss
+            </button>
+            <button type="button" className="msg-action" onClick={store}>
+              Submit
+            </button>
+            {onRegenerate ? (
+              <button
+                type="button"
+                className="msg-action !border-[var(--teal)] !text-[var(--text)] disabled:opacity-50"
+                onClick={tryAgainBetter}
+                disabled={!canAct}
+                title={canAct ? "Regenerate addressing your reason" : "Pick a reason first"}
+              >
+                Try again, better
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

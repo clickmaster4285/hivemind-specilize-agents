@@ -121,6 +121,14 @@ function useAppState() {
     await chat.send(last.body === IMAGE_QUESTION ? "" : last.body, lastImages, { retry: true });
   }
 
+  // "Try again, better" after a 👎: regenerate the last answer, steering it with the user's reason.
+  async function regenerate(reason: string) {
+    const last = chat.lastUserMessage();
+    if (!last || chat.running || !reason.trim()) return;
+    const lastImages = await chatImagesToPending(last.images);
+    await chat.send(last.body === IMAGE_QUESTION ? "" : last.body, lastImages, { retry: true, refine: reason.trim() });
+  }
+
   function onConfirm(commandId: string, approved: boolean) {
     const jobId = chat.activeJobId;
     if (!jobId) return;
@@ -154,7 +162,7 @@ function useAppState() {
     pickSuggestion: (q: string) => void chat.send(q, []),
     canStop: Boolean(chat.activeJobId && chat.running),
     stop: () => void chat.stop(),
-    send, newChat, cancelEdit, beginEdit, editAndResend, retry, onConfirm, deleteThread,
+    send, newChat, cancelEdit, beginEdit, editAndResend, retry, regenerate, onConfirm, deleteThread,
   };
 }
 

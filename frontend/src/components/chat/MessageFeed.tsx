@@ -6,7 +6,7 @@ import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
 import MessageAvatar from "@/components/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
-import { AgentThumbs, ArtifactChips, ClarifyForm, FeedbackButtons, OptionCards, QuizCard, SourceList, SpreadImage, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
+import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, SourceList, SpreadImage, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 
 // Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
@@ -73,7 +73,7 @@ function InlineEdit({ initial, onCancel, onSend }: { initial: string; onCancel: 
 }
 
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
-export default function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onConfirm, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
+export default function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -136,6 +136,7 @@ export default function MessageFeed({ feed, running, activeJobId, onEditSend, on
               onEditSend(item, text);
             }}
             onRetry={onRetry}
+            onRegenerate={onRegenerate}
             onPickOption={onPickOption}
             onClarifySubmit={onClarifySubmit}
             onPickSuggestion={onPickSuggestion}
@@ -155,6 +156,7 @@ type Props = {
   activeJobId: string | null;
   onEditSend: (item: FeedItem, text: string) => void;
   onRetry: () => void;
+  onRegenerate: (reason: string) => void;
   onConfirm: (commandId: string, approved: boolean) => void;
   onPickOption: (query: string, card: AnswerOption) => void;
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
@@ -268,6 +270,7 @@ function MessageRow({
   onCancelEdit,
   onSubmitEdit,
   onRetry,
+  onRegenerate,
   onPickOption,
   onClarifySubmit,
   onPickSuggestion,
@@ -284,6 +287,7 @@ function MessageRow({
   onCancelEdit: () => void;
   onSubmitEdit: (text: string) => void;
   onRetry: () => void;
+  onRegenerate: (reason: string) => void;
   onPickOption: (query: string, card: AnswerOption) => void;
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
   onPickSuggestion: (q: string) => void;
@@ -354,7 +358,12 @@ function MessageRow({
                 {isLastAgent ? <QuizCard item={item} /> : null}
                 {isLastAgent ? <SuggestionChips item={item} onPick={onPickSuggestion} /> : null}
                 {!item.pending && !item.options?.length && !item.clarify?.length ? (
-                  <FeedbackButtons jobId={item.jobId || fallbackJobId} />
+                  <AnswerActions
+                    text={item.body}
+                    jobId={item.jobId || fallbackJobId}
+                    onRetry={isLastAgent && !running ? onRetry : undefined}
+                    onRegenerate={isLastAgent && !running ? onRegenerate : undefined}
+                  />
                 ) : null}
               </>
             )}
@@ -365,7 +374,7 @@ function MessageRow({
                     Edit
                   </button>
                 ) : null}
-                {canRetry ? (
+                {canRetry && item.kind !== "agent" ? (
                   <button type="button" className="msg-action" onClick={onRetry}>
                     Retry
                   </button>

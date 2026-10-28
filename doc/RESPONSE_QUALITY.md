@@ -111,7 +111,8 @@ web-search). Build strictly in order; each ships green before the next starts.
   buttons in the message toolbar; per-session state so the choice sticks. *Why:* finishes P2, cheap,
   independent. *(status: ✅ v1 built 2026-10-27 — `Feedback` table + `set_feedback` + `/api/feedback`
   + `FeedbackButtons` under each answer. Rating only for now; the note field exists server-side for a
-  later inline "what was off?". 542 tests pass.)*
+  later inline "what was off?". 542 tests pass.)* **→ the "what was off?" + regenerate loop shipped
+  2026-10-28 (feedback phase 2 — see log).**
 - **R2 — Diagram in educational answers.** *What:* "parts of / how X works / architecture of" answers
   include a Mermaid diagram where it helps. *How:* strengthen the web/answer synthesis prompt to add a
   ```mermaid block for structural/architectural topics (we already render them). *Why:* quick, accurate,
@@ -194,9 +195,10 @@ web-search). Build strictly in order; each ships green before the next starts.
   dedicated call (`src/tools/suggestions.py`, the reliable pattern) produces `SUGGESTIONS_COUNT` short
   follow-up questions → attached to `agent_done` as `suggestions` → `SuggestionChips` renders them under
   the **last** answer; clicking one asks it as a normal new question (routes as usual). `SUGGESTIONS_ENABLED`.
-- **Feedback — next.** 👍/👎 + optional note per answer. New `feedback` table
-  (`job_id, user_id, rating, note, created_at`, via `create_all`). Phase 1 capture + show;
-  Phase 2 (later) use it (e.g. re-rank/avoid down-voted sources).
+- **Feedback — done.** 👍/👎 + optional note per answer. New `feedback` table
+  (`job_id, user_id, rating, note, created_at`, via `create_all`). Phase 1 capture + show ✅;
+  **Phase 2 ✅ (2026-10-28): reason-capture panel on 👎 + "Try again, better" regenerate** (see log).
+  Phase 2b — source down-ranking from down-votes — deferred until there's rating volume.
 
 ---
 
@@ -574,3 +576,29 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
 - *Lesson:* a long-lived async callback must read "what's on screen now" through a ref, never a captured
   state value. Scope stayed frontend-only; tsc + eslint clean. (Live race itself is verified in the app,
   not pytest.)
+
+### 2026-10-28 — Feedback phase 2 (chosen: reason + regenerate loop, not source re-ranking)
+- **Decision:** the roadmap's phase-2 note said "re-rank/avoid down-voted sources", but we chose the
+  **reason-capture + improve-on-regenerate loop** instead: more value sooner, no ranking risk, and it
+  generates the rating volume a source re-ranker would need. (Source down-ranking via
+  `brain.retrieval_log.chunk_ids` is feasible later; deferred.)
+- **UX (modelled on ChatGPT's "Share feedback"):** 👍 stays fire-and-forget. 👎 records "down" **at once**
+  (signal kept even if dismissed), then opens a small panel: single-select reason chips (*Visual unhelpful
+  or broken · Incorrect or incomplete · Not what I asked for · Slow or buggy · Style or tone · Safety or
+  legal concern · Other*) + an optional details box → **Submit** stores the reason as the feedback `note`
+  (the field R1 added but never filled), and on the **latest** answer a **"Try again, better"** button
+  regenerates the answer steered by that reason.
+- **Regenerate plumbing — one optional `refine` string, threaded end to end:**
+  `FeedbackButtons.onRegenerate` → `app.regenerate(reason)` → `chat.send(lastQuery, imgs, {retry, refine})`
+  → `createJob` payload → `JobCreatePayload.refine` → job payload → `worker` →
+  **both** `decide()` (direct answers, via `messages_for(refine_note=…)`) **and** `run_chat()`
+  (web/brain/deep/options/vision, via a note prepended to the conversation `prior`). The reason rides as a
+  hidden instruction (`build_refine_note` in chat_runner) — **not** a visible user turn, and **not** mixed
+  into the web search query.
+- **Why one `refine` covers every path:** `prior` is the single context block every `run_chat` sub-path
+  receives; the direct `decide()` answer is the only one outside `run_chat`, so it gets the note in
+  `messages_for`. No per-path duplication.
+- Verified: refine threaded through run_chat/decide/messages_for (smoke test); **546 pytest pass, 2
+  skipped**; frontend tsc clean + `next build` clean. (Pre-existing eslint error in `useWebImages` is
+  untouched and unrelated.) The actual 👎→regenerate loop is an app-level flow, verified in the running app.
+- *Deferred:* source-level down-ranking (phase 2b) — only worth building once there's rating volume.

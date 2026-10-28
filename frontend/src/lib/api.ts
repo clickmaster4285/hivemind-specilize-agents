@@ -242,6 +242,8 @@ export async function createJob(payload: {
   options?: boolean;
   /** A follow-up answer (picked an approach card / answered a clarify form): routes normally but won't re-clarify */
   followup?: boolean;
+  /** "Try again, better": the user's reason for a 👎, steered into this regenerate (feedback phase 2) */
+  refine?: string;
 }): Promise<Job> {
   // the user's own time zone (e.g. "Asia/Karachi"): answers tell their local time, no location permission
   let client_time_zone: string | undefined;

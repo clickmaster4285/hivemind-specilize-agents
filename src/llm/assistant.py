@@ -199,6 +199,7 @@ def tool_schemas(config: Config, allowed: list[str] | None = None) -> list[dict[
 def messages_for(
     query: str, config: Config, conversation: list[dict[str, str]] | None, model: str,
     specialist: Specialist | None = None,
+    refine_note: str | None = None,
 ) -> list[dict]:
     from src.tools.about import identity_line
     from src.core.clock import current_time_text
@@ -213,7 +214,9 @@ def messages_for(
     msgs = [{"role": "system", "content": system}]
     for turn in (conversation or [])[-8:]:
         msgs.append({"role": turn["role"], "content": turn["content"][:4000]})
-    msgs.append({"role": "user", "content": query})
+    # a "Try again, better" regenerate carries the user's reason as a hidden instruction on the question
+    content = f"{query}\n\n{refine_note}" if refine_note else query
+    msgs.append({"role": "user", "content": content})
     return msgs
 
 
@@ -335,12 +338,13 @@ def decide(
     on_progress: Callable[[dict], None] | None = None,
     specialist: Specialist | None = None,
     clarify_ok: bool = True,
+    refine: str | None = None,
 ) -> Decision:
     """One model call with the tools: a direct answer streams into the chat; a tool call returns.
     With a specialist: its instructions join the prompt and only its tools are offered.
     clarify_ok=False (a follow-up to an approach/clarify) drops the ask_clarification tool, so the
     model routes normally (web search still available) but cannot ask to clarify again."""
-    from src.jobs.chat_runner import friendly_error
+    from src.jobs.chat_runner import build_refine_note, friendly_error
     from src.llm.llm_client import LLMClient, LLMError, LLMStopped
 
     emit = on_progress or (lambda event: None)
@@ -375,7 +379,8 @@ def decide(
         tools = [t for t in tools if t.get("function", {}).get("name") != "ask_clarification"]
     try:
         text, calls = LLMClient(config).chat_tools(
-            messages=messages_for(query, config, conversation, model, specialist),
+            messages=messages_for(query, config, conversation, model, specialist,
+                                  refine_note=build_refine_note(refine) if refine else None),
             tools=tools, model=model,
             on_delta=on_delta, should_continue=lambda: not live.is_stopped(job_id),
         )

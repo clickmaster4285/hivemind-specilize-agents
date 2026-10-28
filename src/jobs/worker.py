@@ -147,6 +147,8 @@ def process_job(job_id: str, config: Config | None = None) -> None:
         images = load_b64_images(config, attachments) if attachments else []
         conversation = normalize_conversation(payload.get("conversation"))
         intent = (route or {}).get("intent")
+        # "Try again, better": the user's reason for a 👎, steered into the regenerate (feedback phase 2)
+        refine = (str(payload.get("refine") or "").strip() or None)
         # every prompt of this job tells the time in the user's own time zone (sent by the browser)
         set_time_zone(payload.get("client_time_zone"))
 
@@ -160,7 +162,7 @@ def process_job(job_id: str, config: Config | None = None) -> None:
             result = run_chat(
                 query, config=config, model_plan=model_plan, on_progress=on_progress, images=[],
                 conversation=conversation, account_id=str(user_id) if user_id is not None else None,
-                job_id=job_id, deep=True, specialist=specialist,
+                job_id=job_id, deep=True, specialist=specialist, refine=refine,
             )
             _finish(config, job_id, result.errors, failed=bool(result.errors and not result.output))
             return
@@ -175,7 +177,7 @@ def process_job(job_id: str, config: Config | None = None) -> None:
             result = run_chat(
                 query, config=config, model_plan=model_plan, on_progress=on_progress, images=[],
                 conversation=conversation, account_id=str(user_id) if user_id is not None else None,
-                job_id=job_id, options=True, specialist=specialist,
+                job_id=job_id, options=True, specialist=specialist, refine=refine,
             )
             _finish(config, job_id, result.errors, failed=bool(result.errors and not result.output))
             return
@@ -194,7 +196,7 @@ def process_job(job_id: str, config: Config | None = None) -> None:
             # search included — but must not ask to clarify again (no loop).
             decision = decide(query, job_id=job_id, config=config, conversation=conversation,
                               on_progress=on_progress, specialist=specialist,
-                              clarify_ok=not bool(payload.get("followup")))
+                              clarify_ok=not bool(payload.get("followup")), refine=refine)
             if decision.answered:
                 _finish(config, job_id, decision.errors)
                 return
@@ -295,6 +297,7 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 about=intent == "about",
                 web_search=intent == "web_search",
                 specialist=specialist,
+                refine=refine,
             )
             _finish(config, job_id, result.errors, failed=bool(result.errors and not result.output))
             return
