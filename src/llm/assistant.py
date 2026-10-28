@@ -25,7 +25,7 @@ import yaml
 
 from src.jobs import live
 from src.core.config import ROOT, Config
-from src.llm.diagram_rules import DIAGRAM_RULES
+from src.llm.diagram_rules import DIAGRAM_RULES, NETDIAGRAM_RULES
 
 if TYPE_CHECKING:
     from src.llm.specialists import Specialist
@@ -210,7 +210,8 @@ def messages_for(
         # them made it answer from memory instead of searching or drawing — eval 25/27 → see BACKLOG)
         identity += (f"\n\n{specialist.prompt_block()}\nThe tool rules below always apply to you too: when a "
                      "tool can do the thing or look it up, call the tool instead of explaining how to do it.")
-    system = SYSTEM.format(identity=identity, now=current_time_text())
+    # NETDIAGRAM_RULES carries JSON braces, so it is appended AFTER .format (never inside a .format template)
+    system = SYSTEM.format(identity=identity, now=current_time_text()) + NETDIAGRAM_RULES
     msgs = [{"role": "system", "content": system}]
     for turn in (conversation or [])[-8:]:
         msgs.append({"role": turn["role"], "content": turn["content"][:4000]})

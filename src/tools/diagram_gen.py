@@ -9,6 +9,7 @@ them in code, and `check_mermaid` catches what is still wrong for one retry.
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from collections.abc import Callable
@@ -282,6 +283,107 @@ def review_diagram(query: str, title: str, code: str, notes: str,
     return (title2 if title2 != "Diagram" else title), code2, notes2 or notes
 
 
+# ── Network diagram (HLD) → a designed netdiagram (NetworkDiagram.tsx), not Mermaid ─────────────────
+_NUM_SITES_RE = re.compile(r"\b\d{1,3}\s*(?:sites?|branch(?:es)?|offices?|locations?|stores?)\b", re.I)
+_SITES_RE = re.compile(r"\b(?:sites?|branch(?:es)?|offices?|locations?|stores?)\b", re.I)
+_HUB_RE = re.compile(r"\b(?:hq|h\.?o\.?|head\s*office|headquarters?|data\s*cent(?:er|re)|main\s*office)\b", re.I)
+_LLD_RE = re.compile(r"\b(?:lld|low[\s-]*level|ip\s*(?:address\w*|plan|scheme)|subnet\w*|vlan)\b", re.I)
+# a network diagram/topology in general (campus, LAN, DMZ, data-centre, office/home network, …)
+_NETDIAG_RE = re.compile(
+    r"network\s*(?:diagram|topology|map|design|layout|architecture)|\btopolog|\bLAN\b|\bWAN\b|\bDMZ\b|"
+    r"(?:campus|office|home|enterprise|data\s*cent(?:er|re)|branch)\s*network",
+    re.I,
+)
+
+
+def _is_network_diagram(query: str) -> bool:
+    """A network diagram / topology (HLD) — drawn as the designed netdiagram, not Mermaid. Covers multi-site
+    hub-and-spoke AND single-site topologies (campus core/dist/access, DMZ, data-centre). A low-level (LLD)
+    ask (VLAN/IP plan) is NOT this: the chat path answers that with tables."""
+    q = (query or "")
+    if _LLD_RE.search(q):
+        return False
+    if _NETDIAG_RE.search(q):
+        return True
+    ql = q.lower()
+    multi = bool(_NUM_SITES_RE.search(q)) or (bool(_SITES_RE.search(q)) and ("connect" in ql or bool(_HUB_RE.search(q))))
+    return multi and ("network" in ql or "connect" in ql or bool(_HUB_RE.search(q)))
+
+
+NETDIAGRAM_GEN_SYSTEM = """Output ONLY a JSON object describing a multi-site network, for a diagram. No
+prose, no markdown, no code fences, no comments — just the JSON object. Use this exact shape:
+{"title": "10 Sites to HQ Network", "subtitle": "All sites connect securely to the Head Office (HQ)",
+ "cloud": "Internet", "linkLabel": "VPN Tunnel (IPsec/SSL)",
+ "hq": {"label": "Head Office (HQ)", "nodes": [{"icon": "firewall", "label": "Firewall / UTM"},
+   {"icon": "core switch", "label": "Core Switch"}, {"icon": "load balancer", "label": "Load Balancer"},
+   {"icon": "server", "label": "App / DB / File Servers"}, {"icon": "NAS", "label": "SAN / NAS Storage"}]},
+ "sites": [{"label": "Site 1", "sub": "Branch Office"}, {"label": "Site 2", "sub": "Branch Office"}],
+ "siteTemplate": {"label": "Inside each branch site", "devices": ["router", "switch", "PCs", "printer"]},
+ "legend": ["Site / Office", "Router", "Switch", "Firewall", "Wi-Fi AP", "VPN Tunnel"],
+ "features": ["Secure site-to-HQ VPN (IPsec/SSL)", "Centralized management", "Scalable to 10+ sites"],
+ "notes": ["Each site has a VPN-capable router/firewall", "Static IPs or dynamic DNS", "Redundant HQ links"]}
+List EVERY site the user mentions (10 sites -> 10 entries in "sites"). Always include "siteTemplate" — a
+typical branch site's internal LAN as a left-to-right device chain (usually router -> switch -> PCs, add
+printer/AP/server if relevant). It is drawn INSIDE every site card, linked and labelled, so the diagram shows
+HOW each site connects to its own devices. If one site differs, give just that site its own "devices" list:
+{"label": "Site 3", "sub": "Branch Office", "devices": ["router", "switch", "Wi-Fi AP", "IP camera", "VoIP phone"]}
+(at most 5 devices).
+Device/icon names ("icon" on HQ nodes, "devices" lists) are PLAIN ENGLISH — use the real device, whatever it
+is: router, switch, firewall, load balancer, server, NAS, database, Wi-Fi AP, IP camera, VoIP phone, DNS
+server, PCs, laptop, printer, IoT sensor, UPS, cloud, … — any device is drawn with a fitting icon, so never
+force it into a short wrong word.
+
+Use the shape ABOVE (sites + hq) ONLY for several sites/branches connecting to a head office. For ANY OTHER
+network topology — a single-site campus (core / distribution / access), a DMZ, a data-centre, a home or
+office LAN — use a GRAPH instead, laid out in tiers top-to-bottom:
+{"title": "Campus Network", "subtitle": "Core / distribution / access",
+ "nodes": [{"id": "net", "icon": "internet", "label": "Internet", "tier": 0},
+   {"id": "fw", "icon": "firewall", "label": "Edge Firewall", "tier": 1},
+   {"id": "core", "icon": "core switch", "label": "Core Switch", "tier": 2},
+   {"id": "acc1", "icon": "access switch", "label": "Access Switch", "tier": 3},
+   {"id": "pcs", "icon": "PCs", "label": "Workstations", "tier": 4}],
+ "links": [{"from": "net", "to": "fw", "kind": "internet"}, {"from": "fw", "to": "core", "kind": "wan"},
+   {"from": "core", "to": "acc1", "kind": "lan"}, {"from": "acc1", "to": "pcs", "kind": "lan"}],
+ "groups": [{"label": "Core Layer", "nodes": ["core"]}],
+ "legend": [...], "features": [...], "notes": [...]}
+Every node has a unique "id", an "icon" (plain-English device) and a "tier" (0 at the top, increasing down).
+"links" connect node ids; "kind" is one of lan, wan, vpn, wireless, internet. "groups" (optional) draw a
+labelled zone around the listed node ids. Give at most 40 nodes.
+
+Double quotes only, no trailing commas. JSON only."""
+
+
+def _extract_json_object(raw: str) -> str | None:
+    m = re.search(r"\{.*\}", raw or "", re.S)
+    return m.group(0) if m else None
+
+
+def generate_netdiagram(query: str, chat: Callable[..., str],
+                        conversation: list[dict[str, str]] | None = None) -> str | None:
+    """Dedicated call: a multi-site network as the netdiagram JSON (rendered by NetworkDiagram.tsx). The 9B
+    won't reliably emit a netdiagram block inline, so we ask for ONLY JSON and validate it here. Returns a
+    compact JSON string, or None when the reply isn't usable (caller then falls back to Mermaid)."""
+    prior = format_conversation_block(normalize_conversation(conversation or []))
+    user = f"{prior}\n\n## Request\n{query}" if prior else query
+    raw = chat(system=NETDIAGRAM_GEN_SYSTEM, user=user, temperature=0.1)  # LLMStopped handled by caller
+    js = _extract_json_object(raw)
+    if not js:
+        return None
+    try:
+        data = json.loads(js)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    # accept EITHER shape: hub-spoke (sites + hq.nodes) or a generic topology graph (nodes + links)
+    sites, hq = data.get("sites"), data.get("hq")
+    hubspoke = isinstance(sites, list) and sites and isinstance(hq, dict) and isinstance(hq.get("nodes"), list) and hq["nodes"]
+    graph = isinstance(data.get("nodes"), list) and len(data["nodes"]) >= 2 and isinstance(data.get("links"), list)
+    if not (hubspoke or graph):
+        return None
+    return json.dumps(data, ensure_ascii=False)
+
+
 def _emit(cb: ProgressCallback | None, event: dict[str, Any]) -> None:
     if cb:
         cb(event)
@@ -313,17 +415,31 @@ def run_diagram(
     # Stop works here too: every model call (draft, retry, review) ends at its next word
     chat = partial(LLMClient(config).chat, should_continue=lambda: not live.is_stopped(job_id))
     try:
-        title, code, notes, problems = write_diagram(query, config, conversation, chat=chat)
-        if code is None:
-            errors.append("the model did not return a diagram")
-            output = "I could not draw this diagram. Please describe the parts and how they connect, and try again."
+        # A multi-site network overview renders far better as the designed netdiagram infographic than as a
+        # sprawling Mermaid flowchart. Dedicated JSON-only call, validated; on any failure fall back to Mermaid.
+        spec = None
+        if _is_network_diagram(query):
+            _emit(on_progress, {"type": "status", "message": "Designing the network diagram…"})
+            try:
+                spec = generate_netdiagram(query, chat, conversation=conversation)
+            except LLMStopped:
+                raise
+            except Exception:  # noqa: BLE001 — fall back to a Mermaid diagram below
+                spec = None
+        if spec:
+            output = f"**Network Diagram**\n\n```netdiagram\n{spec}\n```"
         else:
-            output = f"**{title}**\n\n```mermaid\n{code}\n```"
-            if notes:
-                output += f"\n\n{notes}"
-            if problems:
-                output += ("\n\n_The diagram may not render: " + "; ".join(problems)
-                           + ". Ask me to fix it, or copy the code into https://mermaid.live._")
+            title, code, notes, problems = write_diagram(query, config, conversation, chat=chat)
+            if code is None:
+                errors.append("the model did not return a diagram")
+                output = "I could not draw this diagram. Please describe the parts and how they connect, and try again."
+            else:
+                output = f"**{title}**\n\n```mermaid\n{code}\n```"
+                if notes:
+                    output += f"\n\n{notes}"
+                if problems:
+                    output += ("\n\n_The diagram may not render: " + "; ".join(problems)
+                               + ". Ask me to fix it, or copy the code into https://mermaid.live._")
     except LLMStopped:
         output = "_Stopped before the diagram was finished._"
         agent["role"] = "Stopped"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from typing import Any
 
@@ -25,7 +26,7 @@ from src.images.image_gen import run_image_gen
 from src.tools.attachments import load_b64_images
 from src.core.config import Config
 from src.core.db import session_scope
-from src.jobs.jobs import append_event, claim_next_job, get_job, set_job_status
+from src.jobs.jobs import append_event, claim_next_job, get_job, reclaim_orphaned_jobs, set_job_status
 
 _worker_thread: threading.Thread | None = None
 _stop = threading.Event()
@@ -358,10 +359,23 @@ def worker_loop(config: Config | None = None, poll_seconds: float = 1.0) -> None
             _stop.wait(poll_seconds)
 
 
+log = logging.getLogger(__name__)
+
+
 def start_inprocess_worker(config: Config | None = None) -> None:
     global _worker_thread
     if _worker_thread and _worker_thread.is_alive():
         return
+    config = config or Config.from_env()
+    # Free jobs orphaned 'running' by a previous process (restart/crash) before the worker starts, so a
+    # stale job can't block the user's per-user active-job limit (the 409 "already has N active jobs").
+    try:
+        with session_scope(config) as session:
+            n = reclaim_orphaned_jobs(session)
+        if n:
+            log.info("reclaimed %d orphaned running job(s) on startup", n)
+    except Exception as exc:  # noqa: BLE001 — never block worker start on this
+        log.warning("orphan-job reclaim failed: %s", exc)
     _stop.clear()
     _worker_thread = threading.Thread(
         target=worker_loop,

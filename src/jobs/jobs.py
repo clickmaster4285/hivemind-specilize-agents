@@ -49,6 +49,23 @@ def queue_depth(session: Session) -> int:
     )
 
 
+def reclaim_orphaned_jobs(session: Session) -> int:
+    """Fail any job still 'running' at startup. The only worker is in-process, so a 'running' job means a
+    previous process died (restart/crash) while working it — nothing is finishing it, yet it keeps counting
+    as active and blocks the user's per-user active-job limit forever (the 409 "already has N active jobs").
+    Marking them failed frees the user. Queued jobs are left alone — the worker will claim them normally."""
+    stale = session.scalars(
+        select(Job).where(Job.status == "running", _not_deleted())
+    ).all()
+    for job in stale:
+        job.status = "failed"
+        job.finished_at = job.finished_at or _utcnow()
+        job.error = job.error or "interrupted — the server restarted while this was running"
+        append_event(session, job.id, {"type": "fatal", "error": "interrupted (server restarted)"})
+    session.flush()
+    return len(stale)
+
+
 def count_active_for_user(session: Session, user_id: int) -> int:
     return int(
         session.scalar(

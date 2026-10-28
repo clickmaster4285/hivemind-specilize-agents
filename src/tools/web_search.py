@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 import requests
 
 from src.core.config import Config
-from src.llm.diagram_rules import DIAGRAM_RULES
+from src.llm.diagram_rules import DIAGRAM_RULES, NETDIAGRAM_RULES
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +201,8 @@ def answer_from_web(
         for n, p in enumerate(passages, 1)
     )
     user = f"{conversation_block}## Web passages\n\n{numbered}\n\n## Question\n{question}"
-    text = chat(system=WEB_SYSTEM.format(now=now), user=user, model=model, temperature=0.2)
+    # NETDIAGRAM_RULES has JSON braces → append after .format, never inside the template
+    text = chat(system=WEB_SYSTEM.format(now=now) + NETDIAGRAM_RULES, user=user, model=model, temperature=0.2)
     # P0 tool-phase split (doc/RESPONSE_QUALITY.md): where the web-search wait goes.
     logger.info(
         "web_timing search=%.2fs read=%.2fs synth=%.2fs pages=%d passages=%d",

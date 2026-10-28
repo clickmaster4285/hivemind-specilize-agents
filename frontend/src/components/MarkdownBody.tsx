@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import { getApiOrigin } from "@/lib/api";
 
 import MermaidDiagram from "./MermaidDiagram";
+import NetworkDiagram from "./NetworkDiagram";
 
 /** Only our own images load inside answers. A model once wrote an image.pollinations.ai link with
  *  the user's prompt in it: showing it would have sent the prompt to a cloud service. */
@@ -37,10 +38,10 @@ function ExternalImage({ src, alt }: { src: string; alt: string }) {
   );
 }
 
-/** The code of a ```mermaid block, or null for any other <pre>. */
-function mermaidCode(children: ReactNode): string | null {
+/** The code of a fenced block whose language tag matches `lang`, or null for any other <pre>. */
+function fencedCode(children: ReactNode, lang: string): string | null {
   if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return null;
-  if (!children.props.className?.includes("language-mermaid")) return null;
+  if (!children.props.className?.includes(`language-${lang}`)) return null;
   return String(children.props.children ?? "").trim();
 }
 
@@ -209,8 +210,11 @@ export default function MarkdownBody({ content, pending, sources }: Props) {
           // keep className: <pre> needs "language-mermaid" to spot diagrams
           code: ({ className, children }) => <code className={`md-code ${className ?? ""}`.trim()}>{children}</code>,
           pre: ({ children }) => {
-            const mermaid = mermaidCode(children);
-            return mermaid !== null ? <MermaidDiagram code={mermaid} /> : <pre className="md-pre">{children}</pre>;
+            const mermaid = fencedCode(children, "mermaid");
+            if (mermaid !== null) return <MermaidDiagram code={mermaid} />;
+            const net = fencedCode(children, "netdiagram");
+            if (net !== null) return <NetworkDiagram code={net} />;
+            return <pre className="md-pre">{children}</pre>;
           },
           img: ({ src, alt }) => {
             const url = typeof src === "string" ? src : "";

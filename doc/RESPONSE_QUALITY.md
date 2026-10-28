@@ -619,3 +619,243 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
   is lint-clean.
 - Verified: frontend **tsc clean, eslint clean, `next build` clean**. Frontend-only (backend untouched,
   still 546 pytest pass). The bar's behaviours (copy/read/share) are browser APIs — confirm in the app.
+
+### 2026-10-28 — Diagram quality A: real network icons via architecture-beta (vs the "plain boxes" gap)
+- **Why:** a user compared our "10 sites → HQ" answer (plain Mermaid flowchart boxes; the "detailed"
+  retry became a ~2000px tower) with another platform's polished, icon-rich network graphic. Diagnosis:
+  the gap is **rendering modality + iconography, not model intelligence** — we draw text-boxes, they draw a
+  designed graphic with real network icons. Chosen fix path: **A (real icons now) then B (full infographic
+  template)**.
+- **A — shipped:** `DIAGRAM_RULES` now tells the model to PREFER `architecture-beta` with real `mdi:` /
+  `logos:` vector icons for network/infrastructure topology (keeping the emoji `flowchart` for
+  processes/flows/hierarchies and as the fallback when unsure). Added a verified example + a safe icon
+  allow-list (mdi:cloud/server/firewall/router/router-network/lan/switch/monitor/laptop/database/printer/web,
+  logos:aws/azure/google-cloud/nginx/postgresql). Represent many identical nodes as one (`Remote Sites`),
+  not ten boxes — that polish is B's job.
+- **Render-time bug found & fixed (would have shipped broken):** architecture-beta icons use
+  `fill: currentColor` and the diagram defaults `color` to **white**, so mdi/logos icons rendered
+  white-on-white (invisible) on our light card. Verified live in a real browser (Mermaid 11.17.2 + the mdi
+  pack): icons resolve as inline `<svg>` (so PNG export still works), labels render as plain `<text>` (no
+  foreignObject), but were invisible until a dark `color` was forced. Fix: `themeCSS`
+  `.architecture-service, g[class*="architecture"] { color: #1f2937; }` in `MermaidDiagram.tsx`
+  initialize — travels in the SVG `<style>`, so full-size view + PNG/SVG export keep the icons.
+- **Verified:** architecture-beta example parses (headless validator), all icon names exist in the bundled
+  packs, and the full HQ example renders with visible icons (browser screenshot). tsc + `next build` clean;
+  546 pytest pass. Prompt + one renderer line.
+- *Next:* **B — full infographic template** (structured spec → designed SVG/HTML network diagram with a
+  real icon set + legend/features/notes), to match the polished multi-site look that architecture-beta's
+  "collapse 10 sites into one node" deliberately doesn't attempt.
+
+### 2026-10-28 — Diagram quality B: designed network infographic (```netdiagram → NetworkDiagram)
+- **What:** for a MULTI-SITE network design (hub-and-spoke, "N sites to HQ"), the model now emits a
+  structured JSON spec in a ```netdiagram fence, rendered by a new **`NetworkDiagram.tsx`** into a designed
+  infographic that matches the look users expect: title/subtitle, a 2-column grid of site cards (office
+  icon + label + per-site router/switch/PC row), a central Internet cloud + "Head Office (HQ)" box with
+  firewall/router/switch/server nodes, green VPN-tunnel connectors with lock badges, and Legend / Key
+  Features / Notes panels. Chosen renderer: **React component + icon set** (per the user).
+- **Design:** the whole diagram is built by a pure `buildNetworkSvg(spec)` → SVG string (own hand-authored
+  network icon set as inline `<path>`s, no foreignObject), so PNG/SVG export works and it's verifiable
+  headlessly. `parseNetSpec()` normalizes/validates the model's JSON (clamps counts, maps icon types,
+  defaults); invalid JSON falls back to showing the code — nothing breaks.
+- **Prompt:** `NETDIAGRAM_RULES` (new constant in `diagram_rules.py`) gives the exact JSON schema + example
+  and says to list EVERY site. It carries JSON braces, so it's appended to the system prompt **after**
+  `str.format()` (in `messages_for` for the direct path and after `WEB_SYSTEM.format` for the web path) —
+  never inside a `.format` template (which would crash). `DIAGRAM_RULES` stays brace-free.
+- **Verified:** rendered `buildNetworkSvg` with a 10-site spec live in a browser — matches the target
+  infographic (screenshot). Backend smoke (netdiagram directive present, `.format` templates intact) +
+  **546 pytest pass**; frontend tsc + eslint + `next build` clean.
+- *Known / next:* inline JSON from the 9B may occasionally be malformed (fallback shows code) — if it's
+  flaky in practice, upgrade to a dedicated generation call (the reliable options/quiz pattern). The
+  netdiagram trigger is scoped to multi-site designs; single topologies still use architecture-beta (A).
+  Dark-mode card styling for the infographic is light-themed for now (matches the Mermaid card).
+
+### 2026-10-28 — HLD vs LLD: stop the "giant flowchart spaghetti" (user feedback)
+- **Symptom (user):** a detailed network request produced a single Mermaid `flowchart` holding all 10
+  sites × their VLANs + the full HQ stack → a 4863px-wide unreadable tangle. "it is too bad, i was
+  thinking about hld and lld."
+- **Cause:** two things. (1) The request was an LLD (low-level: VLANs, IP plan, redundancy) and a *single
+  auto-laid-out diagram is the wrong representation* for that density — any tool produces spaghetti. (2) The
+  output also ignored this session's ≤7-node / no-subgraph rules and never used netdiagram/architecture-beta,
+  which means **the running backend had not reloaded the new prompt** — prompt constants load at import, so
+  the `web.server` process must be restarted to pick them up.
+- **Fix (decided with user: LLD = tables + small diagrams; HLD/LLD inferred from wording).** Rewrote
+  `NETDIAGRAM_RULES` to route by level:
+  - **HLD** (default / "overview" / "network diagram" / "HLD") → the ```netdiagram infographic (B).
+  - **LLD** ("LLD" / "low-level" / "detailed design" / "VLAN and IP plan" / "addressing scheme") → a
+    STRUCTURED DOCUMENT: IP/subnet-plan table, VLAN table, device inventory, redundancy/routing notes, a
+    per-site template, and optionally ONE–TWO *small* (≤7-node) diagrams of a single area — **never** one
+    big diagram.
+  - Hard rule added: **NEVER draw a single flowchart with all sites / many subgraphs / every VLAN.** Detail
+    goes in tables; diagrams stay small and focused.
+- **Verified:** HLD/LLD rules present in the system prompt, `.format` templates intact, **546 pytest pass**.
+  Prompt-only. **Requires a backend restart to take effect** (and the netdiagram/architecture-beta paths
+  from A/B too — this is almost certainly why the user's run didn't use them).
+
+### 2026-10-28 — Bug: stuck "running" job blocks the user forever (409) after a restart
+- **Symptom (user):** `POST /api/jobs → 409 Conflict`, "User already has 1 active job(s). Wait or cancel."
+  — every new send blocked, with no obviously-cancellable job in view.
+- **Cause:** `ACTIVE = ("queued", "running")` counts toward `MAX_ACTIVE_JOBS_PER_USER` (default 1). The only
+  worker is **in-process**, and `claim_next_job` only ever picks `queued` jobs — so a job left `running`
+  when the process dies (a backend **restart** mid-job, or a crash) is **orphaned forever**: nothing
+  finishes it, and it permanently blocks the user. Restarting the backend to load the new prompts (which we
+  had just told the user to do) while a job was in flight triggered exactly this.
+- **Fix:** `reclaim_orphaned_jobs(session)` in `jobs.py` — on worker startup (`start_inprocess_worker`,
+  before the loop thread starts), mark every still-`running` job `failed` (it's provably dead: single
+  in-process worker), emit a `fatal` event, set `finished_at`. Queued jobs are left for normal claiming.
+  Best-effort (never blocks worker start). So a restart now self-heals instead of wedging the user.
+- **Verified:** 3 new unit tests (reclaims running + unblocks `count_active_for_user`; leaves queued/
+  finished/deleted alone; no-op when nothing running). **549 pytest pass** (was 546). Backend-only.
+- *Immediate unblock for the user:* pull this change and **restart the backend** — the stuck job is failed
+  on startup and sends work again.
+
+### 2026-10-28 — Diagrams: pan + zoom canvas (like mermaid.live) (user request)
+- **Ask (user):** "I want it to be the canvas live same as mermaid… move the drawing left/right/up/down,
+  editable, with color." Our diagrams rendered as a static inline SVG — no pan, no zoom.
+- **Built `SvgPanZoom.tsx`** — a reusable pan+zoom viewport for a rendered SVG string: drag to move,
+  wheel/±buttons to zoom (toward the cursor, transform-origin 0 0), double-click or ⟲ to reset, ⤢
+  fullscreen, with a "drag to move · scroll to zoom" hint. Wheel uses a native non-passive listener so the
+  page doesn't scroll while zooming; reset-on-new-svg uses the adjust-state-during-render pattern (no
+  effect). Now used by BOTH `MermaidDiagram.tsx` and `NetworkDiagram.tsx` (replaces the static
+  `.mermaid-svg` div). The SVG string is untouched, so PNG/SVG export + "Open full size" still work.
+- **Verified:** viewport clips + transforms correctly in a real browser (screenshot); tsc + eslint +
+  `next build` clean. Frontend-only.
+- *Still open from the same ask:* (a) **live edit** — toggle to edit the diagram code/JSON and re-render;
+  (b) **colour** — Mermaid flowcharts are the neutral (grey) theme; could switch to a colourful theme or add
+  accents (the netdiagram infographic is already coloured). Both offered to the user as next increments.
+- *Separate observation:* the user's run still rendered a plain Mermaid flowchart titled "Network Diagram:
+  10 Sites…", i.e. the netdiagram HLD path did NOT fire — either the backend hadn't reloaded NETDIAGRAM_RULES
+  or the 9B ignored it inline. If it persists after a confirmed restart → move netdiagram to a dedicated
+  generation call (the reliable options/quiz pattern).
+
+### 2026-10-28 — Root cause: "network diagram" routes to the draw_diagram TOOL (Mermaid-only) — fixed
+- **Found it:** the user restarted the backend and it STILL drew Mermaid. The answer was labelled
+  "Assistant · **Diagram**" — so "create a network diagram" routes to the **draw_diagram tool**
+  (`src/tools/diagram_gen.py` `run_diagram`), which has its own Mermaid-only `DIAGRAM_SYSTEM`. My
+  netdiagram/HLD-LLD rules live in the CHAT/WEB system prompts, which this tool path **completely bypasses**.
+  That's why nothing changed. Lesson: trace the actual route (which tool/prompt runs) before tuning a prompt.
+- **Fix (the reliable dedicated-call pattern):** in `run_diagram`, detect a multi-site network request
+  (`_is_multisite_network` — number-of-sites, or sites/branches + HQ/connect; excludes LLD/VLAN/IP asks),
+  and if so call `generate_netdiagram()` — a **JSON-only** dedicated call (its own tight system prompt) that
+  is **validated server-side** (`json.loads` + sites/hq.nodes present) and emitted as a ```netdiagram block.
+  On any failure it falls back to the existing Mermaid path, so nothing regresses. No reliance on the 9B
+  emitting a fenced block inline.
+- **Division of labour now:** multi-site network **overview** via the diagram tool → netdiagram infographic;
+  **LLD** (VLAN/IP plan) via the chat path → tables; everything else → Mermaid (with the architecture-beta +
+  emoji rules). The chat/web NETDIAGRAM_RULES still cover the non-tool answer paths.
+- **Verified:** 12 new tests (detection True/False incl. LLD exclusion; JSON parse from plain + prose-wrapped
+  replies; None on garbage / empty sites / empty hq nodes). **561 pytest pass** (was 549). Backend-only;
+  **needs a backend restart** to take effect.
+
+### 2026-10-28 — netdiagram: streaming flicker fixed + per-site internal connectivity (user feedback)
+- **It works now** — after the restart the HLD netdiagram fires and renders in the pan/zoom canvas. Two
+  follow-ups from the user's run:
+- **Fix — "Could not render (invalid spec)" flashed mid-stream.** While the answer streams, the
+  ```netdiagram JSON is incomplete → `parseNetSpec` returns null → the error card showed. Since the
+  server-validated spec is always valid once complete, `NetworkDiagram` now shows a **"Drawing the network
+  diagram…"** placeholder while the JSON is incomplete (`looksCompleteJson` = balanced braces) and only
+  shows the code fallback when it's complete-but-unparseable.
+- **Feature — show how each site connects internally.** User: "individual site connectivity… how the
+  connection on that site to that side devices is made." Since all sites are identical, added an optional
+  **`siteTemplate`** to the spec → `NetworkDiagram` renders an **"Inside each branch site"** strip (a
+  left-to-right device chain Router → Switch → PCs → Printer with arrows) between the site grid and the
+  panels. Added a `printer` icon. The dedicated generator + `NETDIAGRAM_RULES` now always include
+  `siteTemplate`, so the internal LAN shows by default.
+- **Verified:** rendered the full 10-site + siteTemplate spec in a browser — strip renders cleanly, no
+  overlap (screenshot). tsc + eslint + `next build` clean; **561 pytest pass**; generator prompt carries
+  `siteTemplate`/`printer`. (Backend prompt change → restart; the frontend strip is live on recompile.)
+
+### 2026-10-28 — "still not at the level": per-site device chains drawn in every card + canvas now fits (user feedback)
+- **Symptom (user, with screenshots):** the infographic worked, but "the response is not at the level / point".
+  Two real misses visible in the screenshots: (1) the pan/zoom box had a **fixed 22rem height**, so the chat
+  showed only Sites 1–4 and the "Inside each branch site" strip was never visible without panning — the
+  canvas I added cropped the very thing the user had asked for; (2) every site card showed three **tiny
+  unlabeled icons with no links**, so "how each site connects to its own devices" wasn't actually drawn.
+- **Fix 1 — per-site connectivity (`frontend/src/lib/netdiagram.ts`, new):** the builder moved out of the
+  component into a pure, React-free module. Each site card is now taller and draws that site's **own device
+  chain — Router — Switch — PCs — Printer — joined by links with a label under each icon**, plus a "VPN"
+  badge and the tunnel to HQ. The chain comes from `siteTemplate.devices`; a site that differs can carry its
+  own `devices` (max 5), e.g. Site 3 with a server. The separate "Inside each branch site" strip was removed
+  (redundant now). Also fixed from reviewing the earlier SVGs: HQ devices are now chained
+  (firewall → router → switch → servers); the tunnel-type pill was hidden *behind* the HQ box → now beside the
+  cloud with a lock icon; "App / DB / File Servers" was clipped → HQ box widened; the legend uses the real
+  device icons instead of dots.
+- **Fix 2 — the canvas fits the diagram (`SvgPanZoom.tsx`):** the box takes the diagram's own aspect ratio
+  (from its viewBox, capped at 80vh) and **starts fitted** — a ResizeObserver computes the transform that shows
+  the whole diagram, centred; ⟲ / double-click re-fits; once the user pans/zooms we stop auto-fitting.
+  Applies to Mermaid diagrams too.
+- **Bug caught only by testing the CSS in a real browser:** with `width:auto`, `aspect-ratio` + `max-height`
+  shrinks the box's **width** (678px in an 860px column), not its height → explicit `width:100%`; and an inline
+  svg leaves a few px of baseline gap that skewed the fit → `[&>svg]:block`. Re-tested: box stays 860 wide,
+  height-capped, diagram fitted (k=0.79) and fully inside.
+- **Prompts:** the dedicated generator and `NETDIAGRAM_RULES` now say `siteTemplate` is drawn inside every
+  site card and that a differing site may list its own `devices`.
+- **Verified:** ran the real `netdiagram.ts` under node (type-stripping) → 10 sites, 10 VPN badges, 41 device
+  labels (9×4 + a 5-device Site 3), no NaN; screenshot of the output shows the chains/links/badges as intended.
+  tsc + eslint + `next build` clean; **561 pytest pass**; prompts still `.format` cleanly.
+- *Observed in the same run:* the follow-up turn ("include the individual site connectivity") was answered by
+  the chat path (IT specialist · Direct reply), not the diagram tool, and "yes" correctly produced the LLD
+  as tables — so HLD → infographic and LLD → tables is working end to end.
+
+### 2026-10-28 — Make the network diagram adaptive: open icon vocabulary (Phase 1) (user feedback)
+- **Ask (user):** "we are fixing everything like … computer, printer, server, firewall … but this should be
+  adaptive, versatile, dynamic and have space to improve … to achieve the best." The icon set was a CLOSED
+  list of 11 hand-drawn types, and `parseNetSpec` silently dropped or mislabelled anything else. Chose
+  (AskUserQuestion) **Phases 1+2 + a test set**.
+- **Phase 1 — shipped: an OPEN icon vocabulary (`frontend/src/lib/deviceIcons.ts`).** A device is named in
+  plain words; `resolve(name)` maps it, never dropping it: (1) hand-drawn icons for the common gear; (2) an
+  alias + keyword table → a bundled Iconify icon (`mdi` 7638, `logos` 2282, already local), loaded lazily and
+  only for the packs a given diagram needs; (3) a neutral labelled box for a genuinely unknown device.
+  `makeDrawIcon(packs)` emits the icon (mono packs painted via `currentColor`+`fill`; `logos` keep their
+  colours). `netdiagram.ts` now takes an injected `draw`, and device/HQ-node names (`icon`, `devices[]`) are
+  **free text** — an AP, NAS, IP camera, VoIP phone, load balancer, DNS, IoT sensor … all show as themselves.
+- **Verified against the REAL packs:** 78/81 common device names resolve to a real icon, 0 wrongly dropped
+  (the 3 "text-box" cases were literal nonsense). Ran the real `netdiagram.ts`+`deviceIcons.ts` under node
+  with an exotic spec (Wi-Fi AP / IP camera / VoIP phone / NAS / load balancer / DNS / IoT) and screenshotted
+  it — every device drew with a fitting, correctly-coloured icon. tsc + eslint + `next build` clean;
+  **561 pytest pass**. Prompts (`NETDIAGRAM_GEN_SYSTEM`, `NETDIAGRAM_RULES`) now say device/icon names are
+  plain English and HQ nodes use `icon` (the old `type` still accepted).
+- *Next:* **Phase 2** — a generic graph (groups/nodes/links + `repeat`) with layout presets so non-hub-spoke
+  topologies (campus tiers, DMZ, star) render too, and an automated layout check over ~6 sample networks.
+
+### 2026-10-28 — Phase 2: generic topology graph + tiered layout + a layout eval (versatility)
+- **Built a second renderer, `frontend/src/lib/graphdiagram.ts`,** for any topology that isn't "N sites →
+  HQ": a generic graph of `nodes` (each with `id`, free-text `icon`, `label`, `tier`), typed `links`
+  (`lan` / `wan` / `vpn` / `wireless` / `internet` — coloured/dashed accordingly, VPN gets a lock badge),
+  and optional dashed `group` zones. Laid out in **tiers top-to-bottom** (internet → edge → core → dist →
+  access → endpoints); the model gives each node a `tier`, else a longest-path layering assigns one. Shares
+  the open icon vocabulary (Phase 1). A tiered layout was chosen over a generic force/elk layout because
+  network diagrams are almost always hierarchical and tiers keep the card aesthetic clean + deterministic
+  (elk stays the documented next step for arbitrary meshes).
+- **Routing + one fence, two shapes.** `NetworkDiagram.tsx` parses a ```netdiagram block as EITHER the
+  hub-spoke shape (`sites`+`hq`) or a graph (`nodes`+`links`) via `isGraphSpec`, and renders with the
+  matching builder. The diagram tool's trigger broadened from multi-site only to any network diagram /
+  topology (`_is_network_diagram`: campus, LAN, DMZ, data-centre, office/home network, …; still excludes
+  LLD), and `generate_netdiagram` now validates + accepts either shape. Prompts describe both shapes and
+  when to use each.
+- **Test set — `frontend/scripts/netdiagram_eval.mjs`** (run `node scripts/netdiagram_eval.mjs`, like the
+  Mermaid validator): 6 sample topologies — hub-spoke-10-sites, campus-three-tier, DMZ+cloud, home-network,
+  datacenter-spine-leaf, small-office-star — each checked for parse, render (viewBox, no NaN), **0
+  overlapping node boxes**, and unknown-icon count. **All 6 pass**; exits non-zero on any failure so it
+  gates builder changes. (User runs the LLM evals; this one is deterministic/no-LLM, safe for Claude to run.)
+- **Verified:** ran the real builders under node for every sample + screenshotted campus and DMZ — tiers,
+  group zones, typed links and resolved icons all render cleanly, consistent with the hub-spoke look.
+  tsc + eslint + `next build` clean; **566 pytest pass** (was 561). 17 netdiagram-tool tests (both shapes
+  detected + generated).
+- *Room to improve (documented):* same-group nodes can land far apart within a tier (e.g. DMZ web vs proxy
+  across the full width) — a within-tier group-clustering pass would tighten that; an elk fallback would
+  handle non-tierable meshes; a live spec editor (the earlier "editable" ask) is still open.
+
+### 2026-10-28 — Mermaid flowcharts read cleaner: step edges, not basis curves (user feedback)
+- **Confirmed non-network topics already work** (classification/process/relationship diagrams → Mermaid
+  mindmap/flowchart/class/ER/timeline/pie/quadrant — all 8 types render in our 11.17.2). The gap the user hit
+  was *look*, not coverage: the SAME animal-taxonomy flowchart scored 8/10 on mermaid.live vs 5/10 on our
+  site. User's own diagnosis (correct): "mermaid shows proper straight line … our rounded line, so the
+  sequence is a little out."
+- **Cause:** `MermaidDiagram.tsx` set flowchart `curve: "basis"` — smooth B-spline curves that, on a wide
+  tree, bunch and cross near the parent and read messy. **Fix:** `curve: "step"` (orthogonal right-angle
+  edges — the classic org-chart / taxonomy look).
+- **Verified by eye, not guess:** rendered the user's exact taxonomy with basis / linear / step / default
+  (step = cleanest), then confirmed step also looks clean on a decision flow (diamond + Yes/No + a loop back)
+  and an LR process — no regression. tsc + `next build` clean. One-line config change; `linear` (straight
+  diagonals) is a one-word alternative if a less boxy look is wanted later. (Theme stays light/neutral to fit
+  the white diagram card; mermaid.live's darker look is a separate option, not changed.)

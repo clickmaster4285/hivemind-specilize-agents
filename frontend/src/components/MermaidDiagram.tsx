@@ -2,6 +2,8 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 
+import SvgPanZoom from "./SvgPanZoom";
+
 type Props = { code: string };
 
 /** Conservative safety net for model-written Mermaid: fix the common parse-breakers before rendering so
@@ -33,12 +35,18 @@ function loadMermaid() {
       startOnLoad: false,
       securityLevel: "strict",
       theme: "neutral",
-      // plain SVG text instead of HTML labels, so the PNG export can draw it on a canvas
-      flowchart: { htmlLabels: false, curve: "basis" },
+      // plain SVG text instead of HTML labels, so the PNG export can draw it on a canvas.
+      // `step` = orthogonal right-angle edges (the clean org-chart / taxonomy look). `basis` drew wavy
+      // curves that bunched and crossed on wide trees and read as messy vs mermaid.live's straight lines.
+      flowchart: { htmlLabels: false, curve: "step" },
       // a font every browser has: boxes are sized with it, and "Open full size" / PNG export draw
       // without the app's web font — with IBM Plex the labels came out wider than their boxes
       fontFamily: "Arial, Helvetica, sans-serif",
       themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
+      // architecture-beta icons use `fill: currentColor`, and the diagram defaults `color` to white,
+      // so mdi/logos icons render white-on-white (invisible) on our light card. Force a dark colour on
+      // the architecture groups so the icons show. Travels in the SVG <style>, so full-size + PNG keep it.
+      themeCSS: '.architecture-service, g[class*="architecture"] { color: #1f2937; }',
     });
     // Icon packs for `architecture-beta` diagrams — bundled locally (no CDN), lazy-loaded with the
     // diagram. Icons render as inline SVG, so the PNG/SVG export still works. Referenced as
@@ -146,7 +154,7 @@ export default function MermaidDiagram({ code }: Props) {
           .
         </div>
       ) : svg ? (
-        <div className="mermaid-svg" dangerouslySetInnerHTML={{ __html: svg }} />
+        <SvgPanZoom svg={svg} />
       ) : (
         <div className="mermaid-loading">Drawing…</div>
       )}
