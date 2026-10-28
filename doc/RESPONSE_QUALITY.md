@@ -602,3 +602,20 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
   skipped**; frontend tsc clean + `next build` clean. (Pre-existing eslint error in `useWebImages` is
   untouched and unrelated.) The actual 👎→regenerate loop is an app-level flow, verified in the running app.
 - *Deferred:* source-level down-ranking (phase 2b) — only worth building once there's rating volume.
+
+### 2026-10-28 — Answer action bar (Copy · 👍/👎 · Read aloud · Share · Try again)
+- **What:** a ChatGPT-style icon bar under every finished answer, replacing the bare 👍/👎 row and the
+  separate "Retry" button. Actions: **Copy** (answer text → clipboard), **👍/👎** (rate; 👎 still opens the
+  phase-2 reason panel + "Try again, better"), **Read aloud**, **Share**, **Try again** (plain regenerate).
+- **Local-only, no cloud:** Read aloud uses the browser's `SpeechSynthesis` (toggles play/stop, cancels on
+  unmount so it stops when you switch chats or a new turn starts; markdown is stripped to read naturally).
+  Share uses the Web Share API with a copy-to-clipboard fallback where it's unavailable.
+- **Consolidation** (`MessageExtras.tsx`): `FeedbackButtons` → **`AnswerActions`** ({text, jobId, onRetry,
+  onRegenerate}); `MessageFeed` passes `item.body` as the text and gates "Try again"/regenerate to the
+  latest answer (`isLastAgent && !running`). The old toolbar "Retry" now shows only on user/error rows, so
+  there's no duplicate regenerate affordance on answers.
+- **Drive-by cleanup:** fixed the pre-existing `react-hooks/set-state-in-effect` lint error in
+  `useWebImages` (resolve inside the async callback instead of a synchronous `setLoaded([])`), so the file
+  is lint-clean.
+- Verified: frontend **tsc clean, eslint clean, `next build` clean**. Frontend-only (backend untouched,
+  still 546 pytest pass). The bar's behaviours (copy/read/share) are browser APIs — confirm in the app.

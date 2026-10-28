@@ -72,7 +72,7 @@ Our variant is **hybrid RAG** (meaning + keyword search together). Plain "vector
 
 ## 3. Database
 
-Postgres 17 + pgvector in Docker (`docker compose up -d db`). All brain tables live in their own schema **`brain`**, separate from the app's tables.
+Postgres 17 + pgvector in Docker (`docker compose up -d db`). All brain tables live in their own schema **`brain`**, separate from the app's tables. For how the `brain` and `app` schemas sit side by side in one database and why, see [DATA_MODEL.md](DATA_MODEL.md).
 
 ### 3.1 Tables
 

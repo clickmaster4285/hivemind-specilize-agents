@@ -466,20 +466,20 @@ export function useWebImages(item: FeedItem, fallbackJobId: string | null): Chat
   const [loaded, setLoaded] = useState<ChatImage[]>([]);
   useEffect(() => {
     const files = item.webImages || [];
-    if (!files.length || !jobId) {
-      setLoaded([]);
-      return;
-    }
     let cancelled = false;
+    // resolve inside the async callback (never setState synchronously in the effect body); an empty
+    // list just yields [] on the next tick, which clears a previous answer's images.
     void (async () => {
       const out: ChatImage[] = [];
-      for (const f of files) {
-        if (!f.filename) continue;
-        try {
-          const url = await fetchJobAttachment(jobId, f.filename);
-          out.push({ url, filename: f.filename, mime: f.mime || "image/jpeg" });
-        } catch {
-          // skip one that won't load
+      if (files.length && jobId) {
+        for (const f of files) {
+          if (!f.filename) continue;
+          try {
+            const url = await fetchJobAttachment(jobId, f.filename);
+            out.push({ url, filename: f.filename, mime: f.mime || "image/jpeg" });
+          } catch {
+            // skip one that won't load
+          }
         }
       }
       if (!cancelled) setLoaded(out);
@@ -487,7 +487,6 @@ export function useWebImages(item: FeedItem, fallbackJobId: string | null): Chat
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jobId, item.webImages]);
   return loaded;
 }
