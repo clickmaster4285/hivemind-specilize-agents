@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cancelJob, createJob, getJobHistory, softDeleteJobs, streamJobEvents, type ImageForceIntent, type ImageProfile } from "@/lib/api";
 import {
@@ -56,6 +56,14 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
   const [running, setRunning] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [editingFromId, setEditingFromId] = useState<string | null>(null);
+  // Always points at the chat currently on screen. A running stream reads this to tell whether the user
+  // has navigated to another chat: if so, its events must NOT be written into the now-different feed (they
+  // would pollute that other chat). The job keeps running server-side; its answer is rebuilt from history
+  // when the user reopens the chat it belongs to.
+  const openThreadIdRef = useRef<string | null>(history.activeThreadId);
+  useEffect(() => {
+    openThreadIdRef.current = history.activeThreadId;
+  }, [history.activeThreadId]);
 
   function applyEvent(event: JobEvent) {
     setFeed((prev) => reduceFeed(prev, event));
@@ -147,6 +155,9 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
       history.noteThread(threadId, titleFromQuery(titleSeed), history.projectId);
       history.selectThread(threadId);
     }
+    // We are on this chat at send time; mark it now so the stream guard is correct even before the
+    // activeThreadId effect flushes (the effect then keeps the ref current if the user switches away).
+    openThreadIdRef.current = threadId;
     // Inline edit: replace this message and everything after it, dropping those turns' jobs.
     let baseFeed = feed;
     if (opts.editFromId) {
@@ -209,7 +220,13 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
       // a new chat started inside a project joins that project.
       if (isNewThread && history.projectId) history.moveToProject(threadId, history.projectId);
       setFeed((prev) => upsertStatus(prev, "Queued", `${job.status} · ${job.id.slice(0, 8)}…`));
-      await streamJobEvents(job.id, applyEvent);
+      const streamThreadId = threadId;
+      await streamJobEvents(job.id, (event) => {
+        // the user switched to another chat mid-stream — drop this job's events instead of writing them
+        // into whatever feed is now on screen; the finished answer is rebuilt from history on reopen.
+        if (openThreadIdRef.current !== streamThreadId) return;
+        applyEvent(event);
+      });
       await history.refreshJobs();
     } catch (err) {
       setFeed((prev) => upsertStatus(prev, "Error", errorText(err), true));

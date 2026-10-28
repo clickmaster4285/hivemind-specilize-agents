@@ -185,7 +185,8 @@ web-search). Build strictly in order; each ships green before the next starts.
   jobs from the last `refreshJobs`; a just-sent job wasn't there yet. `send` now calls `history.addJob`
   immediately so the job is in state (and grouped into its chat) at once. *Known remaining edge:* if you
   switch while an answer is still streaming, the live stream can briefly apply to the wrong feed — a
-  deeper per-chat-stream fix, noted for later.
+  deeper per-chat-stream fix, noted for later. **→ fixed 2026-10-28 (stream events now guarded by the
+  job's own thread; see the log entry below).**
 - 546 tests pass; frontend builds.
 
 ### P2 — Suggestions + feedback  *(status: suggestions v1 built 2026-10-27; feedback = R1 above)*
@@ -555,3 +556,21 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
 - *Next in line:* R-plan is now fully built (R1 feedback ✅, R2 diagrams ✅, R3 quiz ✅, R4 images ✅).
   Remaining optional threads: feedback **phase 2** (use 👍/👎 to re-rank/avoid down-voted sources), and the
   deferred per-chat-stream fix (switching chats mid-stream can apply the live stream to the wrong feed).
+
+### 2026-10-28 — Fix: live stream no longer leaks into the wrong chat when you switch mid-answer
+- **Symptom:** send a message in chat A, then open chat B while A is still streaming → A's streamed events
+  briefly rendered into B's feed.
+- **Cause:** `useChat` has ONE `feed`. `send()` does `await streamJobEvents(job.id, applyEvent)` and
+  `applyEvent` is `setFeed((prev) => reduceFeed(prev, event))`. `openThread()` replaces `feed` with B's
+  messages, but A's in-flight stream keeps calling `applyEvent`, so its events reduce into B's feed.
+  Guarding on `history.activeThreadId` directly would read a stale value — it's captured in the
+  long-lived stream closure.
+- **Fix** (`frontend/src/hooks/useChat.ts`): an `openThreadIdRef` that always mirrors the on-screen chat
+  (set synchronously at send time to close the first-render race, then kept current by a
+  `useEffect` on `history.activeThreadId`). The stream callback now drops events when
+  `openThreadIdRef.current !== streamThreadId`, so a job only ever writes into its own chat. The job keeps
+  running server-side; its finished answer is rebuilt from history when the user reopens that chat (no
+  data lost, just not shown live while away).
+- *Lesson:* a long-lived async callback must read "what's on screen now" through a ref, never a captured
+  state value. Scope stayed frontend-only; tsc + eslint clean. (Live race itself is verified in the app,
+  not pytest.)
