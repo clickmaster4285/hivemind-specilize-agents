@@ -42,3 +42,579 @@ sources:
     added_by: admin
     added_on: 2026-10-15
     enabled: true
+
+  - slug: google-search-central
+    title: Google Search Central — SEO documentation
+    kind: web_page
+    url: https://developers.google.com/search/docs
+    crawl_depth: 2                # the docs hub + its sections (fundamentals, crawling, appearance, …)
+    include: "https://developers.google.com/search/docs*"   # same host, /search/docs only
+    collection: marketing
+    publisher: Google
+    licence: CC-BY-4.0            # Google Developers Site Policies, checked 2026-10-28 (code samples: Apache-2.0)
+    language: en
+    refresh_every: 14d           # reference docs; they change slowly
+    max_pages: 150               # raised 2026-10-29 — cover structured data + crawling + ranking guides
+    reason: First marketing/SEO source — authoritative Search Central guidance (crawling, indexing, SEO)
+    added_by: admin
+    added_on: 2026-10-28
+    enabled: true
+
+  - slug: mdn-web-http
+    title: MDN Web Docs — HTTP
+    kind: git_repo
+    url: https://github.com/mdn/content
+    include: "files/en-us/web/http/**/*.md"
+    # Cite the published page, not the raw file:
+    #   files/en-us/<path>/index.md -> https://developer.mozilla.org/en-US/docs/<path>
+    page_url: "https://developer.mozilla.org/en-US/docs/{path}"
+    page_root: files/en-us
+    language: en
+    collection: development
+    publisher: Mozilla
+    licence: CC-BY-SA-2.5         # mdn/content LICENSE.md, checked 2026-10-28 (code samples: CC0 / MIT)
+    refresh_every: 14d
+    max_pages: 120
+    reason: Web platform reference — HTTP headers, status codes, methods, CORS, caching; clean Markdown
+    added_by: admin
+    added_on: 2026-10-28
+    enabled: true
+
+  - slug: ms-windows-server-adds
+    title: Windows Server documentation — Active Directory Domain Services
+    kind: git_repo
+    url: https://github.com/MicrosoftDocs/windowsserverdocs
+    include: "WindowsServerDocs/identity/ad-ds/**/*.md"
+    page_url: "https://learn.microsoft.com/en-us/windows-server/{path}"
+    page_root: WindowsServerDocs
+    language: en
+    collection: it
+    publisher: Microsoft
+    licence: CC-BY-4.0            # repo LICENSE file, checked 2026-10-28 (code samples: MIT, LICENSE-CODE)
+    refresh_every: 7d
+    max_pages: 150
+    reason: Core IT identity source — Active Directory Domain Services administration; same repo as the DNS source
+    added_by: admin
+    added_on: 2026-10-28
+    enabled: true
+
+  - slug: schema-org-docs
+    title: Schema.org — structured-data documentation
+    kind: web_page
+    url: https://schema.org/docs/documents.html
+    crawl_depth: 1                # the docs index + the guide pages it links to
+    include: "https://schema.org/docs/*"   # same host, /docs only (not every type page)
+    collection: marketing
+    publisher: Schema.org
+    licence: CC-BY-SA-3.0         # schema.org/docs/terms.html, checked 2026-10-28
+    language: en
+    refresh_every: 30d
+    max_pages: 80                # raised 2026-10-29 — richer results / schema guides
+    reason: Structured-data reference to pair with Google Search Central (rich results, schema vocabulary)
+    added_by: admin
+    added_on: 2026-10-28
+    enabled: true
+
+
+  # ── Added 2026-10-29: broaden SEO/marketing, IT and development ──────────────
+  - slug: web-dev
+    title: web.dev — performance, Core Web Vitals, SEO
+    kind: web_page
+    url: https://web.dev/learn
+    crawl_depth: 2                # the course hubs + their lesson pages
+    include: "https://web.dev/*"
+    collection: marketing
+    publisher: Google
+    licence: CC-BY-4.0           # web.dev page footer, checked 2026-10-29 (code samples: Apache-2.0)
+    language: en
+    refresh_every: 30d
+    max_pages: 100               # raised 2026-10-29 — SEO + CWV learn paths
+    reason: Web performance / Core Web Vitals / SEO best practices — pairs with Search Central
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: kubernetes-concepts
+    title: Kubernetes documentation — Concepts
+    kind: git_repo
+    url: https://github.com/kubernetes/website
+    include: "content/en/docs/concepts/**/*.md"
+    page_url: "https://kubernetes.io/{path}/"
+    page_root: content/en
+    language: en
+    collection: it
+    publisher: CNCF / Kubernetes
+    licence: CC-BY-4.0           # kubernetes.io content licence, checked 2026-10-29
+    refresh_every: 14d
+    max_pages: 120
+    reason: Container orchestration concepts — high-value IT/DevOps reference
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: docker-engine
+    title: Docker documentation — Engine
+    kind: git_repo
+    url: https://github.com/docker/docs
+    include: "content/manuals/engine/**/*.md"
+    # Docker drops the "manuals" segment from published URLs:
+    #   content/manuals/engine/<path> -> https://docs.docker.com/engine/<path>
+    page_url: "https://docs.docker.com/{path}/"
+    page_root: content/manuals
+    language: en
+    collection: it
+    publisher: Docker, Inc.
+    licence: Apache-2.0          # docker/docs LICENSE, checked 2026-10-29
+    refresh_every: 14d
+    max_pages: 100
+    reason: Docker Engine administration — containers, networking, storage, CLI
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: ms-windows-server-security
+    title: Windows Server documentation — Security
+    kind: git_repo
+    url: https://github.com/MicrosoftDocs/windowsserverdocs
+    include: "WindowsServerDocs/security/**/*.md"
+    page_url: "https://learn.microsoft.com/en-us/windows-server/{path}"
+    page_root: WindowsServerDocs
+    language: en
+    collection: it
+    publisher: Microsoft
+    licence: CC-BY-4.0           # repo LICENSE file, checked 2026-10-29 (code samples: MIT, LICENSE-CODE)
+    refresh_every: 7d
+    max_pages: 150
+    reason: Windows Server security hardening — same repo as the DNS and AD DS sources
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: postgresql-docs
+    title: PostgreSQL documentation — current
+    kind: web_page
+    url: https://www.postgresql.org/docs/current/
+    crawl_depth: 1                # the TOC index + the chapter pages it links to
+    include: "https://www.postgresql.org/docs/current/*"
+    collection: it
+    publisher: PostgreSQL Global Development Group
+    licence: PostgreSQL          # postgresql.org/about/licence, checked 2026-10-29 (permissive; covers docs)
+    language: en
+    refresh_every: 30d
+    max_pages: 80
+    reason: Authoritative database administration + SQL reference
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: mdn-web-javascript
+    title: MDN Web Docs — JavaScript
+    kind: git_repo
+    url: https://github.com/mdn/content
+    include: "files/en-us/web/javascript/**/*.md"
+    page_url: "https://developer.mozilla.org/en-US/docs/{path}"
+    page_root: files/en-us
+    language: en
+    collection: development
+    publisher: Mozilla
+    licence: CC-BY-SA-2.5        # mdn/content LICENSE.md, checked 2026-10-29 (code samples: CC0 / MIT)
+    refresh_every: 14d
+    max_pages: 150
+    reason: JavaScript language + Web API reference — same repo as the MDN HTTP source
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: mdn-web-css
+    title: MDN Web Docs — CSS
+    kind: git_repo
+    url: https://github.com/mdn/content
+    include: "files/en-us/web/css/**/*.md"
+    page_url: "https://developer.mozilla.org/en-US/docs/{path}"
+    page_root: files/en-us
+    language: en
+    collection: development
+    publisher: Mozilla
+    licence: CC-BY-SA-2.5        # mdn/content LICENSE.md, checked 2026-10-29 (code samples: CC0 / MIT)
+    refresh_every: 14d
+    max_pages: 150
+    reason: CSS property and selector reference — same repo as the MDN HTTP source
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: django-docs
+    title: Django documentation — stable
+    kind: web_page
+    url: https://docs.djangoproject.com/en/stable/
+    crawl_depth: 2                # section indexes + their topic/reference pages
+    include: "https://docs.djangoproject.com/en/*"
+    collection: development
+    publisher: Django Software Foundation
+    licence: BSD-3-Clause        # docs licensed under the Django BSD licence, checked 2026-10-29
+    language: en
+    refresh_every: 30d
+    max_pages: 80
+    reason: Canonical Python web-framework reference (models, views, ORM, templates)
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: rust-book
+    title: The Rust Programming Language (the Book)
+    kind: git_repo
+    url: https://github.com/rust-lang/book
+    include: "src/*.md"
+    # src/chNN-NN-name.md -> https://doc.rust-lang.org/book/chNN-NN-name.html
+    page_url: "https://doc.rust-lang.org/book/{path}.html"
+    page_root: src
+    language: en
+    collection: development
+    publisher: The Rust Project
+    licence: MIT OR Apache-2.0   # rust-lang/book LICENSE-MIT / LICENSE-APACHE, checked 2026-10-29
+    refresh_every: 30d
+    max_pages: 60
+    reason: Official Rust learning resource — clean Markdown, strong for learning paths
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  # ── Added 2026-10-29 (batch 2): related Windows/Linux IT + Python/JS web stack ──
+  - slug: ms-windows-server-networking-tech
+    title: Windows Server documentation — networking technologies
+    kind: git_repo
+    url: https://github.com/MicrosoftDocs/windowsserverdocs
+    # DHCP, IPAM, SDN, … — excludes networking/dns (already covered by ms-windows-server-dns)
+    include: "WindowsServerDocs/networking/technologies/**/*.md"
+    page_url: "https://learn.microsoft.com/en-us/windows-server/{path}"
+    page_root: WindowsServerDocs
+    language: en
+    collection: it
+    publisher: Microsoft
+    licence: CC-BY-4.0           # repo LICENSE file, checked 2026-10-29 (code samples: MIT, LICENSE-CODE)
+    refresh_every: 7d
+    max_pages: 120
+    reason: Complements the DNS source — DHCP, IPAM and other Windows Server networking roles
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: powershell-docs-conceptual
+    title: PowerShell documentation — conceptual
+    kind: git_repo
+    url: https://github.com/MicrosoftDocs/PowerShell-Docs
+    include: "reference/docs-conceptual/**/*.md"
+    # reference/docs-conceptual/<path>.md -> https://learn.microsoft.com/powershell/scripting/<path>
+    page_url: "https://learn.microsoft.com/powershell/scripting/{path}"
+    page_root: reference/docs-conceptual
+    language: en
+    collection: it
+    publisher: Microsoft
+    licence: CC-BY-4.0           # PowerShell-Docs LICENSE.md, checked 2026-10-29 (code: MIT, LICENSE-CODE)
+    refresh_every: 14d
+    max_pages: 120
+    reason: PowerShell administration language — pairs with Windows Server DNS / AD DS / security
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: ubuntu-server-docs
+    title: Ubuntu Server documentation
+    kind: git_repo
+    url: https://github.com/canonical/ubuntu-server-documentation
+    include: "docs/**/*.md"
+    # docs/<path>.md -> https://ubuntu.com/server/docs/<path>/
+    page_url: "https://ubuntu.com/server/docs/{path}/"
+    page_root: docs
+    language: en
+    collection: it
+    publisher: Canonical
+    licence: CC-BY-SA-4.0        # help.ubuntu.com/legal.html + Ubuntu docs practice, checked 2026-10-29
+    refresh_every: 14d
+    max_pages: 100
+    reason: Linux server administration (networking, security, services) — BRAIN_DESIGN IT candidate
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: nginx-org-docs
+    title: nginx.org — documentation
+    kind: web_page
+    url: https://nginx.org/en/docs/
+    crawl_depth: 2                # docs hub + module / directive pages it links to
+    include: "https://nginx.org/en/docs*"
+    collection: it
+    publisher: Nginx, Inc. / F5
+    licence: BSD-2-Clause        # nginx.org/LICENSE, checked 2026-10-29
+    language: en
+    refresh_every: 30d
+    max_pages: 80
+    reason: Reverse-proxy / HTTP server reference — pairs with Windows DNS and web platform sources
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: fastapi-docs
+    title: FastAPI documentation
+    kind: git_repo
+    url: https://github.com/fastapi/fastapi
+    include: "docs/en/docs/**/*.md"
+    # docs/en/docs/<path>.md -> https://fastapi.tiangolo.com/<path>/
+    page_url: "https://fastapi.tiangolo.com/{path}/"
+    page_root: docs/en/docs
+    language: en
+    collection: development
+    publisher: Sebastián Ramírez / FastAPI
+    licence: MIT                 # fastapi/fastapi LICENSE covers software and associated docs, checked 2026-10-29
+    refresh_every: 14d
+    max_pages: 80
+    reason: Modern Python API framework — pairs with Python HOWTO and Django
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: python-docs-tutorial
+    title: Python documentation — Tutorial
+    kind: web_page
+    url: https://docs.python.org/3/tutorial/index.html
+    crawl_depth: 1                # tutorial index + chapter pages it links to
+    include: "https://docs.python.org/3/tutorial/*.html"
+    collection: development
+    publisher: Python Software Foundation
+    licence: PSF-2.0             # page footer, checked 2026-10-29 (code examples: 0BSD)
+    language: en
+    refresh_every: 30d
+    max_pages: 40
+    reason: Official Python language tutorial — complements the HOWTO guides source
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: mdn-web-html
+    title: MDN Web Docs — HTML
+    kind: git_repo
+    url: https://github.com/mdn/content
+    include: "files/en-us/web/html/**/*.md"
+    page_url: "https://developer.mozilla.org/en-US/docs/{path}"
+    page_root: files/en-us
+    language: en
+    collection: development
+    publisher: Mozilla
+    licence: CC-BY-SA-2.5        # mdn/content LICENSE.md, checked 2026-10-29 (code samples: CC0 / MIT)
+    refresh_every: 14d
+    max_pages: 150
+    reason: HTML element and form reference — completes the MDN HTTP / JS / CSS set
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: react-learn
+    title: React documentation — Learn
+    kind: git_repo
+    url: https://github.com/reactjs/react.dev
+    include: "src/content/learn/**/*.md"
+    # src/content/learn/<path>.md -> https://react.dev/learn/<path>
+    page_url: "https://react.dev/{path}"
+    page_root: src/content
+    language: en
+    collection: development
+    publisher: Meta / React
+    licence: CC-BY-4.0           # react.dev LICENSE-DOCS.md, checked 2026-10-29
+    refresh_every: 14d
+    max_pages: 80
+    reason: Official React learning path — pairs with MDN JavaScript / CSS / HTML
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: typescript-handbook
+    title: TypeScript Handbook
+    kind: web_page
+    url: https://www.typescriptlang.org/docs/handbook/intro.html
+    crawl_depth: 1                # intro + handbook pages linked from the handbook nav
+    include: "https://www.typescriptlang.org/docs/handbook*"
+    collection: development
+    publisher: Microsoft
+    licence: CC-BY-4.0           # microsoft/TypeScript-Website LICENSE, checked 2026-10-29
+    language: en
+    refresh_every: 30d
+    max_pages: 50
+    reason: Official TypeScript language guide — pairs with MDN JavaScript and React
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: mdn-web-performance
+    title: MDN Web Docs — Performance
+    kind: git_repo
+    url: https://github.com/mdn/content
+    include: "files/en-us/web/performance/**/*.md"
+    page_url: "https://developer.mozilla.org/en-US/docs/{path}"
+    page_root: files/en-us
+    language: en
+    collection: marketing
+    publisher: Mozilla
+    licence: CC-BY-SA-2.5        # mdn/content LICENSE.md, checked 2026-10-29 (code samples: CC0 / MIT)
+    refresh_every: 14d
+    max_pages: 60
+    reason: Web performance / Core Web Vitals reference — pairs with web.dev and Search Central
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  # ── Added 2026-10-29 (batch 3): SEO / search / ranking / analytics / social ──
+  - slug: google-search-central-blog
+    title: Google Search Central Blog — SEO & ranking updates
+    kind: feed
+    url: https://developers.google.com/search/blog/feed.xml
+    include: "https://developers.google.com/search/blog/*"
+    collection: marketing
+    publisher: Google
+    licence: CC-BY-4.0           # Google Developers Site Policies (blog on developers.google.com), checked 2026-10-29
+    language: en
+    refresh_every: 7d            # algorithm / ranking announcements move faster than reference docs
+    max_pages: 60
+    reason: Official ranking / core-update / SEO practice posts from Search Central
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: sitemaps-protocol
+    title: Sitemaps.org — XML Sitemaps protocol
+    kind: web_page
+    url: https://www.sitemaps.org/protocol.html
+    crawl_depth: 1                # protocol + FAQ / home pages it links to on the same host
+    include: "https://www.sitemaps.org/*"
+    collection: marketing
+    publisher: Sitemaps.org (Google / Yahoo / Microsoft sponsors)
+    licence: CC-BY-SA-2.5        # sitemaps.org/terms.html, checked 2026-10-29
+    language: en
+    refresh_every: 30d
+    max_pages: 20
+    reason: Canonical sitemap protocol for discovery / crawling / indexing
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: google-robots-txt
+    title: Google — robots.txt / Robots Exclusion Protocol
+    kind: web_page
+    url: https://developers.google.com/search/docs/crawling-indexing/robots/intro
+    crawl_depth: 2                # robots intro + spec / meta-tag / crawler pages under /robots
+    include: "https://developers.google.com/search/docs/crawling-indexing/robots*"
+    collection: marketing
+    publisher: Google
+    licence: CC-BY-4.0           # Google Developers Site Policies, checked 2026-10-29 (code samples: Apache-2.0)
+    language: en
+    refresh_every: 30d
+    max_pages: 30
+    reason: Crawl-control reference (robots.txt, meta robots) — core technical SEO
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: google-analytics-docs
+    title: Google Analytics — developer documentation
+    kind: web_page
+    url: https://developers.google.com/analytics
+    crawl_depth: 2                # Analytics hub + tagging / Data API / measurement guides
+    include: "https://developers.google.com/analytics*"
+    collection: marketing
+    publisher: Google
+    licence: CC-BY-4.0           # Google Developers Site Policies, checked 2026-10-29 (code samples: Apache-2.0)
+    language: en
+    refresh_every: 14d
+    max_pages: 80
+    reason: Measurement and reporting — traffic, engagement, conversion for SEO/marketing
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: google-tag-platform
+    title: Google Tag Platform — gtag.js / Tag Manager
+    kind: web_page
+    url: https://developers.google.com/tag-platform
+    crawl_depth: 2                # tag-platform hub + gtag / GTM / consent guides
+    include: "https://developers.google.com/tag-platform*"
+    collection: marketing
+    publisher: Google
+    licence: CC-BY-4.0           # Google Developers Site Policies, checked 2026-10-29 (code samples: Apache-2.0)
+    language: en
+    refresh_every: 14d
+    max_pages: 80
+    reason: Tagging / conversion tracking foundation that pairs with Analytics and Search
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: open-graph-protocol
+    title: Open Graph protocol
+    kind: web_page
+    url: https://ogp.me/
+    crawl_depth: 0                # single-page specification
+    include: "https://ogp.me/*"
+    collection: marketing
+    publisher: Facebook / Open Graph community
+    licence: OWFa-0.9            # ogp.me footer — Open Web Foundation Agreement 0.9, checked 2026-10-29
+    language: en
+    refresh_every: 30d
+    max_pages: 5
+    reason: Social / link-preview metadata (og:title, og:image, …) used in sharing and SERP-adjacent UX
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: bing-web-search-api
+    title: Bing Search APIs — Web Search documentation
+    kind: git_repo
+    url: https://github.com/MicrosoftDocs/bing-docs
+    include: "bing-docs/bing-web-search/**/*.md"
+    # bing-docs/bing-web-search/<path>.md -> https://learn.microsoft.com/en-us/bing/search-apis/bing-web-search/<path>
+    page_url: "https://learn.microsoft.com/en-us/bing/search-apis/{path}"
+    page_root: bing-docs
+    language: en
+    collection: marketing
+    publisher: Microsoft
+    licence: CC-BY-4.0           # MicrosoftDocs/bing-docs LICENSE, checked 2026-10-29
+    refresh_every: 30d
+    max_pages: 60
+    reason: How Bing ranks and returns web results via API — search relevance / answer shaping
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: mdn-webpage-metadata
+    title: MDN — webpage metadata (on-page SEO)
+    kind: git_repo
+    url: https://github.com/mdn/content
+    include: "files/en-us/learn_web_development/core/structuring_content/webpage_metadata/**/*.md"
+    page_url: "https://developer.mozilla.org/en-US/docs/{path}"
+    page_root: files/en-us
+    language: en
+    collection: marketing
+    publisher: Mozilla
+    licence: CC-BY-SA-2.5        # mdn/content LICENSE.md, checked 2026-10-29 (code samples: CC0 / MIT)
+    refresh_every: 30d
+    max_pages: 10
+    reason: Title, description, and head metadata — foundational on-page SEO from MDN Learn
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
+
+  - slug: mdn-seo-glossary
+    title: MDN Glossary — SEO
+    kind: git_repo
+    url: https://github.com/mdn/content
+    include: "files/en-us/glossary/seo/**/*.md"
+    page_url: "https://developer.mozilla.org/en-US/docs/{path}"
+    page_root: files/en-us
+    language: en
+    collection: marketing
+    publisher: Mozilla
+    licence: CC-BY-SA-2.5        # mdn/content LICENSE.md, checked 2026-10-29 (code samples: CC0 / MIT)
+    refresh_every: 30d
+    max_pages: 5
+    reason: Concise SEO definition + pointers to Search Central — glossary anchor for marketing answers
+    added_by: admin
+    added_on: 2026-10-29
+    enabled: true
