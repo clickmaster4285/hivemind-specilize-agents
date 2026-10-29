@@ -84,7 +84,10 @@ def _git(*args: str, cwd: Path | None = None, timeout: int = 900) -> str:
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}  # never hang on a credential prompt
     try:
         result = subprocess.run(
-            ["git", *args], cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout
+            # Decode git's output as UTF-8 (not the Windows console's cp1252, which crashes the
+            # subprocess reader thread on any non-cp1252 byte in a filename or contributor name).
+            ["git", *args], cwd=cwd, env=env, capture_output=True,
+            encoding="utf-8", errors="replace", timeout=timeout,
         )
     except FileNotFoundError as exc:
         raise FetchError("git is not installed or not on PATH") from exc
