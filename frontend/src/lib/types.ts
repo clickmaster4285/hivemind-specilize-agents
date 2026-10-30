@@ -69,6 +69,8 @@ export type Health = {
   auth_required?: boolean;
 };
 
+export type UserStatus = "active" | "disabled";
+
 export type AuthUser = {
   id: number;
   username: string;
@@ -76,6 +78,7 @@ export type AuthUser = {
   team?: string | null;
   email?: string | null;
   phone?: string | null;
+  status?: UserStatus;
   daily_job_quota?: number;
 };
 
@@ -87,8 +90,12 @@ export type ManagedUser = {
   team: string | null;
   email: string | null;
   phone: string | null;
+  status: UserStatus;
   daily_job_quota: number;
+  query_count: number | null;
   created_at: string | null;
+  updated_at: string | null;
+  last_login_at: string | null;
 };
 
 /** What the admin fills in to create an account. */
@@ -100,6 +107,18 @@ export type UserCreateInput = {
   email?: string | null;
   phone?: string | null;
   daily_job_quota?: number | null;
+};
+
+/** Admin edit of an account: only the fields sent change. Empty string clears team/email/phone;
+ *  a non-empty `password` resets it. */
+export type UserUpdateInput = {
+  role?: "member" | "admin";
+  team?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  daily_job_quota?: number | null;
+  status?: UserStatus;
+  password?: string;
 };
 
 export type ModelInfo = {

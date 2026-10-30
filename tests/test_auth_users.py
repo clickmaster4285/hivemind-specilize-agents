@@ -14,10 +14,19 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from src.core.auth import require_admin, verify_password
+from src.core.auth import hash_password, require_admin, verify_password
 from src.core.db import Base
-from src.core.models_db import User  # noqa: F401 — registers the users table on Base
-from web.server import LoginPayload, UserCreatePayload, create_user, list_users, login
+from src.core.models_db import Job, User  # noqa: F401 — registers the tables on Base
+from web.server import (
+    LoginPayload,
+    UserCreatePayload,
+    UserUpdatePayload,
+    create_user,
+    deactivate_user,
+    list_users,
+    login,
+    update_user,
+)
 
 
 @pytest.fixture
@@ -35,6 +44,15 @@ def session():
 def admin() -> User:
     """A stand-in admin for the require_admin dependency (not persisted; the route never reads it)."""
     return User(username="admin", password_hash="x", role="admin")
+
+
+@pytest.fixture
+def admin_row(session) -> User:
+    """A real admin row in the DB — needed by edit/deactivate, which refuse to leave zero active admins."""
+    u = User(username="root", password_hash=hash_password("adminpass1"), role="admin", status="active")
+    session.add(u)
+    session.flush()
+    return u
 
 
 # --- create_user / list_users endpoints -------------------------------------------------------
@@ -122,6 +140,76 @@ def test_list_users_returns_accounts_without_hashes(session, admin):
     assert {r["username"] for r in rows} == {"finn", "gail"}
     assert all("password_hash" not in r for r in rows)
     assert {r["username"]: r["team"] for r in rows} == {"finn": "IT", "gail": None}
+
+
+# --- edit / deactivate / status / analytics ---------------------------------------------------
+
+def test_update_changes_fields(session, admin_row):
+    created = create_user(
+        UserCreatePayload(username="ned", password="longenough", team="IT"), _admin=admin_row, db=session
+    )
+    out = update_user(
+        created["id"],
+        UserUpdatePayload(team="marketing", email="ned@example.com", phone="999", daily_job_quota=7, status="active"),
+        admin=admin_row, db=session,
+    )
+    assert out["team"] == "marketing"
+    assert out["email"] == "ned@example.com"
+    assert out["phone"] == "999"
+    assert out["daily_job_quota"] == 7
+    assert out["updated_at"] is not None
+
+
+def test_update_rejects_duplicate_email(session, admin_row):
+    create_user(UserCreatePayload(username="olive", password="longenough", email="o@example.com"), _admin=admin_row, db=session)
+    peter = create_user(UserCreatePayload(username="peter", password="longenough"), _admin=admin_row, db=session)
+    with pytest.raises(HTTPException) as exc:  # case-insensitive, excludes the user's own row
+        update_user(peter["id"], UserUpdatePayload(email="O@example.com"), admin=admin_row, db=session)
+    assert exc.value.status_code == 409
+
+
+def test_password_reset_changes_login(session, admin_row):
+    quinn = create_user(UserCreatePayload(username="quinn", password="origpass1"), _admin=admin_row, db=session)
+    update_user(quinn["id"], UserUpdatePayload(password="newpass12"), admin=admin_row, db=session)
+    assert login(LoginPayload(username="quinn", password="newpass12"), db=session)["user"]["username"] == "quinn"
+    with pytest.raises(HTTPException):
+        login(LoginPayload(username="quinn", password="origpass1"), db=session)
+
+
+def test_deactivate_blocks_login_but_keeps_account(session, admin_row):
+    rita = create_user(UserCreatePayload(username="rita", password="longenough"), _admin=admin_row, db=session)
+    out = deactivate_user(rita["id"], admin=admin_row, db=session)
+    assert out["status"] == "disabled"
+    with pytest.raises(HTTPException) as exc:
+        login(LoginPayload(username="rita", password="longenough"), db=session)
+    assert exc.value.status_code == 403
+    # re-enabling via update lets them back in
+    update_user(rita["id"], UserUpdatePayload(status="active"), admin=admin_row, db=session)
+    assert login(LoginPayload(username="rita", password="longenough"), db=session)["access_token"]
+
+
+def test_admin_cannot_lock_themselves_out(session, admin_row):
+    with pytest.raises(HTTPException) as deact:
+        deactivate_user(admin_row.id, admin=admin_row, db=session)
+    assert deact.value.status_code == 400
+    with pytest.raises(HTTPException) as demote:
+        update_user(admin_row.id, UserUpdatePayload(role="member"), admin=admin_row, db=session)
+    assert demote.value.status_code == 400
+
+
+def test_list_reports_query_count(session, admin_row):
+    sam = create_user(UserCreatePayload(username="sam", password="longenough"), _admin=admin_row, db=session)
+    session.add(Job(id="j1", user_id=sam["id"], mode="chat", status="succeeded", query="how to configure dns"))
+    session.add(Job(id="j2", user_id=sam["id"], mode="chat", status="succeeded", query="second question"))
+    session.flush()
+    rows = list_users(_admin=admin_row, db=session)
+    assert next(r for r in rows if r["username"] == "sam")["query_count"] == 2
+
+
+def test_login_stamps_last_login_at(session, admin_row):
+    create_user(UserCreatePayload(username="tom", password="longenough"), _admin=admin_row, db=session)
+    assert login(LoginPayload(username="tom", password="longenough"), db=session)["access_token"]
+    assert session.scalar(select(User).where(User.username == "tom")).last_login_at is not None
 
 
 # --- login by username or email ---------------------------------------------------------------

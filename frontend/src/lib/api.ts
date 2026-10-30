@@ -13,6 +13,7 @@ import type {
   SpecialistInput,
   SpecialistOptions,
   UserCreateInput,
+  UserUpdateInput,
 } from "./types";
 
 const API_PORT = process.env.NEXT_PUBLIC_API_PORT || "8787";
@@ -152,6 +153,15 @@ export async function listUsers(): Promise<ManagedUser[]> {
 
 export async function createUser(payload: UserCreateInput): Promise<ManagedUser> {
   return request("/api/auth/users", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function updateUser(id: number, payload: UserUpdateInput): Promise<ManagedUser> {
+  return request(`/api/auth/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+/** "Delete" = deactivate: the account can no longer sign in, but its chats/queries are kept. */
+export async function deactivateUser(id: number): Promise<ManagedUser> {
+  return request(`/api/auth/users/${id}`, { method: "DELETE" });
 }
 
 export async function getHealth(): Promise<Health> {

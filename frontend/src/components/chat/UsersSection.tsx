@@ -2,9 +2,10 @@
 
 import { useState, type FormEvent } from "react";
 
+import UserEditModal from "@/components/chat/UserEditModal";
 import type { UsersApi } from "@/hooks/useUsers";
 import { errorText } from "@/lib/chat";
-import type { UserCreateInput } from "@/lib/types";
+import type { ManagedUser, UserCreateInput } from "@/lib/types";
 
 const emptyUser: UserCreateInput = { username: "", password: "", role: "member", team: "", email: "", phone: "" };
 
@@ -20,6 +21,7 @@ export default function UsersSection({ users }: { users: UsersApi }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [editing, setEditing] = useState<ManagedUser | null>(null);
   const set = (patch: Partial<UserCreateInput>) => setForm((f) => ({ ...f, ...patch }));
 
   async function submit(event: FormEvent) {
@@ -61,13 +63,22 @@ export default function UsersSection({ users }: { users: UsersApi }) {
           {users.users.map((u) => (
             <li
               key={u.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5"
+              className={`flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5 ${
+                u.status === "disabled" ? "opacity-60" : ""
+              }`}
             >
               <span className="min-w-0">
-                <strong className="block truncate text-sm">{u.username}</strong>
+                <strong className="flex items-center gap-2 truncate text-sm">
+                  {u.username}
+                  {u.status === "disabled" ? (
+                    <span className="rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[0.65rem] font-normal text-[var(--muted)]">
+                      disabled
+                    </span>
+                  ) : null}
+                </strong>
                 <small className="block truncate text-xs text-[var(--muted)]">
                   {u.role}
-                  {u.team ? ` · ${u.team}` : ""} · quota {u.daily_job_quota}
+                  {u.team ? ` · ${u.team}` : ""} · quota {u.daily_job_quota} · {u.query_count ?? 0} queries
                 </small>
                 {u.email || u.phone ? (
                   <small className="block truncate text-xs text-[var(--muted)]">
@@ -75,6 +86,9 @@ export default function UsersSection({ users }: { users: UsersApi }) {
                   </small>
                 ) : null}
               </span>
+              <button type="button" className="btn ghost sm shrink-0" onClick={() => setEditing(u)}>
+                Edit
+              </button>
             </li>
           ))}
         </ul>
@@ -172,6 +186,15 @@ export default function UsersSection({ users }: { users: UsersApi }) {
           {busy ? "Creating…" : "Create user"}
         </button>
       </form>
+
+      {editing ? (
+        <UserEditModal
+          user={editing}
+          onSave={users.update}
+          onDeactivate={users.deactivate}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
     </>
   );
 }

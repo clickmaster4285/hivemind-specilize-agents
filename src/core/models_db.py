@@ -33,7 +33,10 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     daily_job_quota: Mapped[int] = mapped_column(Integer, default=50)
+    status: Mapped[str] = mapped_column(String(20), default="active")  # active | disabled (disabled can't sign in)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     jobs: Mapped[list[Job]] = relationship(back_populates="user")
 

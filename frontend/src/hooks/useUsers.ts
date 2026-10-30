@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { createUser, listUsers } from "@/lib/api";
-import type { ManagedUser, UserCreateInput } from "@/lib/types";
+import { createUser, deactivateUser, listUsers, updateUser } from "@/lib/api";
+import type { ManagedUser, UserCreateInput, UserUpdateInput } from "@/lib/types";
 
 /**
  * Local accounts, for the admin Users panel. `active` = load the list (Settings is open and the
@@ -38,7 +38,23 @@ export function useUsers(active: boolean) {
     [load],
   );
 
-  return { users, create };
+  const update = useCallback(
+    async (id: number, payload: UserUpdateInput) => {
+      await updateUser(id, payload);
+      await load();
+    },
+    [load],
+  );
+
+  const deactivate = useCallback(
+    async (id: number) => {
+      await deactivateUser(id);
+      await load();
+    },
+    [load],
+  );
+
+  return { users, create, update, deactivate };
 }
 
 export type UsersApi = ReturnType<typeof useUsers>;
