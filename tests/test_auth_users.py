@@ -60,6 +60,19 @@ def test_admin_creates_member_user_with_team(session, admin):
     assert verify_password("hunter2!!", row.password_hash)  # stored hashed, and it verifies
 
 
+def test_duplicate_email_is_rejected(session, admin):
+    create_user(
+        UserCreatePayload(username="jade", password="longenough", email="dup@example.com"),
+        _admin=admin, db=session,
+    )
+    with pytest.raises(HTTPException) as exc:  # case-insensitive clash
+        create_user(
+            UserCreatePayload(username="kyle", password="longenough", email="DUP@example.com"),
+            _admin=admin, db=session,
+        )
+    assert exc.value.status_code == 409
+
+
 def test_bad_email_is_rejected(session, admin):
     with pytest.raises(HTTPException) as exc:
         create_user(
@@ -181,6 +194,18 @@ def test_seed_creates_then_updates_same_account(seed_session):
     assert action == "updated" and uid2 == uid
     assert seed_session.get(User, uid).team == "helpdesk"
     assert seed_session.get(User, uid).password_hash == first_hash
+
+
+def test_seed_rejects_duplicate_email_across_accounts(seed_session):
+    from src.core.seed_users import seed_user
+
+    seed_user(username="ops9", password="longenough", email="shared@example.com")
+    # a second account cannot take the same email (case-insensitive)
+    with pytest.raises(ValueError, match="already in use"):
+        seed_user(username="ops10", password="longenough", email="SHARED@example.com")
+    # but the owner may re-run with their own email (idempotent update)
+    action, _ = seed_user(username="ops9", password=None, email="shared@example.com", team="IT")
+    assert action == "updated"
 
 
 def test_seed_new_account_requires_a_password(seed_session):

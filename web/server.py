@@ -329,6 +329,8 @@ def create_user(
     email = (payload.email.strip() or None) if payload.email else None
     if email is not None and "@" not in email:
         raise HTTPException(status_code=422, detail="That does not look like an email address")
+    if email is not None and db.scalar(select(User).where(func.lower(User.email) == email.lower())) is not None:
+        raise HTTPException(status_code=409, detail="That email is already in use")
     user = User(
         username=username,
         password_hash=hash_password(payload.password),

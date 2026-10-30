@@ -22,7 +22,7 @@ import getpass
 import os
 import sys
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from src.core.auth import hash_password
 from src.core.config import Config
@@ -69,6 +69,10 @@ def seed_user(
         action = "updated" if user is not None else "created"
         if password is not None and len(password) < MIN_PASSWORD_LEN:
             raise ValueError(f"password must be at least {MIN_PASSWORD_LEN} characters")
+        if email is not None:
+            clash = session.scalar(select(User).where(func.lower(User.email) == email.lower()))
+            if clash is not None and (user is None or clash.id != user.id):
+                raise ValueError("that email is already in use by another account")
         if user is None:
             if not password:
                 raise ValueError("a password is required to create a new account")
