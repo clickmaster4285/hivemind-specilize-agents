@@ -73,7 +73,27 @@ export type AuthUser = {
   id: number;
   username: string;
   role: string;
+  team?: string | null;
   daily_job_quota?: number;
+};
+
+/** An account as the admin Users panel sees it (never the password hash). */
+export type ManagedUser = {
+  id: number;
+  username: string;
+  role: string;
+  team: string | null;
+  daily_job_quota: number;
+  created_at: string | null;
+};
+
+/** What the admin fills in to create an account. */
+export type UserCreateInput = {
+  username: string;
+  password: string;
+  role: "member" | "admin";
+  team?: string | null;
+  daily_job_quota?: number | null;
 };
 
 export type ModelInfo = {

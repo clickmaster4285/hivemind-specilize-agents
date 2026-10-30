@@ -29,6 +29,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(20), default="member")  # member|admin
+    team: Mapped[str | None] = mapped_column(String(40), nullable=True)  # e.g. "IT", "marketing" — segments query analytics
     daily_job_quota: Mapped[int] = mapped_column(Integer, default=50)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -3,6 +3,7 @@ import type {
   JobEvent,
   Health,
   Job,
+  ManagedUser,
   ModelInfo,
   RunMode,
   ServerInfo,
@@ -11,6 +12,7 @@ import type {
   Specialist,
   SpecialistInput,
   SpecialistOptions,
+  UserCreateInput,
 } from "./types";
 
 const API_PORT = process.env.NEXT_PUBLIC_API_PORT || "8787";
@@ -141,6 +143,15 @@ export async function login(username: string, password: string) {
 
 export async function me(): Promise<AuthUser> {
   return request("/api/auth/me");
+}
+
+/** Accounts (admin only). Self-serve registration stays disabled — admins create users here. */
+export async function listUsers(): Promise<ManagedUser[]> {
+  return request("/api/auth/users");
+}
+
+export async function createUser(payload: UserCreateInput): Promise<ManagedUser> {
+  return request("/api/auth/users", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function getHealth(): Promise<Health> {

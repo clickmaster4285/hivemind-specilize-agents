@@ -25,6 +25,7 @@ from src.core.auth import (
     create_access_token,
     get_current_user,
     get_db,
+    hash_password,
     require_admin,
     verify_password,
 )
@@ -101,6 +102,14 @@ app.add_middleware(
 class LoginPayload(BaseModel):
     username: str
     password: str
+
+
+class UserCreatePayload(BaseModel):
+    username: str
+    password: str
+    role: Literal["member", "admin"] = "member"
+    team: str | None = None            # e.g. "IT", "marketing" — free text, segments query analytics
+    daily_job_quota: int | None = None  # None keeps the model default
 
 
 class SpecialistPayload(BaseModel):
@@ -253,10 +262,10 @@ def login(payload: LoginPayload, db: Session = Depends(get_db)) -> dict[str, Any
 
 @app.post("/api/auth/register")
 def register_disabled() -> dict[str, Any]:
-    """Multi-user registration is deferred — use default admin for testing."""
+    """Public self-serve registration stays off: accounts are created by an admin (POST /api/auth/users)."""
     raise HTTPException(
         status_code=403,
-        detail="User registration is disabled for now. Sign in as admin (default: admin / admin123).",
+        detail="Open registration is disabled. Ask an admin to create your account.",
     )
 
 
@@ -266,8 +275,58 @@ def me(user: User = Depends(get_current_user)) -> dict[str, Any]:
         "id": user.id,
         "username": user.username,
         "role": user.role,
+        "team": user.team,
         "daily_job_quota": user.daily_job_quota,
     }
+
+
+def _user_public(user: User) -> dict[str, Any]:
+    """The account fields an admin may see. Never includes the password hash."""
+    return {
+        "id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "team": user.team,
+        "daily_job_quota": user.daily_job_quota,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+
+
+@app.get("/api/auth/users")
+def list_users(_admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """Admin-only: every account, so the admin can see who exists and which team they are on."""
+    users = db.scalars(select(User).order_by(User.created_at)).all()
+    return [_user_public(u) for u in users]
+
+
+@app.post("/api/auth/users", status_code=201)
+def create_user(
+    payload: UserCreatePayload,
+    _admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Admin provisions an account (the self-serve /register route stays disabled). The new user can then
+    sign in and chat — their queries land in the jobs table under their own user_id, so per-user and (via
+    the team tag) per-group query analytics work from first login. Rejects duplicate usernames."""
+    username = payload.username.strip()
+    if len(username) < 3:
+        raise HTTPException(status_code=422, detail="Username must be at least 3 characters")
+    if len(payload.password) < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    if db.scalar(select(User).where(User.username == username)) is not None:
+        raise HTTPException(status_code=409, detail="That username is already taken")
+    user = User(
+        username=username,
+        password_hash=hash_password(payload.password),
+        role=payload.role,
+        team=(payload.team.strip() or None) if payload.team else None,
+    )
+    if payload.daily_job_quota is not None:
+        user.daily_job_quota = max(0, payload.daily_job_quota)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return _user_public(user)
 
 
 # Specialists (src/specialists.py): everyone may read them; only admins change them — they are

@@ -89,6 +89,7 @@ def init_db(config: Config | None = None) -> None:
     engine = get_engine(config)
     Base.metadata.create_all(bind=engine)
     _ensure_column(engine, "jobs", "deleted_at", "deleted_at DATETIME")
+    _ensure_column(engine, "users", "team", "team VARCHAR(40)")
     _ensure_column(engine, "model_registry", "vision", "vision BOOLEAN DEFAULT 0")
     _ensure_column(engine, "model_registry", "image_gen", "image_gen BOOLEAN DEFAULT 0")
     _ensure_column(engine, "model_registry", "available", "available BOOLEAN DEFAULT 1")

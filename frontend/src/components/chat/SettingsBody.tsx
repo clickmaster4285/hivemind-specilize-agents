@@ -4,7 +4,9 @@ import { useState } from "react";
 
 import ServersSection from "@/components/chat/ServersSection";
 import SpecialistModal from "@/components/chat/SpecialistModal";
+import UsersSection from "@/components/chat/UsersSection";
 import { useServers } from "@/hooks/useServers";
+import { useUsers } from "@/hooks/useUsers";
 import type { ModelsApi } from "@/hooks/useModels";
 import type { SpecialistsApi } from "@/hooks/useSpecialists";
 import type { AuthUser, Specialist } from "@/lib/types";
@@ -28,6 +30,7 @@ export default function SettingsBody({
 }) {
   const isAdmin = user.role === "admin";
   const servers = useServers(isAdmin);
+  const users = useUsers(isAdmin);
   // undefined = modal closed, null = new specialist
   const [editing, setEditing] = useState<Specialist | null | undefined>(undefined);
 
@@ -36,11 +39,16 @@ export default function SettingsBody({
   return (
     <div className="mx-auto w-full max-w-6xl p-6">
       <div className="grid items-start gap-6 lg:grid-cols-2">
-        {/* ---- One side: Servers (create + list) ---- */}
+        {/* ---- One side (admin): Users, then Servers ---- */}
         {isAdmin ? (
-          <section className={panel}>
-            <ServersSection servers={servers} />
-          </section>
+          <div className="flex flex-col gap-6">
+            <section className={panel}>
+              <UsersSection users={users} />
+            </section>
+            <section className={panel}>
+              <ServersSection servers={servers} />
+            </section>
+          </div>
         ) : null}
 
         {/* ---- Other side: Models, then Agents ---- */}
