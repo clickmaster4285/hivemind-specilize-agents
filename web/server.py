@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.llm.specialists import COLLECTIONS, SpecialistStore
@@ -109,6 +109,8 @@ class UserCreatePayload(BaseModel):
     password: str
     role: Literal["member", "admin"] = "member"
     team: str | None = None            # e.g. "IT", "marketing" — free text, segments query analytics
+    email: str | None = None
+    phone: str | None = None
     daily_job_quota: int | None = None  # None keeps the model default
 
 
@@ -249,9 +251,14 @@ def sso_status() -> dict[str, Any]:
 
 @app.post("/api/auth/login")
 def login(payload: LoginPayload, db: Session = Depends(get_db)) -> dict[str, Any]:
-    user = db.scalar(select(User).where(User.username == payload.username))
+    # Sign in with either the username or the email (email match is case-insensitive). If two accounts
+    # somehow share an email, the first is used — email is not enforced unique (yet).
+    ident = payload.username.strip()
+    user = db.scalars(
+        select(User).where((User.username == ident) | (func.lower(User.email) == ident.lower()))
+    ).first()
     if user is None or not verify_password(payload.password, user.password_hash):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        raise HTTPException(status_code=401, detail="Invalid username/email or password")
     token = create_access_token(user)
     return {
         "access_token": token,
@@ -276,6 +283,8 @@ def me(user: User = Depends(get_current_user)) -> dict[str, Any]:
         "username": user.username,
         "role": user.role,
         "team": user.team,
+        "email": user.email,
+        "phone": user.phone,
         "daily_job_quota": user.daily_job_quota,
     }
 
@@ -287,6 +296,8 @@ def _user_public(user: User) -> dict[str, Any]:
         "username": user.username,
         "role": user.role,
         "team": user.team,
+        "email": user.email,
+        "phone": user.phone,
         "daily_job_quota": user.daily_job_quota,
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
@@ -315,11 +326,16 @@ def create_user(
         raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
     if db.scalar(select(User).where(User.username == username)) is not None:
         raise HTTPException(status_code=409, detail="That username is already taken")
+    email = (payload.email.strip() or None) if payload.email else None
+    if email is not None and "@" not in email:
+        raise HTTPException(status_code=422, detail="That does not look like an email address")
     user = User(
         username=username,
         password_hash=hash_password(payload.password),
         role=payload.role,
         team=(payload.team.strip() or None) if payload.team else None,
+        email=email,
+        phone=(payload.phone.strip() or None) if payload.phone else None,
     )
     if payload.daily_job_quota is not None:
         user.daily_job_quota = max(0, payload.daily_job_quota)

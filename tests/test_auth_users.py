@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from src.core.auth import require_admin, verify_password
 from src.core.db import Base
 from src.core.models_db import User  # noqa: F401 — registers the users table on Base
-from web.server import UserCreatePayload, create_user, list_users
+from web.server import LoginPayload, UserCreatePayload, create_user, list_users, login
 
 
 @pytest.fixture
@@ -41,18 +41,32 @@ def admin() -> User:
 
 def test_admin_creates_member_user_with_team(session, admin):
     out = create_user(
-        UserCreatePayload(username="alice", password="hunter2!!", team="IT"),
+        UserCreatePayload(
+            username="alice", password="hunter2!!", team="IT",
+            email="alice@example.com", phone="+92 300 1234567",
+        ),
         _admin=admin,
         db=session,
     )
     assert out["username"] == "alice"
     assert out["role"] == "member"
     assert out["team"] == "IT"
+    assert out["email"] == "alice@example.com"
+    assert out["phone"] == "+92 300 1234567"
     assert out["created_at"]
     assert "password_hash" not in out  # the hash must never leave the server
 
     row = session.scalar(select(User).where(User.username == "alice"))
     assert verify_password("hunter2!!", row.password_hash)  # stored hashed, and it verifies
+
+
+def test_bad_email_is_rejected(session, admin):
+    with pytest.raises(HTTPException) as exc:
+        create_user(
+            UserCreatePayload(username="heidi", password="longenough", email="not-an-email"),
+            _admin=admin, db=session,
+        )
+    assert exc.value.status_code == 422
 
 
 def test_duplicate_username_is_rejected(session, admin):
@@ -97,6 +111,25 @@ def test_list_users_returns_accounts_without_hashes(session, admin):
     assert {r["username"]: r["team"] for r in rows} == {"finn": "IT", "gail": None}
 
 
+# --- login by username or email ---------------------------------------------------------------
+
+def test_login_accepts_username_or_email(session, admin):
+    create_user(
+        UserCreatePayload(username="ivy", password="longenough", email="Ivy@Example.com"),
+        _admin=admin, db=session,
+    )
+    by_name = login(LoginPayload(username="ivy", password="longenough"), db=session)
+    assert by_name["user"]["username"] == "ivy"
+    # email is accepted too, case-insensitively
+    by_email = login(LoginPayload(username="ivy@example.com", password="longenough"), db=session)
+    assert by_email["user"]["username"] == "ivy"
+    assert by_email["access_token"]
+    # a wrong password is still refused
+    with pytest.raises(HTTPException) as exc:
+        login(LoginPayload(username="ivy", password="wrongpass!"), db=session)
+    assert exc.value.status_code == 401
+
+
 # --- the admin gate ---------------------------------------------------------------------------
 
 def test_require_admin_allows_admin_and_blocks_member():
@@ -134,10 +167,13 @@ def seed_session(monkeypatch):
 def test_seed_creates_then_updates_same_account(seed_session):
     from src.core.seed_users import seed_user
 
-    action, uid = seed_user(username="ops1", password="longenough", team="IT")
+    action, uid = seed_user(
+        username="ops1", password="longenough", team="IT", email="ops1@example.com", phone="123456"
+    )
     assert action == "created"
     row = seed_session.get(User, uid)
     assert row.team == "IT" and verify_password("longenough", row.password_hash)
+    assert row.email == "ops1@example.com" and row.phone == "123456"
 
     # re-run with no password: keeps the hash, updates the team
     first_hash = row.password_hash

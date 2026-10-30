@@ -6,7 +6,7 @@ import type { UsersApi } from "@/hooks/useUsers";
 import { errorText } from "@/lib/chat";
 import type { UserCreateInput } from "@/lib/types";
 
-const emptyUser: UserCreateInput = { username: "", password: "", role: "member", team: "" };
+const emptyUser: UserCreateInput = { username: "", password: "", role: "member", team: "", email: "", phone: "" };
 
 // Inline Tailwind building blocks (styling stays with the component), matching ServersSection.
 const field =
@@ -33,6 +33,8 @@ export default function UsersSection({ users }: { users: UsersApi }) {
         password: form.password,
         role: form.role,
         team: form.team?.trim() || null,
+        email: form.email?.trim() || null,
+        phone: form.phone?.trim() || null,
       });
       setDone(`Created ${form.username.trim()}.`);
       setForm(emptyUser); // the password leaves the page's memory
@@ -63,10 +65,15 @@ export default function UsersSection({ users }: { users: UsersApi }) {
             >
               <span className="min-w-0">
                 <strong className="block truncate text-sm">{u.username}</strong>
-                <small className="text-xs text-[var(--muted)]">
+                <small className="block truncate text-xs text-[var(--muted)]">
                   {u.role}
                   {u.team ? ` · ${u.team}` : ""} · quota {u.daily_job_quota}
                 </small>
+                {u.email || u.phone ? (
+                  <small className="block truncate text-xs text-[var(--muted)]">
+                    {[u.email, u.phone].filter(Boolean).join(" · ")}
+                  </small>
+                ) : null}
               </span>
             </li>
           ))}
@@ -131,6 +138,31 @@ export default function UsersSection({ users }: { users: UsersApi }) {
               <option value="development" />
               <option value="marketing" />
             </datalist>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className={label}>
+            Email
+            <input
+              className={field}
+              type="email"
+              placeholder="name@example.com (optional)"
+              autoComplete="off"
+              value={form.email ?? ""}
+              onChange={(e) => set({ email: e.target.value })}
+            />
+          </label>
+          <label className={label}>
+            Phone
+            <input
+              className={field}
+              type="tel"
+              placeholder="+92 300 1234567 (optional)"
+              autoComplete="off"
+              value={form.phone ?? ""}
+              onChange={(e) => set({ phone: e.target.value })}
+            />
           </label>
         </div>
 

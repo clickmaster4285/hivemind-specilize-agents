@@ -47,6 +47,8 @@ def seed_user(
     password: str | None,
     role: str = "member",
     team: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
     quota: int | None = None,
     config: Config | None = None,
 ) -> tuple[str, int]:
@@ -55,6 +57,10 @@ def seed_user(
     if len(username) < 3:
         raise ValueError("username must be at least 3 characters")
     team = (team.strip() or None) if team else None
+    email = (email.strip() or None) if email else None
+    if email is not None and "@" not in email:
+        raise ValueError("that does not look like an email address")
+    phone = (phone.strip() or None) if phone else None
 
     config = config or Config.from_env()
     init_db(config)
@@ -73,6 +79,8 @@ def seed_user(
                 user.password_hash = hash_password(password)
             user.role = role
         user.team = team
+        user.email = email
+        user.phone = phone
         if quota is not None:
             user.daily_job_quota = max(0, quota)
         session.flush()
@@ -86,9 +94,9 @@ def _print_users(config: Config) -> None:
         if not users:
             print("(no accounts yet)")
             return
-        print(f"{'id':>4}  {'username':<20} {'role':<8} {'team':<12} quota")
+        print(f"{'id':>4}  {'username':<20} {'role':<8} {'team':<12} {'email':<28} quota")
         for u in users:
-            print(f"{u.id:>4}  {u.username:<20} {u.role:<8} {(u.team or '-'):<12} {u.daily_job_quota}")
+            print(f"{u.id:>4}  {u.username:<20} {u.role:<8} {(u.team or '-'):<12} {(u.email or '-'):<28} {u.daily_job_quota}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -99,6 +107,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--password", help="plaintext password (else SEED_USER_PASSWORD or a prompt)")
     parser.add_argument("--role", choices=["member", "admin"], default="member")
     parser.add_argument("--team", default=None, help='e.g. "IT" or "marketing" — segments query analytics')
+    parser.add_argument("--email", default=None, help="contact email (optional)")
+    parser.add_argument("--phone", default=None, help="contact phone number (optional)")
     parser.add_argument("--quota", type=int, default=None, help="daily job quota (default: model default)")
     parser.add_argument("--list", action="store_true", help="list existing accounts and exit")
     args = parser.parse_args(argv)
@@ -117,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
             password=password,
             role=args.role,
             team=args.team,
+            email=args.email,
+            phone=args.phone,
             quota=args.quota,
             config=config,
         )

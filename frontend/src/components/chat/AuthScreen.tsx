@@ -20,7 +20,7 @@ const labelCol = "flex flex-col gap-1 text-[0.82rem] text-[var(--muted)]";
 
 /** The sign-in card shown when nobody is signed in. */
 export default function AuthScreen({ health, healthError, error, onSignIn }: Props) {
-  const [username, setUsername] = useState("admin");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   // the API address depends on how the browser reached the page: empty on the server, filled in the
   // browser (rendering it on the server gave a different address → React hydration error)
@@ -46,15 +46,13 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
             <p className="mt-[0.2rem] text-[0.85rem] text-[var(--muted)]">Sign in to continue</p>
           </div>
         </div>
-        <p className="m-0 text-[0.8rem] leading-[1.45] text-[var(--muted)]">
-          Testing login: <strong>admin / admin123</strong>
-        </p>
         <label className={labelCol}>
-          Username
+          Username or email
           <input
             className={field}
             name="username"
             autoComplete="username"
+            placeholder="username or name@example.com"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required

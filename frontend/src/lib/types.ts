@@ -74,6 +74,8 @@ export type AuthUser = {
   username: string;
   role: string;
   team?: string | null;
+  email?: string | null;
+  phone?: string | null;
   daily_job_quota?: number;
 };
 
@@ -83,6 +85,8 @@ export type ManagedUser = {
   username: string;
   role: string;
   team: string | null;
+  email: string | null;
+  phone: string | null;
   daily_job_quota: number;
   created_at: string | null;
 };
@@ -93,6 +97,8 @@ export type UserCreateInput = {
   password: string;
   role: "member" | "admin";
   team?: string | null;
+  email?: string | null;
+  phone?: string | null;
   daily_job_quota?: number | null;
 };
 
