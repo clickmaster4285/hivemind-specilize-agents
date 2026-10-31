@@ -3,7 +3,9 @@
 #       (".../networking/dns/aging-scavenging" matches "aging-scavenging").
 # facts: optional key terms the answer must contain (answer_eval.py); "a|b" = either is fine.
 # out_of_scope: the brain must answer "not enough evidence" (nothing in the knowledge base covers it).
-# Source covered so far: ms-windows-server-dns. Add questions whenever a source is added.
+# Coverage: all 34 enabled sources (it / development / marketing). The 32 added 2026-10-30 have
+# best-effort `docs:` endings — verify them against ingested URLs with `python -m src.brain.evaluate`.
+# Add questions whenever a source is added.
 
 questions:
   # ── English ─────────────────────────────────────────────────────────
@@ -249,6 +251,420 @@ questions:
     lang: hi-Latn
     question: regex mein group ka kya matlab hai aur kaise use karein?
     docs: [regex.html]
+
+  # ════════════════════════════════════════════════════════════════════
+  # Coverage for the 34-source corpus (drafted 2026-10-30, [C] draft / [U] review).
+  # NOTE: `docs:` endings below are best-effort from each site's public URL structure — run
+  # `python -m src.brain.evaluate` and correct any that don't match an ingested document URL.
+  # `facts:` are content terms and should hold regardless.
+  # ════════════════════════════════════════════════════════════════════
+
+  # ── IT: Active Directory Domain Services (ms-windows-server-adds) ────
+  - id: it-adds-promote
+    lang: en
+    question: How do I promote a server to a domain controller with PowerShell?
+    docs: [install-active-directory-domain-services, deploy-a-new-forest-on-a-standalone-server]
+    facts: ["Install-ADDSForest|Install-ADDSDomainController"]
+  - id: it-adds-fsmo
+    lang: en
+    question: What are the FSMO operations master roles in Active Directory?
+    docs: [fsmo-roles, operations-masters]
+    facts: ["PDC Emulator|RID|Schema Master|Infrastructure"]
+  - id: it-adds-funclevel
+    lang: hi-Latn
+    question: Active Directory functional level kya hota hai?
+    docs: [forest-and-domain-functional-levels, understanding-active-directory-functional-levels]
+    facts: ["functional level"]
+
+  # ── IT: Windows Server security (ms-windows-server-security) ─────────
+  - id: it-sec-credguard
+    lang: en
+    question: What does Credential Guard protect against?
+    docs: [credential-guard, credential-guard-how-it-works]
+    facts: ["Credential Guard|LSA|credential"]
+  - id: it-sec-wdac
+    lang: en
+    question: What is Windows Defender Application Control (WDAC)?
+    docs: [windows-defender-application-control, wdac]
+    facts: ["Application Control|WDAC|allowlist|code integrity"]
+
+  # ── IT: Windows Server networking technologies / DHCP / IPAM ─────────
+  - id: it-net-dhcp-failover
+    lang: en
+    question: How do I set up a DHCP failover relationship?
+    docs: [dhcp-failover]
+    facts: ["failover|load balance|hot standby"]
+  - id: it-net-ipam
+    lang: en
+    question: What is IPAM (IP Address Management) in Windows Server?
+    docs: [ipam]
+    facts: ["IPAM|IP Address Management"]
+
+  # ── IT: PowerShell (powershell-docs-conceptual) ─────────────────────
+  - id: it-ps-arrays
+    lang: en
+    question: How do arrays and hashtables differ in PowerShell?
+    docs: [everything-about-arrays, everything-about-hashtable]
+    facts: ["@()|@{}"]
+  - id: it-ps-strings
+    lang: en
+    question: How does string interpolation work in PowerShell?
+    docs: [everything-about-string-substitutions, everything-about-string]
+    facts: ["interpolation|$(|subexpression"]
+  - id: it-ps-pipeline
+    lang: hi-Latn
+    question: PowerShell pipeline kaise kaam karta hai?
+    docs: [the-powershell-pipeline, understanding-the-powershell-pipeline]
+    facts: ["pipeline"]
+
+  # ── IT: Kubernetes concepts (kubernetes-concepts) ───────────────────
+  - id: it-k8s-pod
+    lang: en
+    question: What is a Pod in Kubernetes?
+    docs: [pods]
+    facts: ["Pod|container"]
+  - id: it-k8s-service
+    lang: en
+    question: What does a Kubernetes Service do?
+    docs: [service]
+    facts: ["Service|ClusterIP|load balanc"]
+  - id: it-k8s-deploy
+    lang: en
+    question: What is a Deployment in Kubernetes?
+    docs: [deployment]
+    facts: ["Deployment|ReplicaSet"]
+
+  # ── IT: Docker Engine (docker-engine) ───────────────────────────────
+  - id: it-docker-network
+    lang: en
+    question: How do Docker networks let containers communicate?
+    docs: [network, bridge, drivers]
+    facts: ["bridge|network"]
+  - id: it-docker-volumes
+    lang: en
+    question: What is the difference between a Docker volume and a bind mount?
+    docs: [volumes, bind-mounts]
+    facts: ["volume|bind mount"]
+
+  # ── IT: PostgreSQL (postgresql-docs) ────────────────────────────────
+  - id: it-pg-createindex
+    lang: en
+    question: How do I create an index in PostgreSQL?
+    docs: [sql-createindex.html]
+    facts: ["CREATE INDEX"]
+  - id: it-pg-vacuum
+    lang: en
+    question: What is VACUUM used for in PostgreSQL?
+    docs: [sql-vacuum.html, routine-vacuuming.html]
+    facts: ["VACUUM|dead|bloat"]
+  - id: it-pg-tx
+    lang: en
+    question: How do transactions with BEGIN and COMMIT work in PostgreSQL?
+    docs: [tutorial-transactions.html, sql-begin.html]
+    facts: ["BEGIN|COMMIT|ROLLBACK"]
+
+  # ── IT: Ubuntu Server (ubuntu-server-docs) ──────────────────────────
+  - id: it-ubuntu-netplan
+    lang: en
+    question: How do I configure networking with Netplan on Ubuntu Server?
+    docs: [network-configuration, configuring-networks]
+    facts: ["netplan"]
+  - id: it-ubuntu-ssh
+    lang: en
+    question: How do I install and configure the OpenSSH server on Ubuntu?
+    docs: [openssh-server, service-openssh]
+    facts: ["openssh|sshd"]
+
+  # ── IT: nginx (nginx-org-docs) ──────────────────────────────────────
+  - id: it-nginx-proxy
+    lang: en
+    question: How do I configure nginx as a reverse proxy?
+    docs: [ngx_http_proxy_module.html]
+    facts: ["proxy_pass"]
+  - id: it-nginx-location
+    lang: en
+    question: What does the location directive do in nginx?
+    docs: [ngx_http_core_module.html]
+    facts: ["location"]
+  - id: it-nginx-gzip
+    lang: hi-Latn
+    question: nginx mein gzip compression kaise on karein?
+    docs: [ngx_http_gzip_module.html]
+    facts: ["gzip"]
+
+  # ── Development: MDN HTTP (mdn-web-http) ─────────────────────────────
+  - id: dev-http-301
+    lang: en
+    question: What does HTTP status code 301 mean?
+    docs: [301]
+    facts: ["Moved Permanently|permanent"]
+  - id: dev-http-cache
+    lang: en
+    question: What is the Cache-Control header used for?
+    docs: [Cache-Control]
+    facts: ["max-age|no-cache|no-store"]
+  - id: dev-http-cors
+    lang: en
+    question: What is CORS and the Access-Control-Allow-Origin header?
+    docs: [CORS]
+    facts: ["Access-Control-Allow-Origin|cross-origin"]
+
+  # ── Development: MDN JavaScript (mdn-web-javascript) ────────────────
+  - id: dev-js-promise
+    lang: en
+    question: How do Promises work in JavaScript?
+    docs: [Promise]
+    facts: ["then|resolve|reject"]
+  - id: dev-js-optional-chaining
+    lang: en
+    question: What does optional chaining with ?. do in JavaScript?
+    docs: [Optional_chaining]
+    facts: ["optional chaining|undefined"]
+  - id: dev-js-array-map
+    lang: hi-Latn
+    question: JavaScript mein array map() kaise use karte hain?
+    docs: [map, Array/map]
+    facts: ["map"]
+
+  # ── Development: MDN CSS (mdn-web-css) ──────────────────────────────
+  - id: dev-css-flexbox
+    lang: en
+    question: How does CSS flexbox layout work?
+    docs: [flexbox, Flexbox, flexible_box_layout]
+    facts: ["flex|justify-content|align-items"]
+  - id: dev-css-position
+    lang: en
+    question: What does position sticky do in CSS?
+    docs: [position]
+    facts: ["sticky"]
+
+  # ── Development: MDN HTML (mdn-web-html) ────────────────────────────
+  - id: dev-html-form
+    lang: en
+    question: What does the HTML form element do?
+    docs: [form]
+    facts: ["action|method"]
+  - id: dev-html-input
+    lang: en
+    question: What input types does the HTML input element support?
+    docs: [input]
+    facts: ["type"]
+
+  # ── Development: Python Tutorial (python-docs-tutorial) ─────────────
+  - id: dev-py-listcomp
+    lang: en
+    question: How do list comprehensions work in Python?
+    docs: [datastructures.html]
+    facts: ["comprehension"]
+  - id: dev-py-classes
+    lang: en
+    question: How do I define a class in Python?
+    docs: [classes.html]
+    facts: ["class|__init__|self"]
+  - id: dev-py-exceptions
+    lang: en
+    question: How does try and except error handling work in Python?
+    docs: [errors.html]
+    facts: ["try|except"]
+
+  # ── Development: Django (django-docs) ───────────────────────────────
+  - id: dev-dj-models
+    lang: en
+    question: How do I define a model in Django?
+    docs: [models]
+    facts: ["models.Model|Field"]
+  - id: dev-dj-queries
+    lang: en
+    question: How does the Django ORM filter a QuerySet?
+    docs: [queries, querysets]
+    facts: ["filter|QuerySet"]
+  - id: dev-dj-migrations
+    lang: en
+    question: How do Django migrations work?
+    docs: [migrations]
+    facts: ["makemigrations|migrate"]
+
+  # ── Development: FastAPI (fastapi-docs) ─────────────────────────────
+  - id: dev-fa-pathparams
+    lang: en
+    question: How do I declare a path parameter in FastAPI?
+    docs: [path-params]
+    facts: ["path parameter|item_id"]
+  - id: dev-fa-body
+    lang: en
+    question: How do I use a Pydantic model for a request body in FastAPI?
+    docs: [body]
+    facts: ["BaseModel|request body"]
+  - id: dev-fa-depends
+    lang: en
+    question: How does dependency injection with Depends work in FastAPI?
+    docs: [dependencies]
+    facts: ["Depends"]
+
+  # ── Development: Rust Book (rust-book) ──────────────────────────────
+  - id: dev-rust-ownership
+    lang: en
+    question: What is ownership in Rust?
+    docs: [ch04-01-what-is-ownership.html]
+    facts: ["ownership|borrow"]
+  - id: dev-rust-result
+    lang: en
+    question: How do I handle recoverable errors with Result in Rust?
+    docs: [ch09-02-recoverable-errors-with-result.html]
+    facts: ["Result|Ok|Err"]
+  - id: dev-rust-traits
+    lang: en
+    question: What are traits in Rust?
+    docs: [ch10-02-traits.html]
+    facts: ["trait"]
+
+  # ── Development: React (react-learn) ────────────────────────────────
+  - id: dev-react-usestate
+    lang: en
+    question: What is the useState hook in React?
+    docs: [state-a-components-memory]
+    facts: ["useState"]
+  - id: dev-react-useeffect
+    lang: en
+    question: What does the useEffect hook do in React?
+    docs: [synchronizing-with-effects, lifecycle-of-reactive-effects]
+    facts: ["useEffect"]
+  - id: dev-react-lists
+    lang: en
+    question: How do I render a list with keys in React?
+    docs: [rendering-lists]
+    facts: ["key"]
+
+  # ── Development: TypeScript Handbook (typescript-handbook) ──────────
+  - id: dev-ts-interfaces
+    lang: en
+    question: What are interfaces in TypeScript?
+    docs: [everyday-types.html, objects.html]
+    facts: ["interface"]
+  - id: dev-ts-generics
+    lang: en
+    question: How do generics work in TypeScript?
+    docs: [generics.html]
+    facts: ["generic"]
+
+  # ── Marketing: Google Search Central (google-search-central) ────────
+  - id: mkt-gsc-title
+    lang: en
+    question: How do I write a good title link for Google Search results?
+    docs: [title-link]
+    facts: ["title"]
+  - id: mkt-gsc-canonical
+    lang: en
+    question: What is a canonical URL and how do I set one?
+    docs: [canonicalization, consolidate-duplicate-urls]
+    facts: ["canonical"]
+  - id: mkt-gsc-crawl
+    lang: hi-Latn
+    question: Google crawling aur indexing kaise kaam karti hai?
+    docs: [overview, crawling-indexing]
+    facts: ["crawl|index"]
+
+  # ── Marketing: schema.org (schema-org-docs) ─────────────────────────
+  - id: mkt-schema-add
+    lang: en
+    question: How do I add structured data with schema.org?
+    docs: [gs.html, schemas.html]
+    facts: ["JSON-LD|microdata|itemtype"]
+  - id: mkt-schema-what
+    lang: en
+    question: What is schema.org and what is it used for?
+    docs: [documents.html, about.html]
+    facts: ["structured data|vocabulary"]
+
+  # ── Marketing: web.dev (web-dev) ────────────────────────────────────
+  - id: mkt-webdev-cwv
+    lang: en
+    question: What are the Core Web Vitals?
+    docs: [vitals, lcp]
+    facts: ["LCP|CLS|INP|Largest Contentful Paint"]
+  - id: mkt-webdev-lcp
+    lang: en
+    question: How do I improve Largest Contentful Paint (LCP)?
+    docs: [lcp, optimize-lcp]
+    facts: ["LCP|Largest Contentful Paint"]
+
+  # ── Marketing: MDN Performance (mdn-web-performance) ────────────────
+  - id: mkt-perf-lazy
+    lang: en
+    question: What is lazy loading and how does it improve performance?
+    docs: [Lazy_loading]
+    facts: ["lazy"]
+  - id: mkt-perf-cache
+    lang: en
+    question: How does browser caching improve web performance?
+    docs: [Caching]
+    facts: ["cache"]
+
+  # ── Marketing: Sitemaps protocol (sitemaps-protocol) ────────────────
+  - id: mkt-sitemap-format
+    lang: en
+    question: What does an XML sitemap look like?
+    docs: [protocol.html]
+    facts: ["urlset|loc|url"]
+  - id: mkt-sitemap-limit
+    lang: en
+    question: How many URLs can a single XML sitemap contain?
+    docs: [protocol.html, faq.html]
+    facts: ["50,000|50000"]
+
+  # ── Marketing: robots.txt / robots meta (google-robots-txt) ─────────
+  - id: mkt-robots-block
+    lang: en
+    question: How do I block a page from crawling with robots.txt?
+    docs: [robots_txt, intro, create-robots-txt]
+    facts: ["Disallow|User-agent"]
+  - id: mkt-robots-noindex
+    lang: en
+    question: What does the noindex robots meta tag do?
+    docs: [robots-meta-tag]
+    facts: ["noindex"]
+
+  # ── Marketing: Google Analytics (google-analytics-docs) ─────────────
+  - id: mkt-ga-event
+    lang: en
+    question: How do I send a custom event to Google Analytics?
+    docs: [events]
+    facts: ["event|gtag"]
+
+  # ── Marketing: Google Tag Platform (google-tag-platform) ────────────
+  - id: mkt-tag-gtag-vs-gtm
+    lang: en
+    question: What is the difference between gtag.js and Google Tag Manager?
+    docs: [tag-manager, gtagjs, devguide]
+    facts: ["gtag|Tag Manager"]
+
+  # ── Marketing: Open Graph protocol (open-graph-protocol) ────────────
+  - id: mkt-og-tags
+    lang: en
+    question: What Open Graph meta tags do I need for a link preview?
+    docs: [ogp.me]
+    facts: ["og:title|og:image|og:url"]
+
+  # ── Marketing: Bing Web Search API (bing-web-search-api) ────────────
+  - id: mkt-bing-call
+    lang: en
+    question: How do I call the Bing Web Search API?
+    docs: [overview, quickstarts]
+    facts: ["Ocp-Apim-Subscription-Key|Bing Web Search"]
+
+  # ── Marketing: on-page metadata (mdn-webpage-metadata) ──────────────
+  - id: mkt-meta-desc
+    lang: en
+    question: How do I add a page title and meta description for SEO?
+    docs: [webpage_metadata]
+    facts: ["description|title"]
+
+  # ── Marketing: SEO glossary (mdn-seo-glossary) ──────────────────────
+  - id: mkt-seo-meaning
+    lang: en
+    question: What does SEO stand for?
+    docs: [SEO]
+    facts: ["Search Engine Optimization"]
 
   # ── Out of scope: the right answer is "not enough evidence" ─────────
   - id: oos-vlan

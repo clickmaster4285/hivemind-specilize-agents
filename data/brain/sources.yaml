@@ -194,14 +194,16 @@ sources:
     title: PostgreSQL documentation — current
     kind: web_page
     url: https://www.postgresql.org/docs/current/
-    crawl_depth: 1                # the TOC index + the chapter pages it links to
+    crawl_depth: 2                # TOC index → chapter landing pages → their content pages (depth 1 only
+                                  # reached landing pages: 80 docs but ~195 chunks; bumped 2026-10-30)
     include: "https://www.postgresql.org/docs/current/*"
     collection: it
     publisher: PostgreSQL Global Development Group
     licence: PostgreSQL          # postgresql.org/about/licence, checked 2026-10-29 (permissive; covers docs)
     language: en
     refresh_every: 30d
-    max_pages: 80
+    max_pages: 300               # raised 2026-10-30: depth-2 content pages need budget beyond the ~80
+                                 # chapter landing pages (at 80 the crawl never reached SQL/command pages)
     reason: Authoritative database administration + SQL reference
     added_by: admin
     added_on: 2026-10-29
