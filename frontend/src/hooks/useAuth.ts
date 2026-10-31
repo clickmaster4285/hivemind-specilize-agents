@@ -6,8 +6,9 @@ import { errorText } from "@/lib/chat";
 import type { AuthUser } from "@/lib/types";
 
 type AuthEvents = {
-  /** After sign-in or a restored session: load the user's data (fresh = just signed in). */
-  onSignedIn: (fresh: boolean) => Promise<void> | void;
+  /** After sign-in or a restored session: load the user's data (fresh = just signed in). The user is
+   *  passed so per-user state (history pointers, migration) is scoped to the right account. */
+  onSignedIn: (fresh: boolean, user: AuthUser) => Promise<void> | void;
   /** "logout" = the user signed out (the token is still valid during this call); "expired" = a 401 dropped it. */
   onSignedOut: (reason: "logout" | "expired") => void;
 };
@@ -26,7 +27,7 @@ export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
     me()
       .then(async (u) => {
         setUser(u);
-        await onSignedIn(false);
+        await onSignedIn(false, u);
       })
       .catch(() => {
         setToken(null);
@@ -45,8 +46,9 @@ export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
     async (username: string, password: string) => {
       setError(null);
       try {
-        setUser(await login(username.trim(), password));
-        await onSignedIn(true);
+        const u = await login(username.trim(), password);
+        setUser(u);
+        await onSignedIn(true, u);
       } catch (err) {
         setError(errorText(err));
       }

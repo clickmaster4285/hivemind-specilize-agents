@@ -17,16 +17,9 @@ from sqlalchemy.orm import Session
 from src.core.auth import hash_password, require_admin, verify_password
 from src.core.db import Base
 from src.core.models_db import Job, User  # noqa: F401 — registers the tables on Base
-from web.server import (
-    LoginPayload,
-    UserCreatePayload,
-    UserUpdatePayload,
-    create_user,
-    deactivate_user,
-    list_users,
-    login,
-    update_user,
-)
+from web.routers.auth import login
+from web.routers.users import create_user, deactivate_user, list_users, update_user
+from web.schemas import LoginPayload, UserCreatePayload, UserUpdatePayload
 
 
 @pytest.fixture

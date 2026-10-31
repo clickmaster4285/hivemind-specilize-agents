@@ -19,7 +19,7 @@ import { confirmCommand, forgetServers, type ImageProfile } from "@/lib/api";
 import { chatImagesToPending, errorText, IMAGE_QUESTION, type EditStrength } from "@/lib/chat";
 import { markConfirmAnswered } from "@/lib/feedReducer";
 import type { ChatThread } from "@/lib/threads";
-import type { FeedItem, RunMode } from "@/lib/types";
+import type { AuthUser, FeedItem, RunMode } from "@/lib/types";
 
 function useAppState() {
   const health = useHealth();
@@ -56,14 +56,15 @@ function useAppState() {
 
   const { load: loadSpecialists, clear: clearSpecialists } = specialists;
   const { refresh: refreshModels } = models;
-  const { refreshJobs, loadHistory, clear: clearJobs, selectThread } = history;
+  const { refreshJobs, loadHistory, clear: clearJobs } = history;
   const { setFeed } = chat;
   const onSignedIn = useCallback(
-    async (fresh: boolean) => {
+    async (fresh: boolean, user: AuthUser) => {
       await loadSpecialists();
       await refreshModels(fresh);
-      // load the chat/project metadata first so refreshed jobs group under their saved titles/pins
-      await loadHistory();
+      // load the chat/project metadata first so refreshed jobs group under their saved titles/pins;
+      // the user id scopes the per-device open-chat pointer and the one-time history migration
+      await loadHistory(user.id);
       await refreshJobs();
     },
     [loadSpecialists, refreshModels, loadHistory, refreshJobs],
@@ -72,13 +73,12 @@ function useAppState() {
     (reason: "logout" | "expired") => {
       if (reason === "logout") {
         void forgetServers().catch(() => undefined);
-        selectThread(null);
       }
       clearSpecialists();
-      clearJobs();
+      clearJobs();          // resets jobs + metadata + the open-chat/project selection and forgets the user
       setFeed([]);
     },
-    [clearSpecialists, clearJobs, selectThread, setFeed],
+    [clearSpecialists, clearJobs, setFeed],
   );
   const auth = useAuth({ onSignedIn, onSignedOut });
 

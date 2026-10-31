@@ -486,8 +486,132 @@ def mdns_name(ip: str, timeout: float = 0.5) -> str:
     return parse_ptr_answer(data)
 
 
+# ── identification: SNMP v2c (community "public", read-only GET on udp/161) ──
+# Managed gear — switches, printers, many cameras/NAS/UPS — answers SNMP GET with the standard
+# MIB-2 / ENTITY-MIB / Printer-MIB objects below, which is where a model and (the only place a
+# sweep can read one) a serial number come from. We only ever GET, and only the common community.
+SNMP_PORT = 161
+SNMP_OIDS = {                                       # OID → the field it fills
+    "1.3.6.1.2.1.1.5.0": "name",                    # sysName
+    "1.3.6.1.2.1.47.1.1.1.1.13.1": "model",         # entPhysicalModelName.1
+    "1.3.6.1.2.1.47.1.1.1.1.11.1": "serial",        # entPhysicalSerialNum.1
+    "1.3.6.1.2.1.43.5.1.1.17.1": "prt_serial",      # prtGeneralSerialNumber.1 (printers)
+}
+_SNMP_REQUEST_ID = 0x4D41                           # fixed arbitrary id ("MA"); we never correlate replies
+
+
+def _ber_len(n: int) -> bytes:
+    if n < 0x80:
+        return bytes([n])
+    body = n.to_bytes((n.bit_length() + 7) // 8, "big")
+    return bytes([0x80 | len(body)]) + body
+
+
+def _ber(tag: int, body: bytes) -> bytes:
+    return bytes([tag]) + _ber_len(len(body)) + body
+
+
+def _ber_int(n: int) -> bytes:
+    return _ber(0x02, n.to_bytes((n.bit_length() // 8) + 1, "big", signed=True))
+
+
+def _encode_oid(oid: str) -> bytes:
+    arcs = [int(p) for p in oid.split(".")]
+    body = bytearray([40 * arcs[0] + arcs[1]])
+    for arc in arcs[2:]:
+        chunk = bytearray([arc & 0x7F])
+        arc >>= 7
+        while arc:
+            chunk.insert(0, 0x80 | (arc & 0x7F))
+            arc >>= 7
+        body += chunk
+    return _ber(0x06, bytes(body))
+
+
+def _snmp_get_request(oids: list[str], community: str) -> bytes:
+    varbinds = b"".join(_ber(0x30, _encode_oid(o) + _ber(0x05, b"")) for o in oids)   # OID + NULL
+    pdu = _ber(0xA0, _ber_int(_SNMP_REQUEST_ID) + _ber_int(0) + _ber_int(0) + _ber(0x30, varbinds))
+    return _ber(0x30, _ber_int(1) + _ber(0x04, community.encode()) + pdu)             # version 1 = SNMPv2c
+
+
+def _ber_tlv(data: bytes, off: int) -> tuple[int, bytes, int]:
+    tag = data[off]
+    first = data[off + 1]
+    off += 2
+    if first < 0x80:
+        length = first
+    else:
+        n = first & 0x7F
+        length = int.from_bytes(data[off:off + n], "big")
+        off += n
+    return tag, data[off:off + length], off + length
+
+
+def _decode_oid(data: bytes) -> str:
+    arcs = [data[0] // 40, data[0] % 40]
+    val = 0
+    for b in data[1:]:
+        val = (val << 7) | (b & 0x7F)
+        if not b & 0x80:
+            arcs.append(val)
+            val = 0
+    return ".".join(str(a) for a in arcs)
+
+
+def parse_snmp(data: bytes) -> dict[str, str]:
+    """{oid: value} from an SNMPv2c GetResponse — printable strings and integers; error varbinds skipped."""
+    try:
+        _, msg, _ = _ber_tlv(data, 0)                       # outer SEQUENCE
+        _, _, off = _ber_tlv(msg, 0)                        # version
+        _, _, off = _ber_tlv(msg, off)                      # community
+        _, pdu, _ = _ber_tlv(msg, off)                      # Response PDU (0xA2)
+        _, _, off = _ber_tlv(pdu, 0)                        # request-id
+        _, _, off = _ber_tlv(pdu, off)                      # error-status
+        _, _, off = _ber_tlv(pdu, off)                      # error-index
+        _, vbs, _ = _ber_tlv(pdu, off)                      # varbind list
+        out: dict[str, str] = {}
+        off = 0
+        while off < len(vbs):
+            _, vb, off = _ber_tlv(vbs, off)                 # one varbind
+            _, oid_raw, vo = _ber_tlv(vb, 0)
+            vtag, vval, _ = _ber_tlv(vb, vo)
+            if vtag == 0x04:                                # OCTET STRING
+                text = re.sub(r"\s+", " ", vval.decode("latin-1", "replace")).strip()
+                if text:
+                    out[_decode_oid(oid_raw)] = text
+            elif vtag == 0x02:                              # INTEGER
+                out[_decode_oid(oid_raw)] = str(int.from_bytes(vval, "big"))
+            # 0x80/0x81/0x82 = noSuchObject / noSuchInstance / endOfMibView → no value, skip
+        return out
+    except (IndexError, ValueError):
+        return {}
+
+
+def snmp_get(ip: str, oids: list[str], *, community: str = "public", timeout: float = 0.6) -> dict[str, str]:
+    """One read-only SNMPv2c GET for `oids` → {oid: value}; {} when the device does not answer."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(timeout)
+            s.sendto(_snmp_get_request(oids, community), (ip, SNMP_PORT))
+            data, _ = s.recvfrom(4096)
+    except OSError:
+        return {}
+    return parse_snmp(data)
+
+
+def snmp_identify(ip: str, *, community: str = "public") -> dict[str, str]:
+    """Best-effort name / model / serial for managed gear via SNMP (community 'public'). {} if silent."""
+    got = snmp_get(ip, list(SNMP_OIDS), community=community)
+    roles = {role: got[oid] for oid, role in SNMP_OIDS.items() if got.get(oid)}
+    out = {k: roles[k] for k in ("name", "model") if roles.get(k)}
+    serial = roles.get("serial") or roles.get("prt_serial")
+    if serial:
+        out["serial"] = serial
+    return out
+
+
 def identify(devices: list[Device], *, deadline: float) -> None:
-    """Fill model / name (and refine type) from SSDP and mDNS. Best-effort; mutates `devices` in place."""
+    """Fill model / name / serial (and refine type) from SSDP, mDNS and SNMP. Best-effort; mutates in place."""
     by_ip = {d.ip: d for d in devices}
     try:
         locations = ssdp_locations(timeout=min(2.5, max(0.5, deadline - time.monotonic())))
@@ -509,6 +633,14 @@ def identify(devices: list[Device], *, deadline: float) -> None:
             for d, name in zip(unnamed, pool.map(lambda dev: mdns_name(dev.ip), unnamed)):
                 if name:
                     d.name = name
+    # SNMP (community "public") for devices still missing a serial — managed gear only; read-only GET
+    targets = [d for d in devices if not d.serial]
+    if targets and time.monotonic() < deadline:
+        with ThreadPoolExecutor(max_workers=max(1, min(WORKERS, len(targets)))) as pool:
+            for d, info in zip(targets, pool.map(lambda dev: snmp_identify(dev.ip), targets)):
+                d.name = d.name or info.get("name", "")
+                d.model = d.model or info.get("model", "")
+                d.serial = d.serial or info.get("serial", "")
 
 
 # ── the scan ─────────────────────────────────────────────────────────────
@@ -568,8 +700,9 @@ def scan(
 
 # ── presentation ─────────────────────────────────────────────────────────
 def rows(result: ScanResult) -> list[list[str]]:
-    header = ["IP address", "Type", "Name", "Model", "Manufacturer", "MAC address", "Open ports", "Found by"]
-    body = [[d.ip, d.type or "—", d.name or "—", d.model or "—", d.vendor or "—", d.mac or "—",
+    header = ["IP address", "Type", "Name", "Model", "Serial", "Manufacturer", "MAC address",
+              "Open ports", "Found by"]
+    body = [[d.ip, d.type or "—", d.name or "—", d.model or "—", d.serial or "—", d.vendor or "—", d.mac or "—",
              ", ".join(f"{p} {PORT_NAMES.get(p, '')}".strip() for p in d.ports) or "—", d.found_by]
             for d in result.devices]
     return [header, *body]
@@ -595,7 +728,9 @@ def summary(result: ScanResult) -> str:
 NOTES = ("Found by: ping, an open port (tcp), or only the network's address table (arp — e.g. PCs whose firewall "
          "blocks ping). Names come from Windows (NetBIOS) or DNS and are often missing for phones and IoT devices; "
          "the manufacturer comes from the MAC address (IEEE list). Model and some names come from the device's "
-         "own SSDP/UPnP and mDNS announcements, where it makes them. Type is a best-effort guess from the name, "
+         "own SSDP/UPnP and mDNS announcements, where it makes them. Model and serial also come from SNMP "
+         "(community 'public') on managed gear such as switches and printers; most home/office devices expose no "
+         "serial to a credential-free scan, so that column is often empty. Type is a best-effort guess from the name, "
          "model, open ports, manufacturer and whether the device is the gateway — treat it as a hint, not a certainty.")
 
 
@@ -612,7 +747,7 @@ def xlsx_bytes(result: ScanResult) -> bytes:
         ws.append(row)
     for cell in ws[1]:
         cell.font = Font(bold=True)
-    for col, width in zip("ABCDEFGH", (16, 14, 20, 24, 26, 20, 44, 10)):
+    for col, width in zip("ABCDEFGHI", (16, 14, 20, 24, 18, 26, 20, 44, 10)):
         ws.column_dimensions[col].width = width
     ws.freeze_panes = "A2"
     info = wb.create_sheet("Scan")

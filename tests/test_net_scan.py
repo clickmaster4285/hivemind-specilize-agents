@@ -78,11 +78,12 @@ def test_switched_off_and_stop(fake_network):
 
 def test_table_and_excel():
     result = ScanResult("192.168.1.0/24", 254, [Device("192.168.1.10", "nas-01", "aa:bb:cc:dd:ee:ff", [445, 443],
-                                                      "ping", "QNAP Systems, Inc.", type="NAS", model="DS224+")], 3.2)
+                                                      "ping", "QNAP Systems, Inc.", type="NAS", model="DS224+",
+                                                      serial="Q2A3B4C5")], 3.2)
     table = net_scan.markdown_table(result)
-    assert table.splitlines()[0] == ("| IP address | Type | Name | Model | Manufacturer | MAC address | "
+    assert table.splitlines()[0] == ("| IP address | Type | Name | Model | Serial | Manufacturer | MAC address | "
                                      "Open ports | Found by |")
-    assert ("| 192.168.1.10 | NAS | nas-01 | DS224+ | QNAP Systems, Inc. | aa:bb:cc:dd:ee:ff | "
+    assert ("| 192.168.1.10 | NAS | nas-01 | DS224+ | Q2A3B4C5 | QNAP Systems, Inc. | aa:bb:cc:dd:ee:ff | "
             "445 SMB, 443 HTTPS | ping |") in table
     from io import BytesIO
 
@@ -181,6 +182,44 @@ def test_mdns_ptr_answer_is_parsed():
     answer = b"\xc0\x0c" + b"\x00\x0c" + b"\x00\x01" + b"\x00\x00\x00\x3c" + len(rdata).to_bytes(2, "big") + rdata
     assert net_scan.parse_ptr_answer(header + question + answer) == "my-printer"
     assert net_scan.parse_ptr_answer(b"\x00" * 12) == ""        # no answers
+
+
+def test_snmp_request_round_trips_oid_encoding():
+    # the GET we build must carry the four OIDs we ask for, each decodable again
+    req = net_scan._snmp_get_request(list(net_scan.SNMP_OIDS), "public")
+    assert b"public" in req
+    for oid in net_scan.SNMP_OIDS:
+        assert net_scan._encode_oid(oid)[2:] in req          # the OID body (after tag+len) is present
+
+
+def test_parse_snmp_reads_strings_and_skips_errors():
+    _ber, _ber_int, _oid = net_scan._ber, net_scan._ber_int, net_scan._encode_oid
+    vb = lambda oid, tag, val: _ber(0x30, _oid(oid) + _ber(tag, val))
+    varbinds = (vb("1.3.6.1.2.1.1.5.0", 0x04, b"switch-core")
+                + vb("1.3.6.1.2.1.47.1.1.1.1.13.1", 0x04, b"WS-C2960X")
+                + vb("1.3.6.1.2.1.47.1.1.1.1.11.1", 0x04, b"FOC1234ABCD")
+                + vb("1.3.6.1.2.1.43.5.1.1.17.1", 0x81, b""))      # noSuchInstance → must be skipped
+    pdu = _ber(0xA2, _ber_int(net_scan._SNMP_REQUEST_ID) + _ber_int(0) + _ber_int(0) + _ber(0x30, varbinds))
+    packet = _ber(0x30, _ber_int(1) + _ber(0x04, b"public") + pdu)
+    got = net_scan.parse_snmp(packet)
+    assert got["1.3.6.1.2.1.1.5.0"] == "switch-core"
+    assert got["1.3.6.1.2.1.47.1.1.1.1.11.1"] == "FOC1234ABCD"
+    assert "1.3.6.1.2.1.43.5.1.1.17.1" not in got              # the error varbind carried no value
+    assert net_scan.parse_snmp(b"\x00\x01") == {}              # junk → {}
+
+
+def test_snmp_identify_maps_oids_to_fields(monkeypatch):
+    monkeypatch.setattr(net_scan, "snmp_get", lambda ip, oids, **kw: {
+        "1.3.6.1.2.1.1.5.0": "switch-core",
+        "1.3.6.1.2.1.47.1.1.1.1.13.1": "WS-C2960X",
+        "1.3.6.1.2.1.47.1.1.1.1.11.1": "FOC1234ABCD"})
+    assert net_scan.snmp_identify("10.0.0.1") == {"name": "switch-core", "model": "WS-C2960X",
+                                                  "serial": "FOC1234ABCD"}
+    # printer: only prtGeneralSerialNumber present → used as the serial
+    monkeypatch.setattr(net_scan, "snmp_get", lambda ip, oids, **kw: {"1.3.6.1.2.1.43.5.1.1.17.1": "CNABC123"})
+    assert net_scan.snmp_identify("10.0.0.2") == {"serial": "CNABC123"}
+    monkeypatch.setattr(net_scan, "snmp_get", lambda ip, oids, **kw: {})
+    assert net_scan.snmp_identify("10.0.0.3") == {}            # silent device → {}
 
 
 def test_random_macs_are_private(monkeypatch):

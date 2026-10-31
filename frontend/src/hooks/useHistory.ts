@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import {
   createProjectApi,
@@ -11,9 +11,16 @@ import {
   softDeleteJobs,
   type ThreadMeta,
 } from "@/lib/api";
-import { activeProjectId, readLegacyProjects, setActiveProjectId, type Project } from "@/lib/projects";
+import {
+  activeProjectId,
+  clearLegacyProjects,
+  readLegacyProjects,
+  setActiveProjectId,
+  type Project,
+} from "@/lib/projects";
 import {
   buildThreads,
+  clearLegacyThreads,
   getActiveThreadId,
   readLegacyThreads,
   setActiveThreadId,
@@ -33,13 +40,9 @@ export function useHistory() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [activeThreadId, setActiveThreadIdState] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
-
-  // restore the per-device pointers (which chat/project was open) after mount
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time load from browser storage
-    setProjectId(activeProjectId());
-    setActiveThreadIdState(getActiveThreadId());
-  }, []);
+  // The signed-in user. All per-device pointers (open chat/project) are namespaced by it so a shared
+  // browser never shows one person another's chats; null until loadHistory() runs after sign-in.
+  const [userId, setUserId] = useState<number | null>(null);
 
   const jobById = useMemo(() => new Map(jobs.map((j) => [j.id, j])), [jobs]);
   const threads = useMemo(() => buildThreads(jobs, threadMeta), [jobs, threadMeta]);
@@ -80,10 +83,14 @@ export function useHistory() {
     setJobs((prev) => prev.filter((j) => !set.has(j.id)));
   }, []);
 
-  /** Load chat/project metadata from the server; on first run, migrate any old browser-stored history. */
-  const loadHistory = useCallback(async () => {
+  /** Load the signed-in user's chat/project metadata from the server; on their first run, migrate any old
+   *  browser-stored history into THIS account, then delete the local blob so no other account can adopt it.
+   *  The migrated flag and the open-chat/project pointers are namespaced per user. */
+  const loadHistory = useCallback(async (uid: number) => {
+    setUserId(uid);
     let hist = await fetchHistory();
-    const migrated = typeof window !== "undefined" && localStorage.getItem(MIGRATED_KEY);
+    const migratedKey = `${MIGRATED_KEY}:${uid}`;
+    const migrated = typeof window !== "undefined" && localStorage.getItem(migratedKey);
     if (!hist.threads.length && !migrated) {
       const legacyThreads = readLegacyThreads();
       const legacyProjects = readLegacyProjects();
@@ -94,22 +101,28 @@ export function useHistory() {
         } catch {
           // best-effort: chats still rebuild from jobs' thread_id even if the import fails
         }
+        // consume the blob so a second user on this shared browser can never import it as their own
+        clearLegacyThreads();
+        clearLegacyProjects();
       }
-      if (typeof window !== "undefined") localStorage.setItem(MIGRATED_KEY, "1");
+      if (typeof window !== "undefined") localStorage.setItem(migratedKey, "1");
     }
     setThreadMeta(hist.threads);
     setProjects(hist.projects);
+    // restore this user's own open chat/project now that we know who they are
+    setActiveThreadIdState(getActiveThreadId(uid));
+    setProjectId(activeProjectId(uid));
   }, []);
 
   const selectThread = useCallback((id: string | null) => {
     setActiveThreadIdState(id);
-    setActiveThreadId(id);
-  }, []);
+    if (userId !== null) setActiveThreadId(userId, id);
+  }, [userId]);
 
   const selectProject = useCallback((id: string | null) => {
     setProjectId(id);
-    setActiveProjectId(id);
-  }, []);
+    if (userId !== null) setActiveProjectId(userId, id);
+  }, [userId]);
 
   /** Show a brand-new chat at once, before its server row exists (created when the first job is sent). */
   const noteThread = useCallback((id: string, title: string, forProjectId: string | null = null) => {
@@ -193,10 +206,16 @@ export function useHistory() {
     [activeThreadId, selectThread],
   );
 
+  // Sign-out: wipe this account's data from memory and forget who was signed in. The per-user pointers
+  // stay in localStorage (untouched here), so the same person returns to their last open chat; a different
+  // person signing in reads only their own namespaced pointers.
   const clear = useCallback(() => {
     setJobs([]);
     setThreadMeta([]);
     setProjects([]);
+    setActiveThreadIdState(null);
+    setProjectId(null);
+    setUserId(null);
   }, []);
 
   return {

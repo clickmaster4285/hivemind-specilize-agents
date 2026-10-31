@@ -19,15 +19,21 @@ export type ChatThread = {
 const ACTIVE_KEY = "multeagent_active_thread";
 const LEGACY_KEY = "multeagent_threads_v1"; // pre-server history, migrated once on first login
 
-export function getActiveThreadId(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(ACTIVE_KEY);
+// The "which chat is open" pointer is per-device AND per-user: two people who share a browser must not
+// inherit each other's open chat. The key is namespaced by the signed-in user's id.
+function activeKey(userId: string | number): string {
+  return `${ACTIVE_KEY}:${userId}`;
 }
 
-export function setActiveThreadId(id: string | null) {
+export function getActiveThreadId(userId: string | number): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(activeKey(userId));
+}
+
+export function setActiveThreadId(userId: string | number, id: string | null) {
   if (typeof window === "undefined") return;
-  if (id) localStorage.setItem(ACTIVE_KEY, id);
-  else localStorage.removeItem(ACTIVE_KEY);
+  if (id) localStorage.setItem(activeKey(userId), id);
+  else localStorage.removeItem(activeKey(userId));
 }
 
 function sortThreads(threads: ChatThread[]): ChatThread[] {
@@ -88,5 +94,15 @@ export function readLegacyThreads(): unknown[] {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+/** Drop the pre-server blob once it has been migrated, so a second user on this browser cannot adopt it. */
+export function clearLegacyThreads() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(LEGACY_KEY);
+  } catch {
+    // ignore — storage may be unavailable; the per-user migrated flag still prevents re-import
   }
 }

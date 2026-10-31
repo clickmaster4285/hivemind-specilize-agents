@@ -164,6 +164,16 @@ Then vLLM's throughput would clearly beat Ollama, and because its API is OpenAI-
 should repoint with little change. Decide it with a **throughput benchmark** (extend `src/llm/bench_models.py`),
 not by assumption. _Noted 2026-10-31 — keeps the local-only rule (L4) unless/until that scaling need is real._
 
+### L9. Serial number for inventoried servers over SSH (credentialed path)
+
+`network_scan` now reads a serial **only** where a device offers one to a credential-free sweep — i.e. SNMP
+(community `public`) on managed gear (`snmp_identify` in `src/servers/net_scan.py`). Ordinary PCs/servers never
+expose a serial that way. The remaining case is a server we have **added to inventory with SSH credentials**:
+there we could read the real serial with one read-only command per OS — Linux `cat /sys/class/dmi/id/product_serial`
+(or `dmidecode -s system-serial-number`, root), Windows `Get-CimInstance Win32_BIOS | % SerialNumber`. This belongs
+to the authenticated `server_ops`/`host_check` flow, **not** the read-only LAN sweep, so it was deferred out of the
+net_scan identification work (phases 1–3). Pick it up when inventory + stored SSH credentials exist. _Noted 2026-10-31._
+
 ---
 
 ## Progress log
