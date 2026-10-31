@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 # (scan_budget / worker_count), and the probe timeouts adapt to the measured network round-trip
 # (probe_timeouts). These are only the safety bounds — small subnets finish fast, large ones use more.
 TIME_LIMIT_SECONDS = 60          # hard ceiling on one scan's wall-clock (safety)
-BASE_TIME = 4.0                  # fixed overhead before per-host time
-PER_HOST_TIME = 0.05             # extra budget per address in the subnet
-MIN_TIME_BUDGET = 6.0            # a scan never gets less than this
+BASE_TIME = 8.0                  # fixed overhead before per-host time
+PER_HOST_TIME = 0.2              # extra budget per address — must leave room for the identify pass
+MIN_TIME_BUDGET = 10.0           # a scan never gets less than this (a /28 ≈ 11 s; a /24 ≈ 59 s)
 MIN_WORKERS = 8
 MAX_WORKERS = 128                # ceiling on concurrent probes (subprocess pings are heavy)
 PING_TIMEOUT_MS = 400            # default ping wait; probe_timeouts() adapts the effective value per scan
@@ -290,7 +290,7 @@ VENDOR_TYPES: tuple[tuple[tuple[str, ...], str], ...] = (
 # Explicit words in a device's name or model (NetBIOS/DNS, or an SSDP/SNMP model string) are the
 # strongest signal — checked before ports/vendor. First match wins.
 NAME_TYPES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"\bnvr|network video recorder"), "nvr"),
+    (re.compile(r"\bnvr|\bdvr|network video recorder|\brecorder\b"), "nvr"),
     (re.compile(r"inverter|sun2000|solaredge|growatt|sungrow|goodwe|fronius|\bsma\b|enphase|\bdeye\b"), "inverter"),
     (re.compile(r"\bnas\b|synology|qnap|diskstation|terramaster"), "nas"),
     (re.compile(r"camera|ip ?cam|webcam|\bipc\b|doorbell|surveillance"), "ip camera"),

@@ -128,11 +128,25 @@ def _fetch(url: str) -> tuple[str, bytes] | None:
         return None
 
 
+def wants_images(answer: str) -> bool:
+    """Decide — from the ANSWER itself, not a fixed list of query keywords — whether images help.
+    Pictures suit a structured answer about depictable things (several real section headings to anchor
+    them under); they don't help a greeting, a one-liner, a refusal, or a mostly-code reply. This is how
+    the tool self-selects, so it works for travel, roadmaps, products, history… without a hand-kept list."""
+    if len(_topics(answer)) < 2:                         # no clear sections → nothing to illustrate per topic
+        return False
+    body = re.sub(r"```[\s\S]*?```", "", answer or "")   # drop fenced code
+    return len(body) >= 0.6 * max(1, len(answer or ""))  # skip code-dominated answers (stock photos add noise)
+
+
 def gather_web_images(query: str, answer: str, job_id: str, config: Config) -> list[dict[str, str]]:
-    """Context-aware image gathering: search once per section heading of `answer` (falling back to the
-    whole query when it has no headings), fetch the candidates, and tag each saved image with the
-    `anchor` of the section it belongs to so the UI can place it there. → saved metadata."""
-    plan = _topics(answer) or [("", query)]              # (anchor_key, search_term) per section
+    """Context-aware image gathering: if the answer is worth illustrating (wants_images), search once per
+    section heading, fetch the candidates, and tag each saved image with the `anchor` of the section it
+    belongs to so the UI can place it there. → saved metadata (or [] when images don't suit the answer).
+    `query` is accepted for the caller's convenience but the decision is answer-driven, not query-driven."""
+    if not wants_images(answer):
+        return []
+    plan = _topics(answer)                               # (anchor_key, search_term) per section — ≥2 here
     with ThreadPoolExecutor(max_workers=min(MAX_TOPICS, len(plan))) as pool:
         found = list(pool.map(lambda t: (t[0], search_images(t[1], config, PER_TOPIC * 2)), plan))
     candidates = [(anchor, url) for anchor, urls in found for url in urls]

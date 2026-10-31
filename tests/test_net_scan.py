@@ -225,9 +225,10 @@ def test_snmp_identify_maps_oids_to_fields(monkeypatch):
 
 def test_scan_tuning_is_adaptive_and_bounded():
     # time budget grows with the subnet but stays within [MIN_TIME_BUDGET, TIME_LIMIT_SECONDS]
-    assert net_scan.scan_budget(14) == net_scan.MIN_TIME_BUDGET          # a /28 hits the floor
-    small, big = net_scan.scan_budget(254), net_scan.scan_budget(1024)
-    assert net_scan.MIN_TIME_BUDGET < small < big <= net_scan.TIME_LIMIT_SECONDS
+    assert net_scan.scan_budget(1) >= net_scan.MIN_TIME_BUDGET           # a tiny subnet is floored
+    assert net_scan.scan_budget(50) < net_scan.scan_budget(254)         # grows with size
+    assert net_scan.scan_budget(254) >= 40                              # a /24 keeps room for the identify pass
+    assert net_scan.scan_budget(100000) == net_scan.TIME_LIMIT_SECONDS  # a huge range is capped at the ceiling
     # concurrency scales with host count, clamped to [MIN, MAX]_WORKERS
     assert net_scan.worker_count(3) == net_scan.MIN_WORKERS
     assert net_scan.worker_count(50) == 50

@@ -350,23 +350,23 @@ def run_chat(
                                                 model=model, n=config.suggestions_count)
                     if sugg:
                         post["suggestions"] = sugg
-                if _is_educational(query):
-                    if config.quiz_enabled:
-                        quiz = generate_quiz(query, output, client_chat=lambda **kw: client.chat(**kw),
-                                             model=model, n=config.quiz_count)
-                        if quiz:
-                            post["quiz"] = quiz
-                    if config.web_images_enabled:
-                        from src.tools.web_images import gather_web_images
+                if _is_educational(query) and config.quiz_enabled:
+                    quiz = generate_quiz(query, output, client_chat=lambda **kw: client.chat(**kw),
+                                         model=model, n=config.quiz_count)
+                    if quiz:
+                        post["quiz"] = quiz
+                if config.web_images_enabled:
+                    from src.tools.web_images import gather_web_images
 
-                        imgs = gather_web_images(query, output, job_id, config)
-                        if imgs:
-                            # each image carries the anchor of the answer section it belongs to, so the UI
-                            # places it under that heading (context-aware) instead of one flat strip
-                            post["web_images"] = [
-                                {"filename": i["filename"], "mime": i["mime"], "anchor": i.get("anchor", "")}
-                                for i in imgs
-                            ]
+                    # the tool self-selects from the answer's shape (wants_images) — no query keyword gate
+                    imgs = gather_web_images(query, output, job_id, config)
+                    if imgs:
+                        # each image carries the anchor of the answer section it belongs to, so the UI
+                        # places it under that heading (context-aware) instead of one flat strip
+                        post["web_images"] = [
+                            {"filename": i["filename"], "mime": i["mime"], "anchor": i.get("anchor", "")}
+                            for i in imgs
+                        ]
                 if post:
                     _emit(on_progress, {"type": "answer_extras", "agent_id": "assistant", **post})
         except Exception as exc:  # noqa: BLE001 — extras are optional; never affect the emitted answer

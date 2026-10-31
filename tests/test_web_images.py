@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.tools.web_images import _is_public, _norm_anchor, _topics
+from src.tools.web_images import _is_public, _norm_anchor, _topics, wants_images
 
 
 def test_blocks_private_and_local_hosts():
@@ -40,5 +40,16 @@ def test_topics_are_contextual_search_terms_per_heading():
                     "1 istanbul history culture shopping"]
     assert "React.js (Frontend Framework)" in terms
     assert "Istanbul" in terms                     # the dash tail ("– History…") is dropped
-    # no headings → empty, so the caller falls back to one whole-query search
+    # no headings → empty
     assert _topics("just a paragraph, no headings at all") == []
+
+
+def test_wants_images_is_answer_driven_not_query_keywords():
+    # a structured, topical answer (travel) wants images — even though no query keyword said "educational"
+    travel = "South Korea is great.\n\n## Seoul\nThe capital.\n\n## Busan\nThe coast.\n\n## Jeju Island\nAn island.\n"
+    assert wants_images(travel) is True
+    # a greeting / one-liner has nothing to illustrate
+    assert wants_images("Hi! How can I help you today?") is False
+    # a code-dominated answer is skipped (stock photos would be noise)
+    code = "## Setup\n```py\n" + "x = 1\n" * 60 + "```\n\n## Run\n```py\n" + "y = 2\n" * 60 + "```\n"
+    assert wants_images(code) is False
