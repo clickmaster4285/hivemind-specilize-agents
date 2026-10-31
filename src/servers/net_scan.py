@@ -119,6 +119,24 @@ def local_subnet() -> str:
     return str(ipaddress.ip_network(f"{ip}/24", strict=False))
 
 
+def local_ip_in(net: ipaddress.IPv4Network) -> str:
+    """This computer's own address on `net`, or ''. Multicast discovery must leave through that card:
+    otherwise Windows may send it out a virtual switch (Hyper-V / WSL / Docker) where no device hears it."""
+    try:
+        import psutil
+    except ImportError:
+        return ""
+    for addrs in psutil.net_if_addrs().values():
+        for a in addrs:
+            if a.family == socket.AF_INET:
+                try:
+                    if ipaddress.ip_address(a.address) in net:
+                        return a.address
+                except ValueError:
+                    continue
+    return ""
+
+
 # ── probes (fixed commands, no shell) ────────────────────────────────────
 def _ping(ip: str) -> bool:
     cmd = (["ping", "-n", "1", "-w", str(_eff_ping_ms), ip] if sys.platform == "win32"
@@ -297,11 +315,15 @@ NAME_TYPES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"inverter|sun2000|solaredge|growatt|sungrow|goodwe|fronius|\bsma\b|enphase|\bdeye\b"), "inverter"),
     (re.compile(r"\bnas\b|synology|qnap|diskstation|terramaster"), "nas"),
     # Hikvision PoE switches (DS-3E…) answer SADP too — check before cameras
-    (re.compile(r"\bswitch\b|catalyst|nexus|jetstream|procurve|\bds-?3e"), "switch"),
+    (re.compile(r"\bswitch\b|catalyst|nexus|jetstream|procurve|\bds-?3e|\bgwn78"), "switch"),
+    # VoIP desk phones / ATAs: Grandstream GRP/GXP/GXV/DP/WP/HT, Yealink SIP-T/T4x, Cisco CP-, Polycom VVX
+    (re.compile(r"\bgrp\d{3}|\bgxp\d{3}|\bgxv\d{3}|\bdp7\d\d|\bwp8\d\d|\bht8\d\d|\bsip-?t\d|\bvvx|"
+                r"\bcp-\d{4}|ip ?phone|voip"), "ip phone"),
     # cameras: words, plus model codes — Hikvision DS-2CD (fixed) / DS-2DE, DS-2DF (PTZ), Dahua IPC-…
     (re.compile(r"camera|ip ?cam|webcam|\bipc\b|doorbell|surveillance|\bds-?2c[de]|\bds-?2d[ef]"), "ip camera"),
     (re.compile(r"printer|laserjet|officejet|\bmfp\b|scanner|workcentre"), "printer"),
-    (re.compile(r"router|gateway|archer|\bunifi\b|mikrotik|\bomada\b|access ?point|\bap\b|\beero\b|\bdeco\b"), "router"),
+    (re.compile(r"router|gateway|archer|\bunifi\b|mikrotik|\bomada\b|access ?point|\bap\b|\beero\b|\bdeco\b|"
+                r"\bgwn76"), "router"),
     (re.compile(r"\btv\b|roku|chromecast|fire ?stick|apple ?tv|bravia|smart ?tv|\bshield\b"), "media player"),
     (re.compile(r"iphone|ipad|galaxy|pixel|redmi|oneplus|android"), "phone"),
     (re.compile(r"esp32|esp8266|tasmota|shelly|sonoff|\btuya\b|smart ?plug|thermostat|\bhue\b"), "iot device"),
@@ -383,13 +405,16 @@ def _http_header(text: str, name: str) -> str:
     return m.group(1) if m else ""
 
 
-def _udp_discover(addr: tuple[str, int], payloads: list[bytes], timeout: float, *,
+def _udp_discover(addr: tuple[str, int], payloads: list[bytes], timeout: float, *, iface: str = "",
                   listen_port: int = 0, join_group: bool = False) -> list[tuple[bytes, str]]:
     """Send multicast discovery payloads to `addr` and collect every reply for `timeout` seconds →
     [(data, sender_ip)]. Shared by SSDP, SADP and ONVIF. Read-only; [] when blocked or nothing answers.
+    `iface` is our own IP on the scanned network: probes are sent (and the group joined) through that card,
+    because on a PC with Hyper-V / WSL / Docker adapters Windows otherwise picks a virtual switch.
     `listen_port` + `join_group` are for protocols that reply to the group (SADP) rather than to us."""
     import struct
 
+    local = socket.inet_aton(iface) if iface else struct.pack("!I", socket.INADDR_ANY)
     replies: list[tuple[bytes, str]] = []
     sock = None
     try:
@@ -399,10 +424,14 @@ def _udp_discover(addr: tuple[str, int], payloads: list[bytes], timeout: float, 
             sock.bind(("", listen_port))
         except OSError:
             sock.bind(("", 0))                         # port busy (e.g. vendor tool open): unicast replies only
+        if iface:
+            try:
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, local)   # send via the real card
+            except OSError:
+                pass
         if join_group:
             try:
-                mreq = struct.pack("4sl", socket.inet_aton(addr[0]), socket.INADDR_ANY)
-                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, socket.inet_aton(addr[0]) + local)
             except OSError:
                 pass
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
@@ -427,10 +456,10 @@ def _udp_discover(addr: tuple[str, int], payloads: list[bytes], timeout: float, 
     return replies
 
 
-def ssdp_locations(timeout: float = 2.5) -> dict[str, str]:
+def ssdp_locations(timeout: float = 2.5, iface: str = "") -> dict[str, str]:
     """ip → first UPnP description URL (the LOCATION header) from one multicast M-SEARCH."""
     out: dict[str, str] = {}
-    for data, ip in _udp_discover(SSDP_ADDR, [SSDP_MSEARCH], timeout):
+    for data, ip in _udp_discover(SSDP_ADDR, [SSDP_MSEARCH], timeout, iface=iface):
         loc = _http_header(data.decode("latin-1", "replace"), "location")
         if loc and ip not in out:
             out[ip] = loc
@@ -739,11 +768,12 @@ def parse_sadp(text: str) -> dict[str, str]:
             "mac": tag("MAC").replace("-", ":").lower(), "firmware": tag("SoftwareVersion")}
 
 
-def sadp_devices(timeout: float = 2.0) -> dict[str, dict[str, str]]:
+def sadp_devices(timeout: float = 2.0, iface: str = "") -> dict[str, dict[str, str]]:
     """ip → SADP info for every Hikvision device that answers one multicast probe. {} if none / blocked.
     SADP replies go to the group on 37020, so we listen there."""
     out: dict[str, dict[str, str]] = {}
-    for data, _ in _udp_discover(SADP_ADDR, [_sadp_probe()], timeout, listen_port=SADP_ADDR[1], join_group=True):
+    for data, _ in _udp_discover(SADP_ADDR, [_sadp_probe()], timeout, iface=iface,
+                                 listen_port=SADP_ADDR[1], join_group=True):
         info = parse_sadp(data.decode("utf-8", "replace"))
         if info:
             out[info["ip"]] = info
@@ -803,17 +833,17 @@ def parse_onvif(text: str, sender: str = "") -> dict[str, str]:
             "manufacturer": scope("MfgName") or scope("manufacturer"), "kind": kind}
 
 
-def onvif_devices(timeout: float = 2.0) -> dict[str, dict[str, str]]:
+def onvif_devices(timeout: float = 2.0, iface: str = "") -> dict[str, dict[str, str]]:
     """ip → ONVIF info for every camera / NVR that answers WS-Discovery. {} if none / blocked."""
     out: dict[str, dict[str, str]] = {}
-    for data, sender in _udp_discover(WSD_ADDR, [_wsd_probe(t) for t in _WSD_TYPES], timeout):
+    for data, sender in _udp_discover(WSD_ADDR, [_wsd_probe(t) for t in _WSD_TYPES], timeout, iface=iface):
         info = parse_onvif(data.decode("utf-8", "replace"), sender)
         if info and info["ip"] not in out:
             out[info["ip"]] = info
     return out
 
 
-def identify(devices: list[Device], *, deadline: float, workers: int = MAX_WORKERS) -> None:
+def identify(devices: list[Device], *, deadline: float, workers: int = MAX_WORKERS, iface: str = "") -> None:
     """Fill model / name / serial / class hint from SADP, ONVIF, SSDP, mDNS, SNMP and the device's web page.
     Best-effort; mutates in place. `workers` caps the parallel probes (scaled to the scan size)."""
     by_ip = {d.ip: d for d in devices}
@@ -821,7 +851,7 @@ def identify(devices: list[Device], *, deadline: float, workers: int = MAX_WORKE
     # SADP (Hikvision: model + serial), ONVIF (most other camera/NVR brands: model + class), SSDP (UPnP gear).
     wait = min(2.5, max(0.5, deadline - time.monotonic()))
     with ThreadPoolExecutor(max_workers=3) as pool:
-        jobs = {name: pool.submit(fn, wait) for name, fn in
+        jobs = {name: pool.submit(fn, wait, iface) for name, fn in
                 (("sadp", sadp_devices), ("onvif", onvif_devices), ("ssdp", ssdp_locations))}
     found = {}
     for name, job in jobs.items():
@@ -965,7 +995,7 @@ def scan(
         d.mac = macs.get(d.ip, "")
         d.vendor = manufacturer(d.mac)
     if config.network_scan_identify and not stopped and not timed_out:
-        identify(devices, deadline=started + budget, workers=workers)   # SSDP/mDNS/SNMP/HTTP
+        identify(devices, deadline=started + budget, workers=workers, iface=local_ip_in(net))   # SSDP/mDNS/SNMP/HTTP
     for d in devices:
         d.type = classify(d, gateway)            # after identify(), so name/model words count
     devices.sort(key=lambda d: ipaddress.ip_address(d.ip))

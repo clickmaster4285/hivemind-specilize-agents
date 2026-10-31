@@ -54,7 +54,7 @@ def fake_network(monkeypatch):
     monkeypatch.setattr(net_scan, "_oui", {"F8BC12": "Dell Inc.", "AABBCC": "Test Vendor"})
     monkeypatch.setattr(net_scan, "default_gateway", lambda: "192.168.50.1")   # hermetic: no real route lookup
     monkeypatch.setattr(net_scan, "_measure_rtt", lambda ip: None)             # no real calibration ping
-    monkeypatch.setattr(net_scan, "identify", lambda devices, *, deadline, workers: None)  # no real SSDP/mDNS
+    monkeypatch.setattr(net_scan, "identify", lambda devices, **_: None)      # no real SADP/ONVIF/SSDP/mDNS
 
 
 def test_scan_finds_devices_by_ping_and_tcp(fake_network):
@@ -275,6 +275,32 @@ def test_onvif_probe_match_is_parsed():
     cam = reply.replace("type/Network_Video_Storage", "type/video_encoder").replace("NVR4108HS-4KS2", "IPC-HFW2431S")
     assert net_scan.parse_onvif(cam)["kind"] == "ip camera"
     assert net_scan.parse_onvif(net_scan._wsd_probe("dn:NetworkVideoTransmitter").decode()) == {}   # our probe
+
+
+def test_real_models_from_the_office_lan_are_typed_correctly():
+    # exactly what SADP / the web page returned on 192.168.88.0/24
+    c = net_scan.classify
+    hik = "Hangzhou Hikvision Digital Technology Co.,Ltd."
+    assert c(Device("192.168.88.21", ports=[80, 443, 554, 8000], vendor=hik, model="DS-7608NXI-I2/S")) == "nvr"
+    assert c(Device("192.168.88.22", ports=[80, 443, 554], vendor=hik, model="DS-2CD1383G2-LIUF/SL")) == "ip camera"
+    assert c(Device("192.168.88.40", ports=[80], vendor=hik, model="DS-3E1510P-EI/M")) == "switch"
+    # Grandstream desk phone with a MAC-like hostname was falling through to "pc"
+    assert c(Device("192.168.88.57", "C074AD71E9FC", ports=[22, 80, 443], vendor="Grandstream Networks, Inc.",
+                    model="GRP2602P")) == "ip phone"
+
+
+def test_local_ip_in_picks_the_card_on_the_scanned_network(monkeypatch):
+    import ipaddress
+    import socket
+    from types import SimpleNamespace
+
+    import psutil
+
+    adapters = {"vEthernet (Default Switch)": [SimpleNamespace(family=socket.AF_INET, address="172.27.64.1")],
+                "Ethernet": [SimpleNamespace(family=socket.AF_INET, address="192.168.88.36")]}
+    monkeypatch.setattr(psutil, "net_if_addrs", lambda: adapters)
+    assert net_scan.local_ip_in(ipaddress.ip_network("192.168.88.0/24")) == "192.168.88.36"
+    assert net_scan.local_ip_in(ipaddress.ip_network("10.9.0.0/24")) == ""
 
 
 def test_protocol_hint_is_used_when_model_words_say_nothing():
