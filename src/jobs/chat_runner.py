@@ -359,10 +359,14 @@ def run_chat(
                     if config.web_images_enabled:
                         from src.tools.web_images import gather_web_images
 
-                        imgs = gather_web_images(query, job_id, config, n=config.web_images_count)
+                        imgs = gather_web_images(query, output, job_id, config)
                         if imgs:
-                            # a distinct key so the UI shows these as a small thumbnail strip, not the big gallery
-                            post["web_images"] = [{"filename": i["filename"], "mime": i["mime"]} for i in imgs]
+                            # each image carries the anchor of the answer section it belongs to, so the UI
+                            # places it under that heading (context-aware) instead of one flat strip
+                            post["web_images"] = [
+                                {"filename": i["filename"], "mime": i["mime"], "anchor": i.get("anchor", "")}
+                                for i in imgs
+                            ]
                 if post:
                     _emit(on_progress, {"type": "answer_extras", "agent_id": "assistant", **post})
         except Exception as exc:  # noqa: BLE001 — extras are optional; never affect the emitted answer

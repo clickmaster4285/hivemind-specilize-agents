@@ -334,9 +334,9 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
         )
       : undefined;
     const webImages = Array.isArray(event.web_images)
-      ? (event.web_images as { filename?: string; mime?: string }[])
+      ? (event.web_images as { filename?: string; mime?: string; anchor?: string }[])
           .filter((img) => img && img.filename)
-          .map((img) => ({ filename: String(img.filename), mime: img.mime }))
+          .map((img) => ({ filename: String(img.filename), mime: img.mime, anchor: img.anchor }))
       : undefined;
     let lastAgent = -1;
     for (let i = prev.length - 1; i >= 0; i--) {

@@ -6,7 +6,7 @@ import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
 import MessageAvatar from "@/components/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
-import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, SourceList, SpreadImage, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
+import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, SourceList, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 
 // Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
@@ -163,21 +163,30 @@ type Props = {
   onPickSuggestion: (q: string) => void;
 };
 
-/** Split answer Markdown into blocks at blank lines, keeping fenced code (``` / ~~~, incl. mermaid)
- *  atomic so a diagram or code block is never cut. Used to find gaps to drop images into. */
-function splitBlocks(md: string): string[] {
-  const blocks: string[] = [];
+/** Stable key tying a heading to its images — must match the backend's _norm_anchor (web_images.py):
+ *  NFKD + strip markup + drop non-alphanumerics, so emoji / accents / numbering fold away the same way. */
+function normAnchor(text: string): string {
+  return text
+    .normalize("NFKD")
+    .replace(/[*_`#]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Split an answer into sections at Markdown headings (## / ### …), keeping each heading line with the
+ *  body that follows it. Fenced code is left intact. The first section (before any heading) has heading "". */
+function splitSections(md: string): { heading: string; text: string }[] {
+  const out: { heading: string; text: string }[] = [];
+  let heading = "";
   let buf: string[] = [];
   let fence: string | null = null;
-  const flush = () => {
-    const t = buf.join("\n").trim();
-    if (t) blocks.push(t);
-    buf = [];
-  };
+  const headingRe = /^\s{0,3}#{1,4}\s+(.+?)\s*#*\s*$/;
+  const flush = () => out.push({ heading, text: buf.join("\n") });
   for (const line of md.split("\n")) {
     if (fence) {
       buf.push(line);
-      if (line.trimStart().startsWith(fence)) fence = null; // closing fence
+      if (line.trimStart().startsWith(fence)) fence = null;
       continue;
     }
     const open = line.match(/^\s*(```|~~~)/);
@@ -186,74 +195,104 @@ function splitBlocks(md: string): string[] {
       buf.push(line);
       continue;
     }
-    if (line.trim() === "") {
-      if (buf.length) flush(); // blank line = block boundary (outside a fence)
+    const h = line.match(headingRe);
+    if (h) {
+      flush();
+      heading = h[1].trim();
+      buf = [line];
     } else {
       buf.push(line);
     }
   }
   flush();
-  return blocks;
-}
-
-/** Spread m images across n blocks → map of block index → image indices placed AFTER that block,
- *  evenly distributed so they never all land at the end. */
-function assignGaps(n: number, m: number): Record<number, number[]> {
-  const out: Record<number, number[]> = {};
-  for (let j = 0; j < m; j++) {
-    const pos = Math.min(n - 1, Math.floor(((j + 1) * n) / (m + 1)));
-    (out[pos] ||= []).push(j);
-  }
   return out;
 }
 
-/** The assistant answer body. Once it's done and web images have loaded, the images are spread between
- *  the answer's blocks (near the relevant content) at varied natural sizes; while streaming, or when
- *  there's nothing to interleave into, it falls back to plain Markdown + a varied-size strip. */
+/** One group of a section's web images, laid out by how many there are: a lone image is a hero; a few
+ *  tile into a row at a shared height; more pack into a grid whose last tile shows a "+N" overflow.
+ *  object-contain keeps diagrams readable (no cropping); click any image to open it full size. */
+function AnswerImages({ images }: { images: ChatImage[] }) {
+  if (!images.length) return null;
+  if (images.length === 1) {
+    const img = images[0];
+    return (
+      <a
+        href={img.url}
+        target="_blank"
+        rel="noreferrer"
+        title="Open image"
+        className="mt-[0.6rem] block w-fit max-w-full overflow-hidden rounded-[0.6rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)]"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={img.url} alt={img.filename} loading="lazy" className="block h-auto max-h-[18rem] w-auto max-w-full object-contain" />
+      </a>
+    );
+  }
+  const shown = images.slice(0, 4);
+  const extra = images.length - shown.length;
+  const h = images.length === 2 ? "h-[11rem]" : images.length === 3 ? "h-[9.5rem]" : "h-[8.5rem]";
+  return (
+    <div className="mt-[0.6rem] flex flex-wrap items-start gap-[0.4rem]">
+      {shown.map((img, i) => (
+        <a
+          key={img.url}
+          href={img.url}
+          target="_blank"
+          rel="noreferrer"
+          title="Open image"
+          className="relative block overflow-hidden rounded-[0.5rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)]"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={img.url} alt={img.filename} loading="lazy" className={`block ${h} w-auto max-w-full object-contain`} />
+          {i === shown.length - 1 && extra > 0 ? (
+            <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[1.1rem] font-semibold text-white">
+              +{extra}
+            </span>
+          ) : null}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/** The assistant answer, with its web images placed under the section each one illustrates (context-aware):
+ *  images are grouped by their anchor and dropped in right after the matching heading, so a React diagram
+ *  sits under "React" and Istanbul photos under "Istanbul". Unanchored images lead the answer; any whose
+ *  section isn't found trail at the end so nothing is lost. While streaming / imageless, it's plain Markdown. */
 function AnswerContent({ item, webImgs }: { item: FeedItem; webImgs: ChatImage[] }) {
   if (!item.body) return null;
   const done = !item.pending && !item.streaming;
-  const sources = item.sources;
-  const blocks = done && webImgs.length > 0 ? splitBlocks(item.body) : null;
-
-  // Not ready to spread (still streaming, no images, or a single block with nowhere to interleave):
-  // plain Markdown, then — if done — a varied-size strip (reusing the already-loaded images).
-  if (!blocks || blocks.length <= 1) {
-    return (
-      <>
-        <MarkdownBody content={item.body} pending={item.pending && !item.streaming} sources={sources} />
-        {done && webImgs.length > 0 ? (
-          <div className="mt-[0.5rem] flex flex-wrap items-start gap-[0.5rem]">
-            {webImgs.map((img) => (
-              <a
-                key={img.url}
-                href={img.url}
-                target="_blank"
-                rel="noreferrer"
-                title="Open image"
-                className="block h-[7rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)]"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img.url} alt={img.filename} loading="lazy" className="block h-full w-auto object-contain" />
-              </a>
-            ))}
-          </div>
-        ) : null}
-      </>
-    );
+  if (!done || webImgs.length === 0) {
+    return <MarkdownBody content={item.body} pending={item.pending && !item.streaming} sources={item.sources} />;
   }
-
-  const gaps = assignGaps(blocks.length, webImgs.length);
+  const byAnchor = new Map<string, ChatImage[]>();
+  for (const img of webImgs) {
+    const key = img.anchor || "";
+    const list = byAnchor.get(key);
+    if (list) list.push(img);
+    else byAnchor.set(key, [img]);
+  }
+  const used = new Set<string>();
+  const sections = splitSections(item.body);
+  const intro = byAnchor.get("");
+  if (intro) used.add("");
+  const nodes = sections.map((s, i) => {
+    const key = s.heading ? normAnchor(s.heading) : "";
+    const imgs = s.heading && !used.has(key) ? byAnchor.get(key) : undefined;
+    if (imgs) used.add(key);
+    return (
+      <Fragment key={i}>
+        <MarkdownBody content={s.text} sources={item.sources} />
+        {i === 0 && intro ? <AnswerImages images={intro} /> : null}
+        {imgs ? <AnswerImages images={imgs} /> : null}
+      </Fragment>
+    );
+  });
+  const leftover = webImgs.filter((img) => !used.has(img.anchor || ""));
   return (
     <>
-      {blocks.map((block, i) => (
-        <Fragment key={i}>
-          <MarkdownBody content={block} sources={sources} />
-          {gaps[i]?.map((imgIdx) => (
-            <SpreadImage key={webImgs[imgIdx].url} img={webImgs[imgIdx]} align={imgIdx % 2 ? "right" : "left"} />
-          ))}
-        </Fragment>
-      ))}
+      {nodes}
+      {leftover.length ? <AnswerImages images={leftover} /> : null}
     </>
   );
 }

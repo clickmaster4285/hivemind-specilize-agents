@@ -11,7 +11,9 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+import re
 import socket
+import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -26,6 +28,42 @@ _ALLOWED = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "i
 _MAX_BYTES = 5 * 1024 * 1024
 _SEARCH_TIMEOUT = 10
 _FETCH_TIMEOUT = 8
+# context-aware gathering: one image search per section heading, so a React diagram lands under "React"
+# and Istanbul photos under "Istanbul" — not one bulk search for the whole answer.
+MAX_TOPICS = 5                   # at most this many section searches (keeps it fast)
+PER_TOPIC = 3                    # images kept per section
+MAX_IMAGES = 12                  # overall cap across the answer
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,4}\s+(.+?)\s*#*\s*$", re.M)
+
+
+def _norm_anchor(text: str) -> str:
+    """A stable key tying a heading to its images — the frontend computes the exact same key to place them.
+    NFKD + strip markup + drop non-alphanumerics folds emoji, accents and punctuation away consistently."""
+    t = unicodedata.normalize("NFKD", text or "")
+    t = re.sub(r"[*_`#]", "", t).lower()
+    return re.sub(r"[^a-z0-9]+", " ", t).strip()
+
+
+def _topics(answer: str) -> list[tuple[str, str]]:
+    """(anchor_key, search_term) for the answer's main section headings — deduped, cleaned, capped.
+    The search term drops leading emoji / "Phase N:" / numbering and keeps the core entity to search for."""
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for m in _HEADING_RE.finditer(answer or ""):
+        raw = m.group(1).strip()
+        key = _norm_anchor(raw)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        term = re.sub(r"^[\W\d_]+", "", raw)                               # leading emoji / numbering
+        term = re.sub(r"^(phase|step|part)\s*\d*\s*[:.\-]?\s*", "", term, flags=re.I)
+        term = re.sub(r"[*_`#]", "", term)
+        term = re.split(r"\s[–—-]\s|:\s", term, maxsplit=1)[0].strip()     # keep the entity before a dash/colon
+        if len(term) >= 3:
+            out.append((key, term[:60]))
+        if len(out) >= MAX_TOPICS:
+            break
+    return out
 
 
 def _is_public(url: str) -> bool:
@@ -90,26 +128,33 @@ def _fetch(url: str) -> tuple[str, bytes] | None:
         return None
 
 
-def gather_web_images(query: str, job_id: str, config: Config, n: int = 4) -> list[dict[str, str]]:
-    """Search → fetch up to n images → save under the job → attach to its payload. → saved metadata."""
-    urls = search_images(query, config, n * 3)
-    if not urls:
+def gather_web_images(query: str, answer: str, job_id: str, config: Config) -> list[dict[str, str]]:
+    """Context-aware image gathering: search once per section heading of `answer` (falling back to the
+    whole query when it has no headings), fetch the candidates, and tag each saved image with the
+    `anchor` of the section it belongs to so the UI can place it there. → saved metadata."""
+    plan = _topics(answer) or [("", query)]              # (anchor_key, search_term) per section
+    with ThreadPoolExecutor(max_workers=min(MAX_TOPICS, len(plan))) as pool:
+        found = list(pool.map(lambda t: (t[0], search_images(t[1], config, PER_TOPIC * 2)), plan))
+    candidates = [(anchor, url) for anchor, urls in found for url in urls]
+    if not candidates:
         return []
     # fetch all candidates concurrently — one slow or blocked image must not hold up the rest
-    with ThreadPoolExecutor(max_workers=min(8, len(urls))) as pool:
-        fetched = list(pool.map(_fetch, urls))
+    with ThreadPoolExecutor(max_workers=min(8, len(candidates))) as pool:
+        fetched = list(pool.map(lambda c: (c[0], _fetch(c[1])), candidates))
     folder = Path(config.artifacts_dir) / job_id / "images"
     folder.mkdir(parents=True, exist_ok=True)
     saved: list[dict[str, str]] = []
-    for got in fetched:                                  # keep search order; take the first n that succeeded
-        if len(saved) >= n:
+    per_anchor: dict[str, int] = {}
+    for anchor, got in fetched:                          # keep topic order; cap per section and overall
+        if len(saved) >= MAX_IMAGES:
             break
-        if not got:
+        if not got or per_anchor.get(anchor, 0) >= PER_TOPIC:
             continue
         mime, blob = got
         stored = f"web_{len(saved) + 1:02d}{_ALLOWED[mime]}"
         (folder / stored).write_bytes(blob)
-        saved.append({"filename": stored, "mime": mime, "relpath": f"{job_id}/images/{stored}"})
+        saved.append({"filename": stored, "mime": mime, "relpath": f"{job_id}/images/{stored}", "anchor": anchor})
+        per_anchor[anchor] = per_anchor.get(anchor, 0) + 1
     if saved:
         _attach_to_job(config, job_id, saved)
     return saved
