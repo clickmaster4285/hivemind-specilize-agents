@@ -119,8 +119,18 @@ the gate stats are contaminated by mislabeled OOS questions, not a bad threshold
       (e.g. VLAN-via-NPS genuinely is in the KB), not a threshold problem. Revisit after coverage settles._
 
 ### 4. Measure answer faithfulness  **[U]**
-- [ ] Run `python -m src.brain.answer_eval` (claim-by-claim judge). Confirm grounded answers stay faithful
+- [x] Run `python -m src.brain.answer_eval` (claim-by-claim judge). Confirm grounded answers stay faithful
       to cited sources and that out-of-scope questions correctly get the "not found" banner.
+      _2026-10-31 ([U] ran, 129 Q): **grounded 94% PASS** (target ≥90%, strict 93%), **latency median 18.8 s
+      PASS** (p90 24.3 s), **no-evidence 2/5 FAIL** — but 2 of the 3 "leaks" (`oos-vlan`, `oos-linux-root`)
+      are now genuinely covered by the KB (mislabeled; see §2c reclassification); only `oos-instagram` (0.57)
+      is a true leak. `right source cited 0.855`, `claims supported 0.845`, `judge quotes verified 0.925`.
+      The 8 `NO` claims are grounding-precision (model states correct domain facts the cited passage lacks,
+      e.g. FSMO roles, aging/scavenging) — `verify.py` already hides unsupported lines in production.
+      `wrong_source` list ≈ the documented retrieval gaps (MDN-capped / no-source / ranking misses).
+      One latency anomaly: `mkt-ga-event` 1444 s (single Ollama stall, not reproducible; didn't affect p90)._
+- [ ] **[U] follow-up:** reclassify `oos-vlan` + `oos-linux-root` as in-scope (they're covered now), and
+      decide `oos-instagram` (keep as the one true gate probe). Then the no-evidence metric is honest.
 
 ### 5. Verify collection routing  **[C] inspect, [U] spot-check**
 - [ ] Confirm the specialist picker sends an SEO question to the Marketing specialist, an AD/DNS question
