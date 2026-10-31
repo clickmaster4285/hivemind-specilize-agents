@@ -63,8 +63,9 @@ class Device:
     found_by: str = "ping"
     vendor: str = ""
     type: str = ""        # inferred kind (router, printer, ip camera, pc, phone, nas, server, …) — classify()
-    model: str = ""       # model / identification offered by SSDP / mDNS / SNMP (phase 2–3); often empty
-    serial: str = ""      # serial number — only SNMP (public) or the authenticated SSH path provide it
+    model: str = ""       # model from SADP / ONVIF / SSDP / SNMP / web page; often empty
+    serial: str = ""      # serial number — from SADP (Hikvision) or SNMP; most devices need credentials
+    hint: str = ""        # device class a discovery protocol reported (ONVIF recorder/camera, UPnP router…)
 
 
 @dataclass
@@ -290,12 +291,16 @@ VENDOR_TYPES: tuple[tuple[tuple[str, ...], str], ...] = (
 # Explicit words in a device's name or model (NetBIOS/DNS, or an SSDP/SNMP model string) are the
 # strongest signal — checked before ports/vendor. First match wins.
 NAME_TYPES: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"\bnvr|\bdvr|network video recorder|\brecorder\b"), "nvr"),
+    # recorders: words, plus vendor model codes — Hikvision NVR/DVR are DS-7xxx/8xxx/9xxx (iDS-7/9xxx),
+    # Dahua hybrid recorders XVR…; these come from SADP / SNMP / web titles
+    (re.compile(r"\bnvr|\bdvr|\bxvr|network video recorder|\brecorder\b|\bi?ds-?[789]\d{3}"), "nvr"),
     (re.compile(r"inverter|sun2000|solaredge|growatt|sungrow|goodwe|fronius|\bsma\b|enphase|\bdeye\b"), "inverter"),
     (re.compile(r"\bnas\b|synology|qnap|diskstation|terramaster"), "nas"),
-    (re.compile(r"camera|ip ?cam|webcam|\bipc\b|doorbell|surveillance"), "ip camera"),
+    # Hikvision PoE switches (DS-3E…) answer SADP too — check before cameras
+    (re.compile(r"\bswitch\b|catalyst|nexus|jetstream|procurve|\bds-?3e"), "switch"),
+    # cameras: words, plus model codes — Hikvision DS-2CD (fixed) / DS-2DE, DS-2DF (PTZ), Dahua IPC-…
+    (re.compile(r"camera|ip ?cam|webcam|\bipc\b|doorbell|surveillance|\bds-?2c[de]|\bds-?2d[ef]"), "ip camera"),
     (re.compile(r"printer|laserjet|officejet|\bmfp\b|scanner|workcentre"), "printer"),
-    (re.compile(r"\bswitch\b|catalyst|nexus"), "switch"),
     (re.compile(r"router|gateway|archer|\bunifi\b|mikrotik|\bomada\b|access ?point|\bap\b|\beero\b|\bdeco\b"), "router"),
     (re.compile(r"\btv\b|roku|chromecast|fire ?stick|apple ?tv|bravia|smart ?tv|\bshield\b"), "media player"),
     (re.compile(r"iphone|ipad|galaxy|pixel|redmi|oneplus|android"), "phone"),
@@ -315,11 +320,15 @@ def classify(d: Device, gateway_ip: str = "") -> str:
     for rx, kind in NAME_TYPES:                   # an explicit word in the name/model is decisive
         if rx.search(text):
             return kind
+    if d.hint:                                    # what the device itself announced (ONVIF / UPnP class)
+        return d.hint
     if 9100 in ports:
         return "printer"
     if 502 in ports:                              # Modbus TCP — solar inverters / industrial controllers
         return "inverter"
-    if ports & {554, 8000, 37777}:                # RTSP / Hikvision / Dahua
+    if 3389 in ports:                             # RDP → a Windows computer (cameras/NVRs never offer RDP),
+        return "pc"                               # even if it also runs camera software on 8000
+    if ports & {554, 37777} or (8000 in ports and "hikvision" in vendor):   # RTSP / Dahua / Hikvision SDK
         return "ip camera"
     for needles, kind in VENDOR_TYPES:
         if any(n in vendor for n in needles):
@@ -374,25 +383,39 @@ def _http_header(text: str, name: str) -> str:
     return m.group(1) if m else ""
 
 
-def ssdp_locations(timeout: float = 2.5) -> dict[str, str]:
-    """ip → first UPnP description URL (the LOCATION header) from one multicast M-SEARCH."""
-    out: dict[str, str] = {}
+def _udp_discover(addr: tuple[str, int], payloads: list[bytes], timeout: float, *,
+                  listen_port: int = 0, join_group: bool = False) -> list[tuple[bytes, str]]:
+    """Send multicast discovery payloads to `addr` and collect every reply for `timeout` seconds →
+    [(data, sender_ip)]. Shared by SSDP, SADP and ONVIF. Read-only; [] when blocked or nothing answers.
+    `listen_port` + `join_group` are for protocols that reply to the group (SADP) rather than to us."""
+    import struct
+
+    replies: list[tuple[bytes, str]] = []
     sock = None
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("", listen_port))
+        except OSError:
+            sock.bind(("", 0))                         # port busy (e.g. vendor tool open): unicast replies only
+        if join_group:
+            try:
+                mreq = struct.pack("4sl", socket.inet_aton(addr[0]), socket.INADDR_ANY)
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            except OSError:
+                pass
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
         sock.settimeout(timeout)
-        sock.sendto(SSDP_MSEARCH, SSDP_ADDR)
+        for payload in payloads:
+            sock.sendto(payload, addr)
         end = time.monotonic() + timeout
         while time.monotonic() < end:
             try:
-                data, addr = sock.recvfrom(2048)
+                data, sender = sock.recvfrom(16384)
             except (socket.timeout, OSError):
                 break
-            loc = _http_header(data.decode("latin-1", "replace"), "location")
-            if loc and addr[0] not in out:
-                out[addr[0]] = loc
+            replies.append((data, sender[0]))
     except OSError:
         pass
     finally:
@@ -401,6 +424,16 @@ def ssdp_locations(timeout: float = 2.5) -> dict[str, str]:
                 sock.close()
             except OSError:
                 pass
+    return replies
+
+
+def ssdp_locations(timeout: float = 2.5) -> dict[str, str]:
+    """ip → first UPnP description URL (the LOCATION header) from one multicast M-SEARCH."""
+    out: dict[str, str] = {}
+    for data, ip in _udp_discover(SSDP_ADDR, [SSDP_MSEARCH], timeout):
+        loc = _http_header(data.decode("latin-1", "replace"), "location")
+        if loc and ip not in out:
+            out[ip] = loc
     return out
 
 
@@ -502,6 +535,7 @@ def mdns_name(ip: str, timeout: float = 0.5) -> str:
 SNMP_PORT = 161
 SNMP_OIDS = {                                       # OID → the field it fills
     "1.3.6.1.2.1.1.5.0": "name",                    # sysName
+    "1.3.6.1.2.1.1.1.0": "descr",                   # sysDescr — model fallback ("JetStream 24-Port …")
     "1.3.6.1.2.1.47.1.1.1.1.13.1": "model",         # entPhysicalModelName.1
     "1.3.6.1.2.1.47.1.1.1.1.11.1": "serial",        # entPhysicalSerialNum.1
     "1.3.6.1.2.1.43.5.1.1.17.1": "prt_serial",      # prtGeneralSerialNumber.1 (printers)
@@ -613,6 +647,8 @@ def snmp_identify(ip: str, *, community: str = "public") -> dict[str, str]:
     got = snmp_get(ip, list(SNMP_OIDS), community=community)
     roles = {role: got[oid] for oid, role in SNMP_OIDS.items() if got.get(oid)}
     out = {k: roles[k] for k in ("name", "model") if roles.get(k)}
+    if not out.get("model") and roles.get("descr"):   # no ENTITY-MIB model: the system description names it
+        out["model"] = roles["descr"][:60]
     serial = roles.get("serial") or roles.get("prt_serial")
     if serial:
         out["serial"] = serial
@@ -672,15 +708,138 @@ def http_model(ip: str, ports: list[int]) -> str:
     return ""
 
 
+# ── identification: Hikvision SADP (Search Active Devices Protocol, udp/37020) ──
+# What Hikvision's own "SADP Tool" uses: one multicast <Probe>, and every Hikvision camera / NVR / DVR /
+# PoE switch answers with its model (DS-7608NI… = NVR, DS-2CD… = camera, DS-3E… = switch), serial number,
+# MAC and firmware — no password. Read-only discovery, like SSDP. Their web pages hide all of this.
+SADP_ADDR = ("239.255.255.250", 37020)
+
+
+def _sadp_probe() -> bytes:
+    import uuid
+
+    return (f'<?xml version="1.0" encoding="utf-8"?><Probe><Uuid>{str(uuid.uuid4()).upper()}</Uuid>'
+            "<Types>inquiry</Types></Probe>").encode()
+
+
+def parse_sadp(text: str) -> dict[str, str]:
+    """ip / model / serial / mac / firmware from one SADP <ProbeMatch> reply; {} for anything else
+    (including our own probe echoed back by multicast loopback)."""
+    if "<ProbeMatch" not in text:
+        return {}
+
+    def tag(name: str) -> str:
+        m = re.search(rf"<{name}>(.*?)</{name}>", text, re.I | re.S)
+        return m.group(1).strip() if m else ""
+
+    ip = tag("IPv4Address")
+    if not ip:
+        return {}
+    return {"ip": ip, "model": tag("DeviceDescription"), "serial": tag("DeviceSN"),
+            "mac": tag("MAC").replace("-", ":").lower(), "firmware": tag("SoftwareVersion")}
+
+
+def sadp_devices(timeout: float = 2.0) -> dict[str, dict[str, str]]:
+    """ip → SADP info for every Hikvision device that answers one multicast probe. {} if none / blocked.
+    SADP replies go to the group on 37020, so we listen there."""
+    out: dict[str, dict[str, str]] = {}
+    for data, _ in _udp_discover(SADP_ADDR, [_sadp_probe()], timeout, listen_port=SADP_ADDR[1], join_group=True):
+        info = parse_sadp(data.decode("utf-8", "replace"))
+        if info:
+            out[info["ip"]] = info
+    return out
+
+
+# ── identification: ONVIF WS-Discovery (udp/3702) — the vendor-neutral IP-video standard ──
+# Dahua, Uniview, Axis, Hanwha, Reolink, Tiandy and most OEM cameras / NVRs answer it (Hikvision often
+# ships with it off — hence SADP above). Each reply's scopes carry hardware (model), name, maker and type
+# (NetworkVideoTransmitter = camera; Network_Video_Storage = recorder). No serial: that needs a login.
+WSD_ADDR = ("239.255.255.250", 3702)
+_WSD_TYPES = ("dn:NetworkVideoTransmitter", "tds:Device")      # cameras, and any ONVIF device (NVRs)
+
+
+def _wsd_probe(types: str) -> bytes:
+    import uuid
+
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<e:Envelope xmlns:e="http://www.w3.org/2003/05/soap-envelope" '
+        'xmlns:w="http://schemas.xmlsoap.org/ws/2004/08/addressing" '
+        'xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery" '
+        'xmlns:dn="http://www.onvif.org/ver10/network/wsdl" '
+        'xmlns:tds="http://www.onvif.org/ver10/device/wsdl">'
+        f"<e:Header><w:MessageID>uuid:{uuid.uuid4()}</w:MessageID>"
+        '<w:To e:mustUnderstand="true">urn:schemas-xmlsoap-org:ws:2005:04:discovery</w:To>'
+        '<w:Action e:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</w:Action>'
+        f"</e:Header><e:Body><d:Probe><d:Types>{types}</d:Types></d:Probe></e:Body></e:Envelope>"
+    ).encode()
+
+
+def parse_onvif(text: str, sender: str = "") -> dict[str, str]:
+    """ip / model / name / manufacturer / kind from one WS-Discovery <ProbeMatch>; {} for anything else."""
+    from urllib.parse import unquote
+
+    if "ProbeMatch" not in text:
+        return {}
+    scopes = " ".join(re.findall(r"<[\w:]*Scopes[^>]*>(.*?)</[\w:]*Scopes>", text, re.S))
+    types = " ".join(re.findall(r"<[\w:]*Types[^>]*>(.*?)</[\w:]*Types>", text, re.S))
+    xaddrs = " ".join(re.findall(r"<[\w:]*XAddrs[^>]*>(.*?)</[\w:]*XAddrs>", text, re.S))
+    m = re.search(r"https?://(\d{1,3}(?:\.\d{1,3}){3})", xaddrs)
+    ip = m.group(1) if m else sender
+
+    def scope(key: str) -> str:
+        found = re.search(rf"onvif://www\.onvif\.org/{key}/(\S+)", scopes, re.I)
+        return unquote(found.group(1)).strip() if found else ""
+
+    classes = (" ".join(re.findall(r"onvif://www\.onvif\.org/type/(\S+)", scopes, re.I)) + " " + types).lower()
+    kind = ""
+    if any(k in classes for k in ("storage", "recorder", "nvr", "dvr")):
+        kind = "nvr"
+    elif any(k in classes for k in ("networkvideotransmitter", "video_encoder", "ptz", "camera")):
+        kind = "ip camera"
+    if not ip:
+        return {}
+    return {"ip": ip, "model": scope("hardware"), "name": scope("name"),
+            "manufacturer": scope("MfgName") or scope("manufacturer"), "kind": kind}
+
+
+def onvif_devices(timeout: float = 2.0) -> dict[str, dict[str, str]]:
+    """ip → ONVIF info for every camera / NVR that answers WS-Discovery. {} if none / blocked."""
+    out: dict[str, dict[str, str]] = {}
+    for data, sender in _udp_discover(WSD_ADDR, [_wsd_probe(t) for t in _WSD_TYPES], timeout):
+        info = parse_onvif(data.decode("utf-8", "replace"), sender)
+        if info and info["ip"] not in out:
+            out[info["ip"]] = info
+    return out
+
+
 def identify(devices: list[Device], *, deadline: float, workers: int = MAX_WORKERS) -> None:
-    """Fill model / name / serial (and refine type) from SSDP, mDNS, SNMP and the device's web page.
+    """Fill model / name / serial / class hint from SADP, ONVIF, SSDP, mDNS, SNMP and the device's web page.
     Best-effort; mutates in place. `workers` caps the parallel probes (scaled to the scan size)."""
     by_ip = {d.ip: d for d in devices}
-    try:
-        locations = ssdp_locations(timeout=min(2.5, max(0.5, deadline - time.monotonic())))
-    except Exception:  # noqa: BLE001
-        locations = {}
-    for ip, location in locations.items():
+    # The three multicast discoveries each just listen ~2 s, so run them side by side, not one after another:
+    # SADP (Hikvision: model + serial), ONVIF (most other camera/NVR brands: model + class), SSDP (UPnP gear).
+    wait = min(2.5, max(0.5, deadline - time.monotonic()))
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        jobs = {name: pool.submit(fn, wait) for name, fn in
+                (("sadp", sadp_devices), ("onvif", onvif_devices), ("ssdp", ssdp_locations))}
+    found = {}
+    for name, job in jobs.items():
+        try:
+            found[name] = job.result()
+        except Exception:  # noqa: BLE001 — discovery is best-effort
+            found[name] = {}
+    for ip, info in found["sadp"].items():           # most specific first: exact model + serial
+        if (d := by_ip.get(ip)) is not None:
+            d.model = d.model or info.get("model", "")
+            d.serial = d.serial or info.get("serial", "")
+    for ip, info in found["onvif"].items():
+        if (d := by_ip.get(ip)) is not None:
+            d.model = d.model or info.get("model", "")
+            d.name = d.name or info.get("name", "")
+            d.vendor = d.vendor or info.get("manufacturer", "")
+            d.hint = d.hint or info.get("kind", "")
+    for ip, location in found["ssdp"].items():
         d = by_ip.get(ip)
         if d is None or time.monotonic() > deadline:
             continue
@@ -688,7 +847,7 @@ def identify(devices: list[Device], *, deadline: float, workers: int = MAX_WORKE
         d.model = d.model or info.get("model", "")
         d.name = d.name or info.get("name", "")
         d.vendor = d.vendor or info.get("manufacturer", "")
-        d.type = d.type or info.get("type", "")
+        d.hint = d.hint or info.get("type", "")       # was written to d.type and then overwritten by classify()
     # mDNS reverse name for devices still unnamed (in parallel, within the time budget)
     unnamed = [d for d in devices if not d.name]
     if unnamed and time.monotonic() < deadline:
@@ -842,11 +1001,11 @@ def summary(result: ScanResult) -> str:
 
 NOTES = ("Found by: ping, an open port (tcp), or only the network's address table (arp — e.g. PCs whose firewall "
          "blocks ping). Names come from Windows (NetBIOS) or DNS and are often missing for phones and IoT devices; "
-         "the manufacturer comes from the MAC address (IEEE list). Model and some names come from the device's "
-         "own SSDP/UPnP and mDNS announcements, where it makes them, from SNMP (community 'public') on managed "
-         "gear such as switches and printers, and from the device's own web page title where it serves one (cameras, "
-         "NAS, routers, phones). A serial needs credentials, so most devices leave it blank. Type is a best-effort "
-         "guess from the name, "
+         "the manufacturer comes from the MAC address (IEEE list). Model, serial and device class come from the "
+         "devices' own discovery answers where they give them: Hikvision SADP (model + serial), ONVIF (most other "
+         "camera/NVR brands), SSDP/UPnP and mDNS, SNMP (community 'public') on managed switches and printers, and "
+         "the device's web page title. Other serials need credentials, so they stay blank. Unmanaged switches have "
+         "no IP address and cannot be seen by any network scan. Type is a best-effort guess from the name, "
          "model, open ports, manufacturer and whether the device is the gateway — treat it as a hint, not a certainty.")
 
 

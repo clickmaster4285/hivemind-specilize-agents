@@ -246,6 +246,59 @@ def test_probe_timeouts_adapt_to_rtt():
     assert mid_ms == 240
 
 
+def test_sadp_reply_is_parsed():
+    reply = ('<?xml version="1.0" encoding="UTF-8"?><ProbeMatch><Uuid>X</Uuid><Types>inquiry</Types>'
+             "<DeviceType>139267</DeviceType><DeviceDescription>DS-7608NI-K2</DeviceDescription>"
+             "<DeviceSN>DS-7608NI-K20820210101CCRRF12345678WCVU</DeviceSN><CommandPort>8000</CommandPort>"
+             "<HttpPort>80</HttpPort><MAC>84-94-59-eb-da-f9</MAC><IPv4Address>192.168.88.28</IPv4Address>"
+             "<SoftwareVersion>V4.30.085build200916</SoftwareVersion></ProbeMatch>")
+    assert net_scan.parse_sadp(reply) == {
+        "ip": "192.168.88.28", "model": "DS-7608NI-K2", "serial": "DS-7608NI-K20820210101CCRRF12345678WCVU",
+        "mac": "84:94:59:eb:da:f9", "firmware": "V4.30.085build200916"}
+    probe = net_scan._sadp_probe().decode()
+    assert net_scan.parse_sadp(probe) == {}                       # our own echoed probe is ignored
+    assert "<Types>inquiry</Types>" in probe
+
+
+def test_onvif_probe_match_is_parsed():
+    reply = (
+        '<?xml version="1.0"?><env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope" '
+        'xmlns:d="http://schemas.xmlsoap.org/ws/2005/04/discovery"><env:Body><d:ProbeMatches><d:ProbeMatch>'
+        "<d:Types>dn:NetworkVideoTransmitter tds:Device</d:Types>"
+        "<d:Scopes>onvif://www.onvif.org/type/Network_Video_Storage onvif://www.onvif.org/hardware/NVR4108HS-4KS2 "
+        "onvif://www.onvif.org/name/Dahua%20NVR onvif://www.onvif.org/MfgName/Dahua</d:Scopes>"
+        "<d:XAddrs>http://192.168.88.30/onvif/device_service</d:XAddrs>"
+        "</d:ProbeMatch></d:ProbeMatches></env:Body></env:Envelope>")
+    assert net_scan.parse_onvif(reply, "192.168.88.30") == {
+        "ip": "192.168.88.30", "model": "NVR4108HS-4KS2", "name": "Dahua NVR", "manufacturer": "Dahua",
+        "kind": "nvr"}
+    cam = reply.replace("type/Network_Video_Storage", "type/video_encoder").replace("NVR4108HS-4KS2", "IPC-HFW2431S")
+    assert net_scan.parse_onvif(cam)["kind"] == "ip camera"
+    assert net_scan.parse_onvif(net_scan._wsd_probe("dn:NetworkVideoTransmitter").decode()) == {}   # our probe
+
+
+def test_protocol_hint_is_used_when_model_words_say_nothing():
+    c = net_scan.classify
+    # an ONVIF recorder with an unhelpful model code and camera ports is still typed by what it announced
+    assert c(Device("10.0.0.7", ports=[80, 554], model="X1000", hint="nvr")) == "nvr"
+    # explicit model words still win over the announced class (NVRs also announce as video transmitters)
+    assert c(Device("10.0.0.8", ports=[80, 554], model="DS-7608NI-K2", hint="ip camera")) == "nvr"
+    # UPnP class survives classify() now (it used to be overwritten)
+    assert c(Device("10.0.0.9", ports=[80], hint="media player")) == "media player"
+
+
+def test_hikvision_model_codes_tell_nvr_camera_and_switch_apart():
+    c = net_scan.classify
+    hik = "Hangzhou Hikvision Digital Technology Co.,Ltd."
+    # same ports + same vendor — only the model (from SADP) separates them
+    assert c(Device("10.0.0.1", ports=[80, 443, 554, 8000], vendor=hik, model="DS-7608NI-K2")) == "nvr"
+    assert c(Device("10.0.0.2", ports=[80, 443, 554, 8000], vendor=hik, model="DS-2CD2143G0-I")) == "ip camera"
+    assert c(Device("10.0.0.3", ports=[80, 443], vendor=hik, model="DS-3E0510P-E")) == "switch"
+    assert c(Device("10.0.0.4", ports=[80, 554], vendor=hik)) == "ip camera"     # no model: port guess
+    # a Windows box running camera software (RDP + 8000) is a PC, not a camera
+    assert c(Device("10.0.0.5", ports=[3389, 8000], vendor="Microsoft Corporation")) == "pc"
+
+
 def test_pick_http_model_prefers_title_then_server():
     p = net_scan.pick_http_model
     assert p("QNAP Turbo NAS", "nginx") == "QNAP Turbo NAS"            # a real title wins
