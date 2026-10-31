@@ -30,10 +30,17 @@ _SEARCH_TIMEOUT = 10
 _FETCH_TIMEOUT = 8
 # context-aware gathering: one image search per section heading, so a React diagram lands under "React"
 # and Istanbul photos under "Istanbul" — not one bulk search for the whole answer.
-MAX_TOPICS = 5                   # at most this many section searches (keeps it fast)
-PER_TOPIC = 3                    # images kept per section
+MAX_TOPICS = 8                   # at most this many section/entity searches (keeps it fast)
+PER_ANCHOR = 4                   # images kept per section
 MAX_IMAGES = 12                  # overall cap across the answer
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,4}\s+(.+?)\s*#*\s*$", re.M)
+# A heading like "Top Cities" / "Nature & Islands" groups entities rather than being one itself — so we
+# search its bold sub-items (Seoul, Busan, …) instead of the generic heading, and anchor them to it.
+_CATEGORY_RE = re.compile(
+    r"\b(cities|places|sites|destinations?|attractions?|landmarks?|gems?|highlights?|essentials?|"
+    r"nature|islands?|beaches?|mountains?|parks?|food|culture|things|must[- ]?sees?|overview|"
+    r"top|best|recommended|picks|list)\b", re.I)
+_BOLD_ITEM_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])?\s*\*\*(.+?)\*\*", re.M)
 
 
 def _norm_anchor(text: str) -> str:
@@ -44,25 +51,56 @@ def _norm_anchor(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", t).strip()
 
 
-def _topics(answer: str) -> list[tuple[str, str]]:
-    """(anchor_key, search_term) for the answer's main section headings — deduped, cleaned, capped.
-    The search term drops leading emoji / "Phase N:" / numbering and keeps the core entity to search for."""
+def _search_term(text: str) -> str:
+    """A clean image search term from a heading or a bold label: drop emoji / numbering / 'Phase N:' and
+    the '– subtitle' / ': …' tail / trailing punctuation, keeping the core entity."""
+    t = re.sub(r"^[\W\d_]+", "", text or "")                          # leading emoji / numbering
+    t = re.sub(r"^(phase|step|part)\s*\d*\s*[:.\-]?\s*", "", t, flags=re.I)
+    t = re.sub(r"[*_`#]", "", t)
+    t = re.split(r"\s[–—-]\s|:\s", t, maxsplit=1)[0]                  # keep the entity before a dash/colon
+    return re.sub(r"[\s:–—-]+$", "", t).strip()[:60]                  # trim a trailing colon/dash
+
+
+def _sections(answer: str) -> list[tuple[str, str]]:
+    """[(heading, body)] split at Markdown headings; body is the text until the next heading. The intro
+    before the first heading is dropped (no heading to anchor to)."""
     out: list[tuple[str, str]] = []
-    seen: set[str] = set()
-    for m in _HEADING_RE.finditer(answer or ""):
-        raw = m.group(1).strip()
-        key = _norm_anchor(raw)
-        if not key or key in seen:
+    heading, start, text = "", 0, answer or ""
+    for m in _HEADING_RE.finditer(text):
+        out.append((heading, text[start:m.start()]))
+        heading, start = m.group(1).strip(), m.end()
+    out.append((heading, text[start:]))
+    return [(h, b) for h, b in out if h]
+
+
+def _topics(answer: str) -> list[tuple[str, str]]:
+    """(anchor_key, search_term) pairs for the answer. A specific heading (React.js, Istanbul) is its own
+    entity; a category heading (Top Cities, Nature & Islands) is searched by its bold sub-items (Seoul,
+    Busan, Jeju) instead — all anchored back to that section, so the UI groups them under it. Deduped, capped."""
+    out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for heading, body in _sections(answer):
+        hkey = _norm_anchor(heading)
+        if not hkey:
             continue
-        seen.add(key)
-        term = re.sub(r"^[\W\d_]+", "", raw)                               # leading emoji / numbering
-        term = re.sub(r"^(phase|step|part)\s*\d*\s*[:.\-]?\s*", "", term, flags=re.I)
-        term = re.sub(r"[*_`#]", "", term)
-        term = re.split(r"\s[–—-]\s|:\s", term, maxsplit=1)[0].strip()     # keep the entity before a dash/colon
-        if len(term) >= 3:
-            out.append((key, term[:60]))
-        if len(out) >= MAX_TOPICS:
-            break
+        terms: list[str] = []
+        if _CATEGORY_RE.search(heading):                             # a grouping heading → search its entities
+            for bold in _BOLD_ITEM_RE.findall(body):
+                term = _search_term(bold)
+                if len(term) >= 3 and term[:1].isupper():            # a proper-noun-looking entity
+                    terms.append(term)
+        if not terms:                                                # specific heading, or no entities found
+            term = _search_term(heading)
+            if len(term) >= 3:
+                terms = [term]
+        for term in terms:
+            dedup = (hkey, term.lower())
+            if dedup in seen:
+                continue
+            seen.add(dedup)
+            out.append((hkey, term))
+            if len(out) >= MAX_TOPICS:
+                return out
     return out
 
 
@@ -146,10 +184,22 @@ def gather_web_images(query: str, answer: str, job_id: str, config: Config) -> l
     `query` is accepted for the caller's convenience but the decision is answer-driven, not query-driven."""
     if not wants_images(answer):
         return []
-    plan = _topics(answer)                               # (anchor_key, search_term) per section — ≥2 here
+    plan = _topics(answer)                               # (anchor_key, search_term); several may share an anchor
     with ThreadPoolExecutor(max_workers=min(MAX_TOPICS, len(plan))) as pool:
-        found = list(pool.map(lambda t: (t[0], search_images(t[1], config, PER_TOPIC * 2)), plan))
-    candidates = [(anchor, url) for anchor, urls in found for url in urls]
+        found = list(pool.map(lambda t: (t[0], search_images(t[1], config, PER_ANCHOR * 2)), plan))
+    # round-robin the result URLs within each anchor, so a section with several entities (Seoul, Busan,
+    # Jeju) contributes one of each before a second of any — a varied set, not 4 photos of one place.
+    from collections import OrderedDict
+
+    grouped: OrderedDict[str, list[list[str]]] = OrderedDict()
+    for anchor, urls in found:
+        grouped.setdefault(anchor, []).append(urls)
+    candidates: list[tuple[str, str]] = []
+    for anchor, url_lists in grouped.items():
+        for i in range(max((len(u) for u in url_lists), default=0)):
+            for urls in url_lists:
+                if i < len(urls):
+                    candidates.append((anchor, urls[i]))
     if not candidates:
         return []
     # fetch all candidates concurrently — one slow or blocked image must not hold up the rest
@@ -159,10 +209,10 @@ def gather_web_images(query: str, answer: str, job_id: str, config: Config) -> l
     folder.mkdir(parents=True, exist_ok=True)
     saved: list[dict[str, str]] = []
     per_anchor: dict[str, int] = {}
-    for anchor, got in fetched:                          # keep topic order; cap per section and overall
+    for anchor, got in fetched:                          # keep the round-robin order; cap per section + overall
         if len(saved) >= MAX_IMAGES:
             break
-        if not got or per_anchor.get(anchor, 0) >= PER_TOPIC:
+        if not got or per_anchor.get(anchor, 0) >= PER_ANCHOR:
             continue
         mime, blob = got
         stored = f"web_{len(saved) + 1:02d}{_ALLOWED[mime]}"

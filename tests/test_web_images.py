@@ -44,6 +44,20 @@ def test_topics_are_contextual_search_terms_per_heading():
     assert _topics("just a paragraph, no headings at all") == []
 
 
+def test_topics_search_bold_entities_under_a_category_heading():
+    # a category heading ("Top Cities") is searched by its bold places, all anchored to that section so
+    # the UI groups Seoul/Busan photos under it; a specific heading (React.js) stays its own entity.
+    answer = (
+        "## 🏙️ Top Cities (The Must-Sees)\n"
+        "**Seoul:** the capital.\n**Busan:** the coast.\n\n"
+        "## React.js\nThe frontend library.\n"
+    )
+    topics = _topics(answer)
+    cat = _norm_anchor("🏙️ Top Cities (The Must-Sees)")
+    assert (cat, "Seoul") in topics and (cat, "Busan") in topics   # bold places searched, anchored to the section
+    assert any(k == "react js" and t == "React.js" for k, t in topics)   # specific heading = its own entity
+
+
 def test_wants_images_is_answer_driven_not_query_keywords():
     # a structured, topical answer (travel) wants images — even though no query keyword said "educational"
     travel = "South Korea is great.\n\n## Seoul\nThe capital.\n\n## Busan\nThe coast.\n\n## Jeju Island\nAn island.\n"
