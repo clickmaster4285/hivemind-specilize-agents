@@ -146,7 +146,8 @@ sources:
     publisher: CNCF / Kubernetes
     licence: CC-BY-4.0           # kubernetes.io content licence, checked 2026-10-29
     refresh_every: 14d
-    max_pages: 120
+    max_pages: 200               # raised 2026-10-31 — concepts tree is 187 files; 120 cut the late-sorting
+                                 # workloads/ + services-networking/ dirs (pods, service, deployment)
     reason: Container orchestration concepts — high-value IT/DevOps reference
     added_by: admin
     added_on: 2026-10-29
@@ -305,7 +306,10 @@ sources:
     title: PowerShell documentation — conceptual
     kind: git_repo
     url: https://github.com/MicrosoftDocs/PowerShell-Docs
-    include: "reference/docs-conceptual/**/*.md"
+    include: "reference/docs-conceptual/learn/**/*.md"   # narrowed 2026-10-31 to the learn/ subtree
+    # (ps101 + deep-dives + sample-scripts = 41 files, the core scripting-language content). The full
+    # docs-conceptual tree is 638 files; at max_pages 120 the alphabetical crawl never reached learn/,
+    # so arrays / string / pipeline deep-dives were missing. Drops developer/ install/ gallery/ reference.
     # reference/docs-conceptual/<path>.md -> https://learn.microsoft.com/powershell/scripting/<path>
     page_url: "https://learn.microsoft.com/powershell/scripting/{path}"
     page_root: reference/docs-conceptual
@@ -314,7 +318,7 @@ sources:
     publisher: Microsoft
     licence: CC-BY-4.0           # PowerShell-Docs LICENSE.md, checked 2026-10-29 (code: MIT, LICENSE-CODE)
     refresh_every: 14d
-    max_pages: 120
+    max_pages: 60                # 2026-10-31: learn/ is 41 files; 60 leaves headroom
     reason: PowerShell administration language — pairs with Windows Server DNS / AD DS / security
     added_by: admin
     added_on: 2026-10-29
@@ -333,7 +337,7 @@ sources:
     publisher: Canonical
     licence: CC-BY-SA-4.0        # help.ubuntu.com/legal.html + Ubuntu docs practice, checked 2026-10-29
     refresh_every: 14d
-    max_pages: 100
+    max_pages: 260               # raised 2026-10-31 — docs tree is 255 files; 100 cut how-to/security/ (openssh-server)
     reason: Linux server administration (networking, security, services) — BRAIN_DESIGN IT candidate
     added_by: admin
     added_on: 2026-10-29
@@ -369,7 +373,7 @@ sources:
     publisher: Sebastián Ramírez / FastAPI
     licence: MIT                 # fastapi/fastapi LICENSE covers software and associated docs, checked 2026-10-29
     refresh_every: 14d
-    max_pages: 80
+    max_pages: 160               # raised 2026-10-31 — docs tree is 156 files; 80 cut tutorial/ (path-params, body)
     reason: Modern Python API framework — pairs with Python HOWTO and Django
     added_by: admin
     added_on: 2026-10-29

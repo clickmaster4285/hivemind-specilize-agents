@@ -150,6 +150,20 @@ Original notes:
 - `deepseek-r1:1.5b` is still installed — failed JSON/instruction tests and ignores `think:false`; remove
 - Old rows in the model registry (`llama3.1`, `llava`, `qwen2.5:3b`, …) — mark as unused or delete
 
+### L8. Serving throughput: revisit vLLM — only if we go multi-user on Linux + GPU
+
+Today we serve `qwen3.5:9b` with **Ollama** (`src/llm/llm_client.py`, `src/llm/ollama_mgmt.py`, 127.0.0.1:11434),
+which fits the local-first, single-model, one-user-at-a-time setup on Windows + 8 GB VRAM.
+
+**vLLM** is a high-throughput inference server (PagedAttention + continuous batching, OpenAI-compatible API).
+Its advantage is serving **many concurrent requests** on datacenter GPUs — wasted on a handful of local users,
+and it is Linux/CUDA-first (poor Windows support; WSL2 + NVIDIA only). So: **not now.**
+
+Revisit **only if** MulteAgent moves to **many simultaneous users on a dedicated Linux box with a real GPU**.
+Then vLLM's throughput would clearly beat Ollama, and because its API is OpenAI-compatible, `llm_client.py`
+should repoint with little change. Decide it with a **throughput benchmark** (extend `src/llm/bench_models.py`),
+not by assumption. _Noted 2026-10-31 — keeps the local-only rule (L4) unless/until that scaling need is real._
+
 ---
 
 ## Progress log

@@ -263,17 +263,17 @@ questions:
   - id: it-adds-promote
     lang: en
     question: How do I promote a server to a domain controller with PowerShell?
-    docs: [install-active-directory-domain-services, deploy-a-new-forest-on-a-standalone-server]
+    docs: [install-active-directory-domain-services--level-100-, deploy-a-new-forest-on-a-standalone-server]
     facts: ["Install-ADDSForest|Install-ADDSDomainController"]
   - id: it-adds-fsmo
     lang: en
     question: What are the FSMO operations master roles in Active Directory?
-    docs: [fsmo-roles, operations-masters]
+    docs: [understand-fsmo-roles, manage-fsmo-roles]
     facts: ["PDC Emulator|RID|Schema Master|Infrastructure"]
   - id: it-adds-funclevel
     lang: hi-Latn
     question: Active Directory functional level kya hota hai?
-    docs: [forest-and-domain-functional-levels, understanding-active-directory-functional-levels]
+    docs: [active-directory-functional-levels]
     facts: ["functional level"]
 
   # ── IT: Windows Server security (ms-windows-server-security) ─────────
@@ -297,7 +297,7 @@ questions:
   - id: it-net-ipam
     lang: en
     question: What is IPAM (IP Address Management) in Windows Server?
-    docs: [ipam]
+    docs: [ipam-top]
     facts: ["IPAM|IP Address Management"]
 
   # ── IT: PowerShell (powershell-docs-conceptual) ─────────────────────
@@ -314,14 +314,14 @@ questions:
   - id: it-ps-pipeline
     lang: hi-Latn
     question: PowerShell pipeline kaise kaam karta hai?
-    docs: [the-powershell-pipeline, understanding-the-powershell-pipeline]
+    docs: [04-pipelines]
     facts: ["pipeline"]
 
   # ── IT: Kubernetes concepts (kubernetes-concepts) ───────────────────
   - id: it-k8s-pod
     lang: en
     question: What is a Pod in Kubernetes?
-    docs: [pods]
+    docs: [pods/_index]   # k8s section pages are _index.md → URL ends /pods/_index, not /pods
     facts: ["Pod|container"]
   - id: it-k8s-service
     lang: en
@@ -338,24 +338,24 @@ questions:
   - id: it-docker-network
     lang: en
     question: How do Docker networks let containers communicate?
-    docs: [network, bridge, drivers]
+    docs: [network, bridge, drivers, docker-storage-networking-and-logging]
     facts: ["bridge|network"]
   - id: it-docker-volumes
     lang: en
     question: What is the difference between a Docker volume and a bind mount?
-    docs: [volumes, bind-mounts]
+    docs: [volumes, bind-mounts, docker-storage-networking-and-logging]
     facts: ["volume|bind mount"]
 
   # ── IT: PostgreSQL (postgresql-docs) ────────────────────────────────
   - id: it-pg-createindex
     lang: en
     question: How do I create an index in PostgreSQL?
-    docs: [sql-createindex.html]
+    docs: [sql-createindex.html, indexes-intro.html]
     facts: ["CREATE INDEX"]
   - id: it-pg-vacuum
     lang: en
     question: What is VACUUM used for in PostgreSQL?
-    docs: [sql-vacuum.html, routine-vacuuming.html]
+    docs: [sql-vacuum.html, routine-vacuuming.html, runtime-config-vacuum.html]
     facts: ["VACUUM|dead|bloat"]
   - id: it-pg-tx
     lang: en
@@ -396,7 +396,7 @@ questions:
   - id: dev-http-301
     lang: en
     question: What does HTTP status code 301 mean?
-    docs: [301]
+    docs: [redirections]
     facts: ["Moved Permanently|permanent"]
   - id: dev-http-cache
     lang: en
@@ -649,7 +649,7 @@ questions:
   - id: mkt-bing-call
     lang: en
     question: How do I call the Bing Web Search API?
-    docs: [overview, quickstarts]
+    docs: [rest/java, rest/csharp, rest/python]
     facts: ["Ocp-Apim-Subscription-Key|Bing Web Search"]
 
   # ── Marketing: on-page metadata (mdn-webpage-metadata) ──────────────

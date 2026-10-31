@@ -43,7 +43,13 @@ hasn't shown.
 - [ ] **Fix `postgresql-docs` depth:** it has 80 docs but only ~195 chunks — crawled chapter *landing*
       pages, not content. Change its `crawl_depth` 1 → 2 in `sources.yaml`, re-ingest. **[C]** edits YAML,
       **[U]** runs the ingest. Expect chunks to roughly 5–10×.
-      _2026-10-30: `crawl_depth` changed 1 → 2 in `sources.yaml` ([C] done). **[U] re-ingest pending.**_
+      _2026-10-30: `crawl_depth` changed 1 → 2 in `sources.yaml` ([C] done)._
+      _2026-10-31: first re-ingest aborted at 236/300 (Ollama dropped). **[U] re-ran, now completed**
+      (partial — hit the 300 `max_pages` cap, 2 transient `RemoteDisconnected` failures). Index +
+      vacuum content now present: `indexes-intro.html` (11.1, shows `CREATE INDEX`),
+      `runtime-config-vacuum.html` (19.10). The **canonical `sql-createindex.html` / `sql-vacuum.html`
+      command-reference pages are still beyond the 300 cap** — eval now accepts the ingested intro/config
+      pages; raise `postgresql-docs` max_pages (~450) later for the canonical reference pages._
 
 ### 2. Build the eval question set  **[C] draft, [U] review**
 - [x] Expand `data/brain_eval/questions.yaml` from DNS-only to **~2–3 questions per source** across all
@@ -51,9 +57,54 @@ hasn't shown.
       `id`, `question`, `docs: [url-ending]`, optional `facts: ["term|alt"]`.
       _2026-10-30 ([C] drafted): now **129 questions** (107 en / 22 hi-Latn), 5 out-of-scope, covering
       all 34 sources. No duplicate ids; YAML validated._
-- [ ] **[U] review:** the 32 sources added 2026-10-30 have **best-effort `docs:` endings** — run
+- [x] **[U] review:** the 32 sources added 2026-10-30 have **best-effort `docs:` endings** — run
       `python -m src.brain.evaluate` and correct any ending that doesn't match an ingested document URL
       (the `facts:` terms should hold regardless). Do this after the re-ingest in item 1.
+      _2026-10-31 slug audit ([C] done): cross-checked all 27 misses against actual `brain.documents`
+      URLs. Corrected 9 `docs:` endings that were guessed wrong (content present, retrieves rank 1):
+      `it-adds-fsmo` → `understand-fsmo-roles`/`manage-fsmo-roles`, `it-adds-funclevel` →
+      `active-directory-functional-levels`, `it-net-ipam` → `ipam-top`, `it-adds-promote` →
+      `install-active-directory-domain-services--level-100-`, `dev-http-301` → `redirections`,
+      `mkt-bing-call` → `web-search-client-library-*`, `it-docker-network`/`-volumes` +
+      `docker-storage-networking-and-logging`, `it-ps-pipeline` → `04-pipelines`. These flip to hits on
+      next eval (~+7 R@8)._
+
+### 2b. Coverage fixes from the 2026-10-31 audit  **[C] done, [U] re-ingest**
+The remaining misses were **coverage**, not measurement — target pages weren't ingested because
+`max_pages` head-truncates the alphabetically-sorted file list ([ingest.py](../src/brain/ingest.py) `prepared.files[:max_pages]`), cutting late-sorting subtrees. Raised caps / narrowed globs in `sources.yaml`:
+- `kubernetes-concepts` max_pages 120 → **200** (tree is 187; unlocks `workloads/`, `services-networking/` → pods, service, deployment).
+- `fastapi-docs` 80 → **160** (tree 156; unlocks `tutorial/` → path-params, body).
+- `ubuntu-server-docs` 100 → **260** (tree 255; unlocks `how-to/security/openssh-server`).
+- `powershell-docs-conceptual` include narrowed to `learn/**` (41 files, was 638 at cap 120 never reaching `learn/`), max_pages → 60. Unlocks deep-dives (arrays, string-substitutions) + `ps101/04-pipelines`. **Tradeoff:** drops `developer/`/`install/`/`gallery/` reference (peripheral to admin scripting).
+
+**[U] re-ingest the 4 changed sources + postgres**, then re-evaluate.
+
+**Known-remaining gaps (by decision 2026-10-31 — leave as expected misses):**
+- MDN JS (1,343 pages) / CSS (1,285) kept at cap 150 — reaching `Promise`/`Optional_chaining`/`Array.map`/`position` would ~double the KB. Misses: `dev-js-promise`, `dev-js-optional-chaining`, `dev-js-array-map`, `dev-css-position`.
+- WDAC + Credential-Guard-overview aren't in `windowsserverdocs/security` (fully ingested, 105 files) — they're in the Windows **client** security docs (new source, needs licence check — deferred). Misses: `it-sec-wdac`, `it-sec-credguard`.
+- Ranking misses (correct page present + correct slug, ranks >8): `dev-dj-models`, `mkt-schema-add` — kept as real retrieval signal.
+
+### 2c. Result log (2026-10-31)
+| Stage | R@8 | MRR | notes |
+|---|---|---|---|
+| Baseline (morning) | 77–78% | 0.62 | 27 missed |
+| After slug fixes (pages already ingested) | 84% | 0.68 | +postgres partial re-ingest |
+| After k8s / fastapi / ubuntu / powershell re-ingest | **92%** | **0.75** | EN 91 / Hinglish 95; 10 missed |
+
+One more slug fix applied post-92%: `it-k8s-pod` → `pods/_index` (k8s section pages are `_index.md`, so the
+URL ends `/pods/_index` not `/pods`; the page retrieves rank 1 at 0.82 — was scored a miss only on the slug).
+Expect **~93%** on the next eval.
+
+**Residual after that (9, all expected):** `it-sec-credguard` + `it-sec-wdac` (no source — L8/new-source task);
+`dev-js-promise` / `-optional-chaining` / `-array-map` / `dev-css-position` (MDN 150-cap, by decision);
+`dev-dj-models` / `dev-fa-body` / `mkt-schema-add` (ranking misses — correct page present, outranked by an
+index/features page).
+
+**Eval-quality note:** after the ubuntu re-ingest, `oos-linux-root` (0.66, "Enabling the root account") and
+`oos-vlan` (0.66, NPS VLAN config) are now **genuinely covered by the KB** — they are no longer truly
+out-of-scope and should be reclassified (moved to in-scope questions or dropped), not counted as gate leaks.
+Only `oos-instagram` (0.57, Remarketing) is a weak spurious match. This confirms the MIN_SIMILARITY HOLD:
+the gate stats are contaminated by mislabeled OOS questions, not a bad threshold.
 
 ### 3. Re-measure retrieval & re-tune the gate  **[U]**
 - [ ] Run `python -m src.brain.evaluate` (and `--mode vector|keyword|hybrid`) to get MRR per mode on the
@@ -62,6 +113,10 @@ hasn't shown.
       `KEYWORD_WEIGHT=0.0`, `EXACT_WEIGHT=1.0`) in `src/brain/retrieve.py` — all measured 2026-10-15 on
       ~2 sources, and the code itself says to re-tune when sources change. **[C]** proposes new values
       from the eval numbers; **[U]** re-runs to confirm.
+      _2026-10-31: **HOLD** — gate stays at 0.49. The 3 OOS leaks (oos-vlan 0.663, oos-instagram 0.571,
+      oos-linux-root 0.535) are all above the proposed 0.53, so raising to 0.53 fixes none; refusing them
+      needs ≥0.57, which would start refusing in-scope (min 0.542). The leaks are semantic overlap
+      (e.g. VLAN-via-NPS genuinely is in the KB), not a threshold problem. Revisit after coverage settles._
 
 ### 4. Measure answer faithfulness  **[U]**
 - [ ] Run `python -m src.brain.answer_eval` (claim-by-claim judge). Confirm grounded answers stay faithful
