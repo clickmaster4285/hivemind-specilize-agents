@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
@@ -18,21 +17,9 @@ from src.jobs import live
 from src.core.conversation import format_conversation_block, normalize_conversation
 from src.llm.llm_client import LLMClient, LLMStopped
 from src.llm.ollama_mgmt import model_loaded
-from src.tools.quiz import generate_quiz
+from src.tools.quiz import generate_quiz, wants_quiz
 from src.tools.suggestions import generate_suggestions
 from src.tools.web_search import WebSearchError, answer_from_web
-
-# "parts of / explain / how X works / difference between …" — answers that benefit from a quiz and images.
-_EDUCATIONAL = re.compile(
-    r"\b(parts?\s+of|components?\s+of|types?\s+of|features?\s+of|overview\s+of|architecture\s+of|"
-    r"explain|explained|what\s+(is|are)|how\s+\w+.*\bworks?\b|how\s+to|guide\s+to|teach|learn|"
-    r"difference\s+between|examples?\s+of|introduction\s+to)\b",
-    re.I,
-)
-
-
-def _is_educational(query: str) -> bool:
-    return bool(_EDUCATIONAL.search(query or ""))
 
 log = logging.getLogger(__name__)
 
@@ -350,7 +337,7 @@ def run_chat(
                                                 model=model, n=config.suggestions_count)
                     if sugg:
                         post["suggestions"] = sugg
-                if _is_educational(query) and config.quiz_enabled:
+                if config.quiz_enabled and wants_quiz(output):     # answer-driven, no query keyword gate
                     quiz = generate_quiz(query, output, client_chat=lambda **kw: client.chat(**kw),
                                          model=model, n=config.quiz_count)
                     if quiz:
