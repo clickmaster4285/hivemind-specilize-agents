@@ -26,10 +26,19 @@ from src.core.config import Config
 
 logger = logging.getLogger(__name__)
 
-TIME_LIMIT_SECONDS = 60
-WORKERS = 64
-PING_TIMEOUT_MS = 400
-TCP_TIMEOUT = 0.3
+# Nothing here is a fixed target: a scan's time budget and its concurrency scale with the subnet size
+# (scan_budget / worker_count), and the probe timeouts adapt to the measured network round-trip
+# (probe_timeouts). These are only the safety bounds — small subnets finish fast, large ones use more.
+TIME_LIMIT_SECONDS = 60          # hard ceiling on one scan's wall-clock (safety)
+BASE_TIME = 4.0                  # fixed overhead before per-host time
+PER_HOST_TIME = 0.05             # extra budget per address in the subnet
+MIN_TIME_BUDGET = 6.0            # a scan never gets less than this
+MIN_WORKERS = 8
+MAX_WORKERS = 128                # ceiling on concurrent probes (subprocess pings are heavy)
+PING_TIMEOUT_MS = 400            # default ping wait; probe_timeouts() adapts the effective value per scan
+TCP_TIMEOUT = 0.3                # default TCP connect wait; adapted likewise
+_eff_ping_ms = PING_TIMEOUT_MS   # effective (possibly adapted) timeouts the probes actually use this scan
+_eff_tcp = TCP_TIMEOUT
 # devices that ignore ping often answer on one of these (web, ssh, file sharing, RDP, printers, cameras)
 PROBE_PORTS = (80, 443, 445, 22)
 REPORT_PORTS = (22, 53, 80, 139, 443, 445, 502, 554, 3389, 8000, 8080, 9100, 37777)
@@ -111,7 +120,7 @@ def local_subnet() -> str:
 
 # ── probes (fixed commands, no shell) ────────────────────────────────────
 def _ping(ip: str) -> bool:
-    cmd = (["ping", "-n", "1", "-w", str(PING_TIMEOUT_MS), ip] if sys.platform == "win32"
+    cmd = (["ping", "-n", "1", "-w", str(_eff_ping_ms), ip] if sys.platform == "win32"
            else ["ping", "-c", "1", "-W", "1", ip])
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=3, creationflags=_NO_WINDOW)
@@ -123,7 +132,7 @@ def _ping(ip: str) -> bool:
 
 def _port_open(ip: str, port: int) -> bool:
     try:
-        with socket.create_connection((ip, port), timeout=TCP_TIMEOUT):
+        with socket.create_connection((ip, port), timeout=_eff_tcp):
             return True
     except OSError:
         return False
@@ -610,8 +619,62 @@ def snmp_identify(ip: str, *, community: str = "public") -> dict[str, str]:
     return out
 
 
-def identify(devices: list[Device], *, deadline: float) -> None:
-    """Fill model / name / serial (and refine type) from SSDP, mDNS and SNMP. Best-effort; mutates in place."""
+# ── identification: the device's own web page (title / Server header → model) ──
+# Cameras, NAS, routers, VoIP phones and many printers serve a web UI even when SNMP/SSDP are off; its
+# <title> or Server header usually names the product. One short read-only GET; TLS/cert errors ignored.
+HTTP_ID_PORTS = (443, 8443, 80, 8080, 8000)      # try TLS first, then plain
+_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
+# titles / Server headers too generic to be a model name
+_GENERIC_WEB = {"", "login", "log in", "sign in", "index", "home", "welcome", "document", "untitled",
+                "web client", "loading", "error", "redirecting", "nginx", "apache", "apache2", "lighttpd",
+                "openresty", "microsoft-iis", "iis", "werkzeug", "gunicorn", "cloudflare", "boa", "goahead",
+                "mini_httpd", "thttpd", "webserver", "web server", "httpd", "server"}
+
+
+def pick_http_model(title: str, server: str) -> str:
+    """A device model/name from a web page <title> (preferred) or Server header; '' when only generic."""
+    title = re.sub(r"\s+", " ", title or "").strip()
+    if title and title.lower() not in _GENERIC_WEB and 2 <= len(title) <= 60:
+        return title
+    server = (server or "").strip()
+    base = re.split(r"[/ ]", server, maxsplit=1)[0].lower()   # "Hikvision-Webs/2.0" → "hikvision-webs"
+    if server and base not in _GENERIC_WEB and 2 <= len(server) <= 60:
+        return server
+    return ""
+
+
+def _http_identity(ip: str, port: int, timeout: float = 1.5) -> tuple[str, str]:
+    """(page <title>, Server header) from one GET of the device's web root; ('', '') on any failure."""
+    import requests
+    import urllib3
+
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)   # device certs are self-signed
+    scheme = "https" if port in (443, 8443) else "http"
+    try:
+        resp = requests.get(f"{scheme}://{ip}:{port}/", timeout=timeout, verify=False, stream=True,
+                            headers={"User-Agent": "MulteAgent network_scan"})
+        server = resp.headers.get("Server", "")
+        body = resp.raw.read(16384, decode_content=True) or b""
+        resp.close()
+    except Exception:  # noqa: BLE001 — identification is best-effort; never fail the scan
+        return "", ""
+    m = _TITLE_RE.search(body.decode("utf-8", "replace"))
+    return (m.group(1) if m else ""), server
+
+
+def http_model(ip: str, ports: list[int]) -> str:
+    """Best-effort device model/name from its web UI (title, else Server header). '' if nothing useful."""
+    for port in HTTP_ID_PORTS:
+        if port in ports:
+            model = pick_http_model(*_http_identity(ip, port))
+            if model:
+                return model
+    return ""
+
+
+def identify(devices: list[Device], *, deadline: float, workers: int = MAX_WORKERS) -> None:
+    """Fill model / name / serial (and refine type) from SSDP, mDNS, SNMP and the device's web page.
+    Best-effort; mutates in place. `workers` caps the parallel probes (scaled to the scan size)."""
     by_ip = {d.ip: d for d in devices}
     try:
         locations = ssdp_locations(timeout=min(2.5, max(0.5, deadline - time.monotonic())))
@@ -629,18 +692,64 @@ def identify(devices: list[Device], *, deadline: float) -> None:
     # mDNS reverse name for devices still unnamed (in parallel, within the time budget)
     unnamed = [d for d in devices if not d.name]
     if unnamed and time.monotonic() < deadline:
-        with ThreadPoolExecutor(max_workers=max(1, min(WORKERS, len(unnamed)))) as pool:
+        with ThreadPoolExecutor(max_workers=max(1, min(workers, len(unnamed)))) as pool:
             for d, name in zip(unnamed, pool.map(lambda dev: mdns_name(dev.ip), unnamed)):
                 if name:
                     d.name = name
     # SNMP (community "public") for devices still missing a serial — managed gear only; read-only GET
     targets = [d for d in devices if not d.serial]
     if targets and time.monotonic() < deadline:
-        with ThreadPoolExecutor(max_workers=max(1, min(WORKERS, len(targets)))) as pool:
+        with ThreadPoolExecutor(max_workers=max(1, min(workers, len(targets)))) as pool:
             for d, info in zip(targets, pool.map(lambda dev: snmp_identify(dev.ip), targets)):
                 d.name = d.name or info.get("name", "")
                 d.model = d.model or info.get("model", "")
                 d.serial = d.serial or info.get("serial", "")
+    # the device's own web page (title / Server header) → model, for web devices still unidentified.
+    # Highest-yield source for cameras/NAS/routers/phones, which ship with SNMP and SSDP switched off.
+    web_targets = [d for d in devices if not d.model and set(d.ports) & set(HTTP_ID_PORTS)]
+    if web_targets and time.monotonic() < deadline:
+        with ThreadPoolExecutor(max_workers=max(1, min(workers, len(web_targets)))) as pool:
+            for d, model in zip(web_targets, pool.map(lambda dev: http_model(dev.ip, dev.ports), web_targets)):
+                if model:
+                    d.model = model
+
+
+# ── adaptive tuning: budget, concurrency and probe timeouts scale to the job ──
+def scan_budget(host_count: int) -> float:
+    """Seconds this scan may run: grows with the subnet size, floored at MIN_TIME_BUDGET and never above
+    the TIME_LIMIT_SECONDS safety ceiling. A /28 gets a few seconds; a /22 gets most of the ceiling."""
+    return min(TIME_LIMIT_SECONDS, max(MIN_TIME_BUDGET, BASE_TIME + host_count * PER_HOST_TIME))
+
+
+def worker_count(host_count: int) -> int:
+    """Concurrent probes for a scan of this size: as many as there are hosts, within [MIN, MAX]_WORKERS."""
+    return max(MIN_WORKERS, min(MAX_WORKERS, host_count))
+
+
+def probe_timeouts(rtt_ms: float | None) -> tuple[int, float]:
+    """(ping_timeout_ms, tcp_timeout_s) adapted to the measured round-trip, clamped to safe bounds.
+    No sample → the defaults. A fast wired LAN gets snappy waits; slow Wi-Fi/VPN gets patient ones."""
+    if not rtt_ms or rtt_ms <= 0:
+        return PING_TIMEOUT_MS, TCP_TIMEOUT
+    ping_ms = int(min(1500, max(120, rtt_ms * 8)))        # ~8× the round-trip, within [120 ms, 1.5 s]
+    return ping_ms, min(1.5, max(0.12, ping_ms / 1000))
+
+
+_RTT_RE = re.compile(r"time[=<]\s*([\d.]+)\s*ms", re.I)
+
+
+def _measure_rtt(ip: str) -> float | None:
+    """One ping to `ip`, returning its round-trip in ms (or None). Used once to calibrate the scan."""
+    cmd = (["ping", "-n", "1", "-w", "500", ip] if sys.platform == "win32"
+           else ["ping", "-c", "1", "-W", "1", ip])
+    try:
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=3, creationflags=_NO_WINDOW)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if out.returncode != 0:
+        return None
+    m = _RTT_RE.search(out.stdout)
+    return float(m.group(1)) if m else None
 
 
 # ── the scan ─────────────────────────────────────────────────────────────
@@ -655,17 +764,24 @@ def scan(
         raise ScanError("network scanning is switched off (NETWORK_SCAN_ENABLED=false)")
     net = validate_subnet(subnet or local_subnet(), config.network_scan_max_hosts)
     hosts = [str(h) for h in net.hosts()] or [str(net.network_address)]
+    # Adapt to this scan: budget + concurrency scale with the subnet; probe timeouts follow the gateway RTT.
+    # (The effective timeouts are module-level and best-effort — scans run one at a time via the job worker.)
+    gateway = default_gateway()
+    global _eff_ping_ms, _eff_tcp
+    _eff_ping_ms, _eff_tcp = probe_timeouts(_measure_rtt(gateway) if gateway else None)
+    budget = scan_budget(len(hosts))
+    workers = worker_count(len(hosts))
     started = time.monotonic()
     devices: list[Device] = []
     stopped = timed_out = False
-    pool = ThreadPoolExecutor(max_workers=min(WORKERS, len(hosts)))
+    pool = ThreadPoolExecutor(max_workers=min(workers, len(hosts)))
     try:
         futures = [pool.submit(_check, ip) for ip in hosts]
         for done, fut in enumerate(as_completed(futures), 1):
             if not should_continue():
                 stopped = True
                 break
-            if time.monotonic() - started > TIME_LIMIT_SECONDS:
+            if time.monotonic() - started > budget:
                 timed_out = True
                 break
             device = fut.result()
@@ -683,15 +799,14 @@ def scan(
         silent = [ip for ip, mac in arp.items()
                   if ip not in found and ipaddress.ip_address(ip) in net and ip != str(net.broadcast_address)
                   and not mac.startswith(("ff:ff:ff", "01:00:5e"))]
-        with ThreadPoolExecutor(max_workers=max(1, min(WORKERS, len(silent)))) as extra:
+        with ThreadPoolExecutor(max_workers=max(1, min(workers, len(silent)))) as extra:
             devices += list(extra.map(_enrich, [Device(ip=ip, found_by="arp") for ip in silent]))
     macs = {**arp, **_own_macs()}                # Windows does not list itself in the ARP table
-    gateway = default_gateway()
     for d in devices:
         d.mac = macs.get(d.ip, "")
         d.vendor = manufacturer(d.mac)
     if config.network_scan_identify and not stopped and not timed_out:
-        identify(devices, deadline=started + TIME_LIMIT_SECONDS)   # SSDP/mDNS: model + name
+        identify(devices, deadline=started + budget, workers=workers)   # SSDP/mDNS/SNMP/HTTP
     for d in devices:
         d.type = classify(d, gateway)            # after identify(), so name/model words count
     devices.sort(key=lambda d: ipaddress.ip_address(d.ip))
@@ -728,9 +843,10 @@ def summary(result: ScanResult) -> str:
 NOTES = ("Found by: ping, an open port (tcp), or only the network's address table (arp — e.g. PCs whose firewall "
          "blocks ping). Names come from Windows (NetBIOS) or DNS and are often missing for phones and IoT devices; "
          "the manufacturer comes from the MAC address (IEEE list). Model and some names come from the device's "
-         "own SSDP/UPnP and mDNS announcements, where it makes them. Model and serial also come from SNMP "
-         "(community 'public') on managed gear such as switches and printers; most home/office devices expose no "
-         "serial to a credential-free scan, so that column is often empty. Type is a best-effort guess from the name, "
+         "own SSDP/UPnP and mDNS announcements, where it makes them, from SNMP (community 'public') on managed "
+         "gear such as switches and printers, and from the device's own web page title where it serves one (cameras, "
+         "NAS, routers, phones). A serial needs credentials, so most devices leave it blank. Type is a best-effort "
+         "guess from the name, "
          "model, open ports, manufacturer and whether the device is the gateway — treat it as a hint, not a certainty.")
 
 

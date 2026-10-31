@@ -53,7 +53,8 @@ def fake_network(monkeypatch):
     monkeypatch.setattr(net_scan, "_netbios_name", lambda ip: "PC26" if ip.endswith(".12") else "")
     monkeypatch.setattr(net_scan, "_oui", {"F8BC12": "Dell Inc.", "AABBCC": "Test Vendor"})
     monkeypatch.setattr(net_scan, "default_gateway", lambda: "192.168.50.1")   # hermetic: no real route lookup
-    monkeypatch.setattr(net_scan, "identify", lambda devices, *, deadline: None)  # no real SSDP/mDNS in tests
+    monkeypatch.setattr(net_scan, "_measure_rtt", lambda ip: None)             # no real calibration ping
+    monkeypatch.setattr(net_scan, "identify", lambda devices, *, deadline, workers: None)  # no real SSDP/mDNS
 
 
 def test_scan_finds_devices_by_ping_and_tcp(fake_network):
@@ -220,6 +221,50 @@ def test_snmp_identify_maps_oids_to_fields(monkeypatch):
     assert net_scan.snmp_identify("10.0.0.2") == {"serial": "CNABC123"}
     monkeypatch.setattr(net_scan, "snmp_get", lambda ip, oids, **kw: {})
     assert net_scan.snmp_identify("10.0.0.3") == {}            # silent device → {}
+
+
+def test_scan_tuning_is_adaptive_and_bounded():
+    # time budget grows with the subnet but stays within [MIN_TIME_BUDGET, TIME_LIMIT_SECONDS]
+    assert net_scan.scan_budget(14) == net_scan.MIN_TIME_BUDGET          # a /28 hits the floor
+    small, big = net_scan.scan_budget(254), net_scan.scan_budget(1024)
+    assert net_scan.MIN_TIME_BUDGET < small < big <= net_scan.TIME_LIMIT_SECONDS
+    # concurrency scales with host count, clamped to [MIN, MAX]_WORKERS
+    assert net_scan.worker_count(3) == net_scan.MIN_WORKERS
+    assert net_scan.worker_count(50) == 50
+    assert net_scan.worker_count(5000) == net_scan.MAX_WORKERS
+
+
+def test_probe_timeouts_adapt_to_rtt():
+    assert net_scan.probe_timeouts(None) == (net_scan.PING_TIMEOUT_MS, net_scan.TCP_TIMEOUT)   # no sample
+    assert net_scan.probe_timeouts(0) == (net_scan.PING_TIMEOUT_MS, net_scan.TCP_TIMEOUT)
+    fast_ms, fast_tcp = net_scan.probe_timeouts(1.0)       # fast LAN → snappy, but floored
+    assert fast_ms == 120 and fast_tcp == 0.12
+    slow_ms, slow_tcp = net_scan.probe_timeouts(300.0)     # slow link → patient, but capped
+    assert slow_ms == 1500 and slow_tcp == 1.5
+    mid_ms, _ = net_scan.probe_timeouts(30.0)              # 30 ms → ~8x = 240 ms
+    assert mid_ms == 240
+
+
+def test_pick_http_model_prefers_title_then_server():
+    p = net_scan.pick_http_model
+    assert p("QNAP Turbo NAS", "nginx") == "QNAP Turbo NAS"            # a real title wins
+    assert p("  Grandstream GXP2170  ", "") == "Grandstream GXP2170"   # trimmed
+    assert p("Login", "Hikvision-Webs/2.0") == "Hikvision-Webs/2.0"    # generic title → Server header
+    assert p("", "App-webs/1.0") == "App-webs/1.0"
+    assert p("Index", "nginx") == ""                                   # both generic → nothing
+    assert p("Sign in", "Apache/2.4.52") == ""
+
+
+def test_http_model_tries_web_ports(monkeypatch):
+    calls = []
+    def fake_identity(ip, port, timeout=1.5):
+        calls.append(port)
+        return ("DS224+", "nginx") if port == 443 else ("", "")
+    monkeypatch.setattr(net_scan, "_http_identity", fake_identity)
+    assert net_scan.http_model("192.168.1.10", [80, 443]) == "DS224+"  # TLS tried first, gives the model
+    assert net_scan.http_model("192.168.1.11", [22, 139]) == ""        # no web port → no probe, no model
+    monkeypatch.setattr(net_scan, "_http_identity", lambda ip, port, timeout=1.5: ("Login", "nginx"))
+    assert net_scan.http_model("192.168.1.12", [80]) == ""             # only generic → empty
 
 
 def test_random_macs_are_private(monkeypatch):
