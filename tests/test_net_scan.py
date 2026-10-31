@@ -52,6 +52,8 @@ def fake_network(monkeypatch):
     monkeypatch.setattr(net_scan, "_own_macs", lambda: {})
     monkeypatch.setattr(net_scan, "_netbios_name", lambda ip: "PC26" if ip.endswith(".12") else "")
     monkeypatch.setattr(net_scan, "_oui", {"F8BC12": "Dell Inc.", "AABBCC": "Test Vendor"})
+    monkeypatch.setattr(net_scan, "default_gateway", lambda: "192.168.50.1")   # hermetic: no real route lookup
+    monkeypatch.setattr(net_scan, "identify", lambda devices, *, deadline: None)  # no real SSDP/mDNS in tests
 
 
 def test_scan_finds_devices_by_ping_and_tcp(fake_network):
@@ -63,6 +65,8 @@ def test_scan_finds_devices_by_ping_and_tcp(fake_network):
     assert result.scanned == 14 and not result.stopped
     pc = result.devices[3]                                    # firewalled PC found through ARP, named by NetBIOS
     assert (pc.name, pc.vendor) == ("PC26", "Dell Inc.")
+    # device type inferred: .1 is the gateway (router); .9 answers SMB and .12 is a named Dell → pc; .2 unknown
+    assert [d.type for d in result.devices] == ["router", "", "pc", "pc"]
 
 
 def test_switched_off_and_stop(fake_network):
@@ -73,11 +77,13 @@ def test_switched_off_and_stop(fake_network):
 
 
 def test_table_and_excel():
-    result = ScanResult("192.168.1.0/24", 254, [Device("192.168.1.10", "nas", "aa:bb:cc:dd:ee:ff", [445, 443], "ping",
-                                                      "QNAP Systems, Inc.")], 3.2)
+    result = ScanResult("192.168.1.0/24", 254, [Device("192.168.1.10", "nas-01", "aa:bb:cc:dd:ee:ff", [445, 443],
+                                                      "ping", "QNAP Systems, Inc.", type="NAS", model="DS224+")], 3.2)
     table = net_scan.markdown_table(result)
-    assert table.splitlines()[0] == "| IP address | Name | Manufacturer | MAC address | Open ports | Found by |"
-    assert "| 192.168.1.10 | nas | QNAP Systems, Inc. | aa:bb:cc:dd:ee:ff | 445 SMB, 443 HTTPS | ping |" in table
+    assert table.splitlines()[0] == ("| IP address | Type | Name | Model | Manufacturer | MAC address | "
+                                     "Open ports | Found by |")
+    assert ("| 192.168.1.10 | NAS | nas-01 | DS224+ | QNAP Systems, Inc. | aa:bb:cc:dd:ee:ff | "
+            "445 SMB, 443 HTTPS | ping |") in table
     from io import BytesIO
 
     from openpyxl import load_workbook
@@ -129,6 +135,52 @@ def test_netbios_answer_is_parsed():
     data = b"\0" * 56 + bytes([3]) + entry("WORKGROUP", 0x00, 0x8400) + entry("AMJADKHAN-PC", 0x20, 0x0400)         + entry("AMJADKHAN-PC", 0x00, 0x0400)
     assert net_scan.parse_nbstat(data) == "AMJADKHAN-PC"           # unique name, not the group
     assert net_scan.parse_nbstat(b"too short") == ""
+
+
+def test_classify_device_type():
+    c = net_scan.classify
+    assert c(Device("10.0.0.1"), gateway_ip="10.0.0.1") == "router"           # the gateway
+    assert c(Device("10.0.0.5", ports=[9100], vendor="Hewlett Packard")) == "printer"
+    assert c(Device("10.0.0.6", ports=[554], vendor="Hikvision Digital Technology")) == "ip camera"
+    assert c(Device("10.0.0.7", vendor="Ubiquiti Inc.")) == "router"
+    assert c(Device("10.0.0.8", ports=[445, 139], vendor="Dell Inc.", name="PC1")) == "pc"
+    assert c(Device("10.0.0.9", vendor="Apple, Inc.")) == "phone"
+    assert c(Device("10.0.0.10", ports=[445], vendor="Apple, Inc.")) == "pc"  # a Mac that shares files
+    assert c(Device("10.0.0.11", vendor="Synology Incorporated")) == "nas"
+    assert c(Device("10.0.0.12", ports=[22])) == "server"
+    assert c(Device("10.0.0.13", ports=[80, 443])) == ""                      # web UI only: left to SSDP/SNMP
+    # phase-2 types: name/model words and the new ports
+    assert c(Device("10.0.0.20", name="NVR-Lobby", ports=[554], vendor="Hikvision Digital Technology")) == "nvr"
+    assert c(Device("10.0.0.26", name="NVR01")) == "nvr"                       # name wins even without a boundary
+    assert c(Device("10.0.0.21", name="SUN2000-12K", model="SUN2000")) == "inverter"
+    assert c(Device("10.0.0.22", ports=[502])) == "inverter"                  # Modbus TCP
+    assert c(Device("10.0.0.23", name="Catalyst-SW1", vendor="Cisco Systems")) == "switch"
+    assert c(Device("10.0.0.24", name="Living Room TV", model="BRAVIA KD-55")) == "media player"
+    assert c(Device("10.0.0.25", name="shelly-plug-s")) == "iot device"
+    assert c(Device("10.0.0.27", ports=[8000], vendor="Hikvision Digital Technology")) == "ip camera"
+
+
+def test_ssdp_header_and_upnp_xml_parsing():
+    resp = "HTTP/1.1 200 OK\r\nST: upnp:rootdevice\r\nLOCATION: http://192.168.1.1:5000/desc.xml\r\nUSN: uuid:x\r\n\r\n"
+    assert net_scan._http_header(resp, "location") == "http://192.168.1.1:5000/desc.xml"
+    xml = ("<root><device><deviceType>urn:schemas-upnp-org:device:InternetGatewayDevice:1</deviceType>"
+           "<friendlyName>Home Router</friendlyName><manufacturer>MikroTik</manufacturer>"
+           "<modelName>RB750Gr3</modelName><modelNumber>hEX</modelNumber></device></root>")
+    assert net_scan.parse_upnp(xml) == {"name": "Home Router", "model": "RB750Gr3 hEX",
+                                        "manufacturer": "MikroTik", "type": "router"}
+
+
+def test_mdns_ptr_answer_is_parsed():
+    """A reverse-PTR response whose answer uses a compression pointer back to the question name."""
+    def dns_name(n: str) -> bytes:
+        return b"".join(bytes([len(p)]) + p.encode() for p in n.split(".")) + b"\x00"
+
+    header = b"\x00\x00\x84\x00" + (1).to_bytes(2, "big") + (1).to_bytes(2, "big") + b"\x00\x00\x00\x00"
+    question = dns_name("5.1.168.192.in-addr.arpa") + b"\x00\x0c\x00\x01"
+    rdata = dns_name("my-printer.local")
+    answer = b"\xc0\x0c" + b"\x00\x0c" + b"\x00\x01" + b"\x00\x00\x00\x3c" + len(rdata).to_bytes(2, "big") + rdata
+    assert net_scan.parse_ptr_answer(header + question + answer) == "my-printer"
+    assert net_scan.parse_ptr_answer(b"\x00" * 12) == ""        # no answers
 
 
 def test_random_macs_are_private(monkeypatch):

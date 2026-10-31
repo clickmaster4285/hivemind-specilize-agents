@@ -32,9 +32,10 @@ PING_TIMEOUT_MS = 400
 TCP_TIMEOUT = 0.3
 # devices that ignore ping often answer on one of these (web, ssh, file sharing, RDP, printers, cameras)
 PROBE_PORTS = (80, 443, 445, 22)
-REPORT_PORTS = (22, 53, 80, 139, 443, 445, 554, 3389, 8080, 9100)
+REPORT_PORTS = (22, 53, 80, 139, 443, 445, 502, 554, 3389, 8000, 8080, 9100, 37777)
 PORT_NAMES = {22: "SSH", 53: "DNS", 80: "HTTP", 139: "NetBIOS", 443: "HTTPS", 445: "SMB",
-              554: "RTSP (camera)", 3389: "RDP", 8080: "HTTP-alt", 9100: "printer"}
+              502: "Modbus", 554: "RTSP (camera)", 3389: "RDP", 8000: "Hikvision", 8080: "HTTP-alt",
+              9100: "printer", 37777: "Dahua"}
 PRIVATE_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")]
 _SUBNET_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})(?:\s*/\s*(\d{1,2}))?\b")
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -52,6 +53,9 @@ class Device:
     ports: list[int] = field(default_factory=list)
     found_by: str = "ping"
     vendor: str = ""
+    type: str = ""        # inferred kind (router, printer, ip camera, pc, phone, nas, server, …) — classify()
+    model: str = ""       # model / identification offered by SSDP / mDNS / SNMP (phase 2–3); often empty
+    serial: str = ""      # serial number — only SNMP (public) or the authenticated SSH path provide it
 
 
 @dataclass
@@ -252,6 +256,261 @@ def _own_macs() -> dict[str, str]:
     return out
 
 
+# ── device type (inferred from signals already collected — no extra traffic) ──
+# OUI company-name substrings (lowercased) → device type. First match wins.
+VENDOR_TYPES: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("hewlett packard", "hp inc", "canon", "brother", "epson", "lexmark", "kyocera",
+      "ricoh", "xerox", "zebra", "seiko epson"), "printer"),
+    (("hikvision", "dahua", "axis comm", "uniview", "reolink", "amcrest", "hanwha", "vivotek"), "ip camera"),
+    (("sma solar", "fronius", "solaredge", "growatt", "sungrow", "goodwe", "deye", "sofar solar",
+      "enphase", "victron"), "inverter"),
+    (("mikrotik", "ubiquiti", "tp-link", "netgear", "d-link", "zyxel", "aruba", "ruckus",
+      "cambium", "fortinet", "sophos"), "router"),
+    (("cisco", "juniper", "arista", "hewlett packard enterprise", "extreme networks"), "switch"),
+    (("synology", "qnap", "western digital", "buffalo", "netgear storage"), "nas"),
+    (("raspberry pi",), "server"),
+    (("apple",), "phone"),                       # refined to pc below if it shares files / allows RDP
+    (("samsung electro", "xiaomi", "huawei", "oneplus", "guangdong oppo", "vivo mobile",
+      "motorola mobility", "google, inc", "googlefi"), "phone"),
+    (("dell", "lenovo", "asustek", "acer", "micro-star", "gigabyte", "intel corporate",
+      "liteon", "wistron", "compal", "pegatron"), "pc"),
+    (("sonos", "roku", "amazon techno", "google home", "nest labs", "espressif",
+      "tuya", "sichuan ai-link", "shenzhen"), "iot device"),
+)
+
+# Explicit words in a device's name or model (NetBIOS/DNS, or an SSDP/SNMP model string) are the
+# strongest signal — checked before ports/vendor. First match wins.
+NAME_TYPES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bnvr|network video recorder"), "nvr"),
+    (re.compile(r"inverter|sun2000|solaredge|growatt|sungrow|goodwe|fronius|\bsma\b|enphase|\bdeye\b"), "inverter"),
+    (re.compile(r"\bnas\b|synology|qnap|diskstation|terramaster"), "nas"),
+    (re.compile(r"camera|ip ?cam|webcam|\bipc\b|doorbell|surveillance"), "ip camera"),
+    (re.compile(r"printer|laserjet|officejet|\bmfp\b|scanner|workcentre"), "printer"),
+    (re.compile(r"\bswitch\b|catalyst|nexus"), "switch"),
+    (re.compile(r"router|gateway|archer|\bunifi\b|mikrotik|\bomada\b|access ?point|\bap\b|\beero\b|\bdeco\b"), "router"),
+    (re.compile(r"\btv\b|roku|chromecast|fire ?stick|apple ?tv|bravia|smart ?tv|\bshield\b"), "media player"),
+    (re.compile(r"iphone|ipad|galaxy|pixel|redmi|oneplus|android"), "phone"),
+    (re.compile(r"esp32|esp8266|tasmota|shelly|sonoff|\btuya\b|smart ?plug|thermostat|\bhue\b"), "iot device"),
+    (re.compile(r"macbook|\bimac\b|thinkpad|desktop|laptop|workstation|-pc\b|\bpc-"), "pc"),
+)
+
+
+def classify(d: Device, gateway_ip: str = "") -> str:
+    """A device's kind from name/model words + ports + vendor + whether it's the gateway. '' when unsure.
+    Returns plain words that match the diagram icon vocabulary (frontend/src/lib/deviceIcons.ts)."""
+    ports = set(d.ports)
+    vendor = (d.vendor or "").lower()
+    text = f"{d.name} {d.model}".lower()
+    if gateway_ip and d.ip == gateway_ip:
+        return "router"
+    for rx, kind in NAME_TYPES:                   # an explicit word in the name/model is decisive
+        if rx.search(text):
+            return kind
+    if 9100 in ports:
+        return "printer"
+    if 502 in ports:                              # Modbus TCP — solar inverters / industrial controllers
+        return "inverter"
+    if ports & {554, 8000, 37777}:                # RTSP / Hikvision / Dahua
+        return "ip camera"
+    for needles, kind in VENDOR_TYPES:
+        if any(n in vendor for n in needles):
+            if kind == "phone" and ({445, 139, 3389} & ports):   # a Mac/phone that shares files is a computer
+                return "pc"
+            return kind
+    if {445, 139} & ports or 3389 in ports or d.name:   # Windows file sharing / RDP / a NetBIOS-or-DNS name
+        return "pc"
+    if 22 in ports and not ({80, 443} & ports):
+        return "server"
+    return ""                                     # web-only or silent: leave to SSDP/SNMP (phase 2–3)
+
+
+def default_gateway() -> str:
+    """Best-effort default-gateway IP — one signal for classify(); '' if it can't be read."""
+    try:
+        if sys.platform == "win32":
+            out = subprocess.run(["route", "print", "-4", "0.0.0.0"], capture_output=True, text=True,
+                                 timeout=5, creationflags=_NO_WINDOW).stdout
+            for line in out.splitlines():
+                p = line.split()
+                if len(p) >= 3 and p[0] == "0.0.0.0" and p[1] == "0.0.0.0":
+                    try:
+                        return str(ipaddress.ip_address(p[2]))
+                    except ValueError:
+                        continue
+        else:
+            out = subprocess.run(["ip", "route", "show", "default"], capture_output=True, text=True, timeout=5).stdout
+            m = re.search(r"default via (\d{1,3}(?:\.\d{1,3}){3})", out)
+            if m:
+                return m.group(1)
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    return ""
+
+
+# ── identification: SSDP/UPnP + mDNS (read-only LAN discovery; best-effort) ──
+SSDP_ADDR = ("239.255.255.250", 1900)
+SSDP_MSEARCH = ("M-SEARCH * HTTP/1.1\r\n"
+                "HOST: 239.255.255.250:1900\r\n"
+                'MAN: "ssdp:discover"\r\n'
+                "MX: 1\r\n"
+                "ST: ssdp:all\r\n\r\n").encode()
+# UPnP deviceType class word → our vocabulary
+UPNP_TYPES = {"internetgatewaydevice": "router", "wandevice": "router", "wlanaccesspoint": "router",
+              "mediarenderer": "media player", "mediaserver": "nas", "printer": "printer",
+              "digitalsecuritycamera": "ip camera"}
+
+
+def _http_header(text: str, name: str) -> str:
+    m = re.search(rf"^{name}\s*:\s*(.+?)\s*$", text, re.I | re.M)
+    return m.group(1) if m else ""
+
+
+def ssdp_locations(timeout: float = 2.5) -> dict[str, str]:
+    """ip → first UPnP description URL (the LOCATION header) from one multicast M-SEARCH."""
+    out: dict[str, str] = {}
+    sock = None
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        sock.settimeout(timeout)
+        sock.sendto(SSDP_MSEARCH, SSDP_ADDR)
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            try:
+                data, addr = sock.recvfrom(2048)
+            except (socket.timeout, OSError):
+                break
+            loc = _http_header(data.decode("latin-1", "replace"), "location")
+            if loc and addr[0] not in out:
+                out[addr[0]] = loc
+    except OSError:
+        pass
+    finally:
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+    return out
+
+
+def parse_upnp(xml: str) -> dict[str, str]:
+    """friendlyName / modelName+modelNumber / manufacturer / mapped type from a UPnP description XML."""
+    def tag(name: str) -> str:
+        m = re.search(rf"<(?:\w+:)?{name}>(.*?)</(?:\w+:)?{name}>", xml, re.I | re.S)
+        return re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+
+    model = " ".join(x for x in (tag("modelName"), tag("modelNumber")) if x).strip()
+    upnp_type = ""
+    m = re.search(r":device:([A-Za-z0-9]+):", tag("deviceType"))
+    if m:
+        upnp_type = UPNP_TYPES.get(m.group(1).lower(), "")
+    return {"name": tag("friendlyName"), "model": model,
+            "manufacturer": tag("manufacturer"), "type": upnp_type}
+
+
+def ssdp_describe(location: str, timeout: float = 2.0) -> dict[str, str]:
+    try:
+        import requests
+
+        resp = requests.get(location, timeout=timeout, headers={"User-Agent": "MulteAgent network_scan"})
+        resp.raise_for_status()
+        return parse_upnp(resp.text)
+    except Exception:  # noqa: BLE001 — identification is best-effort; never fail the scan
+        return {}
+
+
+def _dns_query(qname: str, qtype: int) -> bytes:
+    header = b"\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00"       # id 0, no flags, 1 question
+    body = b"".join(bytes([len(p)]) + p.encode("ascii") for p in qname.split(".")) + b"\x00"
+    return header + body + qtype.to_bytes(2, "big") + b"\x00\x01"      # class IN
+
+
+def _read_dns_name(data: bytes, off: int) -> tuple[str, int]:
+    """A DNS name at `off`, following compression pointers. Returns (name, offset-after-the-name-field)."""
+    labels: list[str] = []
+    jumped = False
+    after = off
+    for _ in range(128):                                              # guard against pointer loops
+        length = data[off]
+        if length & 0xC0 == 0xC0:                                     # compression pointer
+            if not jumped:
+                after = off + 2
+            off = ((length & 0x3F) << 8) | data[off + 1]
+            jumped = True
+            continue
+        off += 1
+        if length == 0:
+            break
+        labels.append(data[off:off + length].decode("ascii", "replace"))
+        off += length
+    if not jumped:
+        after = off
+    return ".".join(labels), after
+
+
+def parse_ptr_answer(data: bytes) -> str:
+    """The first PTR target's leading label (e.g. 'my-printer' from 'my-printer.local'), or ''."""
+    try:
+        qd = int.from_bytes(data[4:6], "big")
+        an = int.from_bytes(data[6:8], "big")
+        if an < 1:
+            return ""
+        off = 12
+        for _ in range(qd):
+            _, off = _read_dns_name(data, off)
+            off += 4                                                  # QTYPE + QCLASS
+        _, off = _read_dns_name(data, off)                           # answer name
+        rtype = int.from_bytes(data[off:off + 2], "big")
+        off += 8                                                      # TYPE + CLASS + TTL
+        off += 2                                                      # RDLENGTH
+        if rtype != 12:                                              # not PTR
+            return ""
+        name, _ = _read_dns_name(data, off)
+        return name.split(".")[0]
+    except (IndexError, ValueError):
+        return ""
+
+
+def mdns_name(ip: str, timeout: float = 0.5) -> str:
+    """Unicast reverse mDNS (PTR of x.x.x.x.in-addr.arpa, port 5353) → the device's hostname, or ''."""
+    reverse = ".".join(reversed(ip.split("."))) + ".in-addr.arpa"
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(timeout)
+            s.sendto(_dns_query(reverse, 12), (ip, 5353))
+            data, _ = s.recvfrom(1024)
+    except OSError:
+        return ""
+    return parse_ptr_answer(data)
+
+
+def identify(devices: list[Device], *, deadline: float) -> None:
+    """Fill model / name (and refine type) from SSDP and mDNS. Best-effort; mutates `devices` in place."""
+    by_ip = {d.ip: d for d in devices}
+    try:
+        locations = ssdp_locations(timeout=min(2.5, max(0.5, deadline - time.monotonic())))
+    except Exception:  # noqa: BLE001
+        locations = {}
+    for ip, location in locations.items():
+        d = by_ip.get(ip)
+        if d is None or time.monotonic() > deadline:
+            continue
+        info = ssdp_describe(location)
+        d.model = d.model or info.get("model", "")
+        d.name = d.name or info.get("name", "")
+        d.vendor = d.vendor or info.get("manufacturer", "")
+        d.type = d.type or info.get("type", "")
+    # mDNS reverse name for devices still unnamed (in parallel, within the time budget)
+    unnamed = [d for d in devices if not d.name]
+    if unnamed and time.monotonic() < deadline:
+        with ThreadPoolExecutor(max_workers=max(1, min(WORKERS, len(unnamed)))) as pool:
+            for d, name in zip(unnamed, pool.map(lambda dev: mdns_name(dev.ip), unnamed)):
+                if name:
+                    d.name = name
+
+
 # ── the scan ─────────────────────────────────────────────────────────────
 def scan(
     subnet: str | None,
@@ -295,17 +554,22 @@ def scan(
         with ThreadPoolExecutor(max_workers=max(1, min(WORKERS, len(silent)))) as extra:
             devices += list(extra.map(_enrich, [Device(ip=ip, found_by="arp") for ip in silent]))
     macs = {**arp, **_own_macs()}                # Windows does not list itself in the ARP table
+    gateway = default_gateway()
     for d in devices:
         d.mac = macs.get(d.ip, "")
         d.vendor = manufacturer(d.mac)
+    if config.network_scan_identify and not stopped and not timed_out:
+        identify(devices, deadline=started + TIME_LIMIT_SECONDS)   # SSDP/mDNS: model + name
+    for d in devices:
+        d.type = classify(d, gateway)            # after identify(), so name/model words count
     devices.sort(key=lambda d: ipaddress.ip_address(d.ip))
     return ScanResult(str(net), len(hosts), devices, round(time.monotonic() - started, 1), stopped, timed_out)
 
 
 # ── presentation ─────────────────────────────────────────────────────────
 def rows(result: ScanResult) -> list[list[str]]:
-    header = ["IP address", "Name", "Manufacturer", "MAC address", "Open ports", "Found by"]
-    body = [[d.ip, d.name or "—", d.vendor or "—", d.mac or "—",
+    header = ["IP address", "Type", "Name", "Model", "Manufacturer", "MAC address", "Open ports", "Found by"]
+    body = [[d.ip, d.type or "—", d.name or "—", d.model or "—", d.vendor or "—", d.mac or "—",
              ", ".join(f"{p} {PORT_NAMES.get(p, '')}".strip() for p in d.ports) or "—", d.found_by]
             for d in result.devices]
     return [header, *body]
@@ -330,7 +594,9 @@ def summary(result: ScanResult) -> str:
 
 NOTES = ("Found by: ping, an open port (tcp), or only the network's address table (arp — e.g. PCs whose firewall "
          "blocks ping). Names come from Windows (NetBIOS) or DNS and are often missing for phones and IoT devices; "
-         "the manufacturer comes from the MAC address (IEEE list).")
+         "the manufacturer comes from the MAC address (IEEE list). Model and some names come from the device's "
+         "own SSDP/UPnP and mDNS announcements, where it makes them. Type is a best-effort guess from the name, "
+         "model, open ports, manufacturer and whether the device is the gateway — treat it as a hint, not a certainty.")
 
 
 def xlsx_bytes(result: ScanResult) -> bytes:
@@ -346,7 +612,7 @@ def xlsx_bytes(result: ScanResult) -> bytes:
         ws.append(row)
     for cell in ws[1]:
         cell.font = Font(bold=True)
-    for col, width in zip("ABCDEF", (16, 26, 28, 20, 48, 10)):
+    for col, width in zip("ABCDEFGH", (16, 14, 20, 24, 26, 20, 44, 10)):
         ws.column_dimensions[col].width = width
     ws.freeze_panes = "A2"
     info = wb.create_sheet("Scan")

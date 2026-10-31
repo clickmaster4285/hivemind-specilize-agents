@@ -30,6 +30,34 @@ hasn't shown.
 
 ---
 
+## Still to do — NOT DONE YET (deferred; other work takes priority first)
+
+Snapshot 2026-10-31. The retrieval + answer-quality loop is **done and passing** (R@8 92%, answers 94%
+faithful, routing verified). Everything below is **not started / not finished** and is parked until the
+higher-priority work is cleared.
+
+**Brain (this plan):**
+- [ ] **Item 6 — freshness scheduler:** run `ingest --due` on a cadence so sources self-refresh.
+- [ ] **Gate precision (the 3 OOS false positives):** `oos-vlan` (Cisco), `oos-linux-root` (forgotten-pw),
+      `oos-instagram` (Meta ads) leak at 0.57–0.66. A score-only threshold can't reject them (§2c). Fix =
+      add a topic/keyword cross-check to the gate, or add the missing sources — then decide MIN_SIMILARITY.
+- [ ] **Postgres canonical pages:** raise `postgresql-docs` `max_pages` (~450) to reach `sql-vacuum.html` /
+      `sql-createindex.html` (currently answered by intro/config pages).
+- [ ] **Ranking misses:** `dev-dj-models`, `dev-fa-body`, `mkt-schema-add` — correct page is ingested but an
+      index/features page outranks it; improve ranking (not a coverage or slug issue).
+- [ ] **WDAC + Credential-Guard overview:** not in any enrolled repo — add a Windows *client* security
+      source (needs its own licence check) to cover `it-sec-wdac` / `it-sec-credguard`.
+- [ ] **MDN JS/CSS:** left capped at 150 by decision (full ingest ~doubles the KB) — revisit only if needed.
+- [ ] **Item 7 — chunk-quality pass** (optional): down-weight/exclude landing/`_index`/changelog chunks.
+- [ ] **Item 8 — add more sources:** only where the eval shows a gap, each with a verified open licence.
+
+**Other threads (also not done — see [BACKLOG.md](BACKLOG.md)):**
+- [ ] **User management:** create the 3 remaining IT users — `umer.farooq` (IT), `kamran.khan` (IT),
+      `israr.sawati` (marketing); verify edit/deactivate (PATCH/DELETE) — needs a backend restart.
+- [ ] **Voice input feature** (local, OpenWhispr-based) — see [OPEN_SOURCE_INTEGRATION_RESEARCH.md](OPEN_SOURCE_INTEGRATION_RESEARCH.md).
+
+---
+
 ## The list (do in order)
 
 ### 0. Done
@@ -100,11 +128,17 @@ Expect **~93%** on the next eval.
 `dev-dj-models` / `dev-fa-body` / `mkt-schema-add` (ranking misses — correct page present, outranked by an
 index/features page).
 
-**Eval-quality note:** after the ubuntu re-ingest, `oos-linux-root` (0.66, "Enabling the root account") and
-`oos-vlan` (0.66, NPS VLAN config) are now **genuinely covered by the KB** — they are no longer truly
-out-of-scope and should be reclassified (moved to in-scope questions or dropped), not counted as gate leaks.
-Only `oos-instagram` (0.57, Remarketing) is a weak spurious match. This confirms the MIN_SIMILARITY HOLD:
-the gate stats are contaminated by mislabeled OOS questions, not a bad threshold.
+**Gate-precision note (corrected 2026-10-31):** an earlier draft here claimed `oos-vlan` / `oos-linux-root`
+were "now covered" and should be reclassified — that was wrong (read from retrieved page *titles*, not the
+question text). Re-checked against the actual questions, **all three leaks are correctly out-of-scope**:
+`oos-vlan` asks about a **Cisco switch** (matched a Windows **NPS** VLAN page — wrong topic, no Cisco docs);
+`oos-linux-root` asks to reset a **forgotten** root password (matched Ubuntu "Enabling the root account" —
+adjacent, not recovery); `oos-instagram` asks about **Instagram/Meta** ads (matched Google "Remarketing").
+So the 3 leaks are genuine **false positives**, not mislabeled questions. They sit at 0.57–0.66, overlapping
+the in-scope min (0.56), so a single similarity threshold cannot separate them — this is a precision limit of
+the score-only gate, and it is the real reason for the **MIN_SIMILARITY HOLD** (raising it would refuse real
+in-scope questions). Options later: accept + document; add a topic/keyword cross-check to the gate; or add
+Cisco / Meta-ads sources (then they become answerable in-scope). Do **not** reclassify them as-is.
 
 ### 3. Re-measure retrieval & re-tune the gate  **[U]**
 - [ ] Run `python -m src.brain.evaluate` (and `--mode vector|keyword|hybrid`) to get MRR per mode on the
@@ -122,15 +156,18 @@ the gate stats are contaminated by mislabeled OOS questions, not a bad threshold
 - [x] Run `python -m src.brain.answer_eval` (claim-by-claim judge). Confirm grounded answers stay faithful
       to cited sources and that out-of-scope questions correctly get the "not found" banner.
       _2026-10-31 ([U] ran, 129 Q): **grounded 94% PASS** (target ≥90%, strict 93%), **latency median 18.8 s
-      PASS** (p90 24.3 s), **no-evidence 2/5 FAIL** — but 2 of the 3 "leaks" (`oos-vlan`, `oos-linux-root`)
-      are now genuinely covered by the KB (mislabeled; see §2c reclassification); only `oos-instagram` (0.57)
-      is a true leak. `right source cited 0.855`, `claims supported 0.845`, `judge quotes verified 0.925`.
+      PASS** (p90 24.3 s), **no-evidence 2/5 FAIL** — all 3 "leaks" (`oos-vlan` Cisco, `oos-linux-root`
+      forgotten-pw, `oos-instagram` Meta-ads) are correctly out-of-scope **false positives** the score-only
+      gate can't reject (0.57–0.66, overlapping in-scope min 0.56 — see §2c), not mislabeled questions.
+      `right source cited 0.855`, `claims supported 0.845`, `judge quotes verified 0.925`.
       The 8 `NO` claims are grounding-precision (model states correct domain facts the cited passage lacks,
       e.g. FSMO roles, aging/scavenging) — `verify.py` already hides unsupported lines in production.
       `wrong_source` list ≈ the documented retrieval gaps (MDN-capped / no-source / ranking misses).
       One latency anomaly: `mkt-ga-event` 1444 s (single Ollama stall, not reproducible; didn't affect p90)._
-- [ ] **[U] follow-up:** reclassify `oos-vlan` + `oos-linux-root` as in-scope (they're covered now), and
-      decide `oos-instagram` (keep as the one true gate probe). Then the no-evidence metric is honest.
+- [x] **Follow-up resolved 2026-10-31:** checked whether the 3 OOS leaks should be reclassified — **no**.
+      All three are correctly out-of-scope (Cisco switch / forgotten-root recovery / Instagram-Meta ads —
+      none in the KB); the matches are false positives a score-only gate can't reject (see §2c). No eval
+      change. Real fix is a better gate or new sources — tracked, not blocking.
 
 ### 5. Verify collection routing  **[C] inspect, [U] spot-check**
 - [ ] Confirm the specialist picker sends an SEO question to the Marketing specialist, an AD/DNS question
