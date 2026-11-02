@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.tools.web_images import _is_public, _norm_anchor, _topics, wants_images
+from src.tools.web_images import _is_public, _norm_anchor, _round_robin, _topics, wants_images
 
 
 def test_blocks_private_and_local_hosts():
@@ -38,7 +38,7 @@ def test_topics_are_contextual_search_terms_per_heading():
     assert keys == ["phase 1 the foundation html css javascript",
                     "phase 4 react js frontend framework",
                     "1 istanbul history culture shopping"]
-    assert "React.js (Frontend Framework)" in terms
+    assert "React.js" in terms                     # "(Frontend Framework)" notes are dropped from the search
     assert "Istanbul" in terms                     # the dash tail ("– History…") is dropped
     # no headings → empty
     assert _topics("just a paragraph, no headings at all") == []
@@ -56,6 +56,38 @@ def test_topics_search_bold_entities_under_a_category_heading():
     cat = _norm_anchor("🏙️ Top Cities (The Must-Sees)")
     assert (cat, "Seoul") in topics and (cat, "Busan") in topics   # bold places searched, anchored to the section
     assert any(k == "react js" and t == "React.js" for k, t in topics)   # specific heading = its own entity
+
+
+def test_a_named_heading_is_searched_itself_even_if_it_contains_a_common_noun():
+    # regression: "Island" / "Food" were on a category word list, so Jeju got photos of its sub-items and
+    # "Bibimbap Street" was searched with no place at all. Jeju is named by its own section → search Jeju.
+    answer = (
+        "## 🌊 Jeju Island\nA volcanic island off the coast.\n"
+        "- **Manjanggul Cave:** a lava tube.\n- **Jeju Olle Trail:** a coastal walk.\n\n"
+        "## 🌸 Jeonju (Food Capital)\nFamous for bibimbap.\n- **Jeonju Hanok Village:** old houses.\n"
+        "- **Bibimbap Street:** try it here.\n"
+    )
+    topics = _topics(answer, "places to visit in korea")
+    assert topics == [("jeju island", "Jeju Island"), ("jeonju food capital", "Jeonju")]
+
+
+def test_a_group_heading_gets_the_subject_and_its_members_share_the_budget_fairly():
+    answer = (
+        "Here are the best places to visit in South Korea.\n\n"
+        "## Top Cities\nThe big ones.\n- **Seoul:** the capital.\n- **Busan:** the coast.\n\n"
+        "## Busan\nA coastal city with beaches.\n\n"
+        "## Gangneung\nGangneung has a sea-side castle.\n"
+    )
+    terms = [t for _k, t in _topics(answer, "places to visit in korea")]
+    # first round: one search per section ("Korea" is a name in the answer → the vague heading's context;
+    # "The" is not, since the answer also writes "the"); the group's members only fill spare searches
+    assert terms[:3] == ["Top Cities Korea", "Busan Korea", "Gangneung"]
+    assert terms[3:] == ["Seoul Korea"]            # "Busan Korea" already searched → deduped
+
+
+def test_round_robin_gives_every_list_its_first_item_before_any_second():
+    assert _round_robin([["a1", "a2", "a3"], ["b1"], ["c1", "c2"]]) == ["a1", "b1", "c1", "a2", "c2", "a3"]
+    assert _round_robin([]) == []
 
 
 def test_wants_images_is_answer_driven_not_query_keywords():

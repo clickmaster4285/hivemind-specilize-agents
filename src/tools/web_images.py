@@ -34,13 +34,8 @@ MAX_TOPICS = 8                   # at most this many section/entity searches (ke
 PER_ANCHOR = 4                   # images kept per section
 MAX_IMAGES = 12                  # overall cap across the answer
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,4}\s+(.+?)\s*#*\s*$", re.M)
-# A heading like "Top Cities" / "Nature & Islands" groups entities rather than being one itself — so we
-# search its bold sub-items (Seoul, Busan, …) instead of the generic heading, and anchor them to it.
-_CATEGORY_RE = re.compile(
-    r"\b(cities|places|sites|destinations?|attractions?|landmarks?|gems?|highlights?|essentials?|"
-    r"nature|islands?|beaches?|mountains?|parks?|food|culture|things|must[- ]?sees?|overview|"
-    r"top|best|recommended|picks|list)\b", re.I)
 _BOLD_ITEM_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])?\s*\*\*(.+?)\*\*", re.M)
+_NAME_WORD_RE = re.compile(r"[A-Za-z0-9][\w.+#-]*")
 
 
 def _norm_anchor(text: str) -> str:
@@ -57,6 +52,7 @@ def _search_term(text: str) -> str:
     t = re.sub(r"^[\W\d_]+", "", text or "")                          # leading emoji / numbering
     t = re.sub(r"^(phase|step|part)\s*\d*\s*[:.\-]?\s*", "", t, flags=re.I)
     t = re.sub(r"[*_`#]", "", t)
+    t = re.sub(r"\s*\([^)]*\)", "", t)                               # "(Capital City)" notes add noise
     t = re.split(r"\s[–—-]\s|:\s", t, maxsplit=1)[0]                  # keep the entity before a dash/colon
     return re.sub(r"[\s:–—-]+$", "", t).strip()[:60]                  # trim a trailing colon/dash
 
@@ -73,34 +69,87 @@ def _sections(answer: str) -> list[tuple[str, str]]:
     return [(h, b) for h, b in out if h]
 
 
-def _topics(answer: str) -> list[tuple[str, str]]:
-    """(anchor_key, search_term) pairs for the answer. A specific heading (React.js, Istanbul) is its own
-    entity; a category heading (Top Cities, Nature & Islands) is searched by its bold sub-items (Seoul,
-    Busan, Jeju) instead — all anchored back to that section, so the UI groups them under it. Deduped, capped."""
-    out: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-    for heading, body in _sections(answer):
-        hkey = _norm_anchor(heading)
-        if not hkey:
+def _mentions(word: str, text: str) -> int:
+    return len(re.findall(rf"(?<!\w){re.escape(word)}(?!\w)", text))
+
+
+def _name_words(text: str, answer: str) -> list[str]:
+    """The words of `text` the answer treats as names: capitalised, and never written in lowercase anywhere in
+    the answer. "Jeju", "MongoDB", "MERN" qualify; "The", "Island", "Stack" don't — the answer also writes
+    "the", "island", "stack" — so sentence-initial capitals and common nouns drop out without a word list."""
+    out: list[str] = []
+    for w in _NAME_WORD_RE.findall(text or ""):
+        if not w.islower() and w not in out and not _mentions(w.lower(), answer):
+            out.append(w)
+    return out
+
+
+def _names_its_section(term: str, body: str, others: list[str], answer: str) -> bool:
+    """Is the heading ONE named thing, judged from the answer itself (no word list)? Its section talks about it
+    — "Jeju" in "Jeju Olle Trail", "MongoDB is a NoSQL…" — while most other sections don't. A heading that
+    groups things ("Top Cities", "The Foundation") fails: it has no name word, or its section never uses it."""
+    words = _name_words(term, answer)
+    return any(
+        _mentions(w, body) and sum(1 for other in others if _mentions(w, other)) < len(others) / 2
+        for w in words
+    )
+
+
+def _members(body: str) -> list[str]:
+    """The proper-noun-looking bold items a section lists (Seoul, Busan, HTML5…), as search terms."""
+    terms = (_search_term(bold) for bold in _BOLD_ITEM_RE.findall(body))
+    return [t for t in terms if len(t) >= 3 and t[:1].isupper()]
+
+
+def _subject(query: str, answer: str) -> str:
+    """The answer's subject in the answer's own spelling: the question's words that the answer writes as a
+    name ("places to visit in korea" → "Korea", "mern stack roadmap" → "MERN Stack"). Gives a vague search
+    term its context ("Top Cities" → "Top Cities Korea") without any list of topics."""
+    found: list[str] = []
+    for word in _NAME_WORD_RE.findall(query or ""):
+        if len(word) < 3:
             continue
-        terms: list[str] = []
-        if _CATEGORY_RE.search(heading):                             # a grouping heading → search its entities
-            for bold in _BOLD_ITEM_RE.findall(body):
-                term = _search_term(bold)
-                if len(term) >= 3 and term[:1].isupper():            # a proper-noun-looking entity
-                    terms.append(term)
-        if not terms:                                                # specific heading, or no entities found
-            term = _search_term(heading)
-            if len(term) >= 3:
-                terms = [term]
-        for term in terms:
-            dedup = (hkey, term.lower())
-            if dedup in seen:
-                continue
-            seen.add(dedup)
-            out.append((hkey, term))
-            if len(out) >= MAX_TOPICS:
-                return out
+        for m in re.finditer(rf"(?<!\w){re.escape(word)}(?!\w)", answer or "", re.I):
+            if m.group(0) in _name_words(m.group(0), answer) and m.group(0) not in found:
+                found.append(m.group(0))
+                break
+    return " ".join(found)
+
+
+def _with_subject(term: str, subject: str) -> str:
+    extra = [w for w in subject.split() if w.lower() not in term.lower()]
+    return " ".join([term, *extra]).strip()
+
+
+def _topics(answer: str, query: str = "") -> list[tuple[str, str]]:
+    """(anchor_key, search_term) pairs for the answer, each anchored to its section so the UI places the photos
+    there. Every section's first search is its heading (Seoul, Jeju Island, MongoDB). A heading that isn't one
+    named thing (Top Cities, Busan: The Coastal City when the section never says "Busan") gets the answer's
+    subject for context, and its bold members (Seoul, Busan…) fill any spare searches. The budget is shared
+    fairly: every section gets its first search before any gets a second. Deduped, capped."""
+    sections = _sections(answer)
+    subject = _subject(query, answer)
+    plan: list[tuple[str, list[str]]] = []
+    for i, (heading, body) in enumerate(sections):
+        hkey = _norm_anchor(heading)
+        term = _search_term(heading)
+        if not hkey or len(term) < 3:
+            continue
+        others = [b for j, (_h, b) in enumerate(sections) if j != i]
+        if _names_its_section(term, body, others, answer):
+            terms = [term]
+        else:
+            terms = [_with_subject(t, subject) for t in [term, *_members(body)]]
+        plan.append((hkey, list(dict.fromkeys(terms))))
+    out: list[tuple[str, str]] = []
+    searched: set[str] = set()                           # one search per term across the whole answer
+    for rank in range(max((len(terms) for _k, terms in plan), default=0)):
+        for hkey, terms in plan:
+            if rank < len(terms) and terms[rank].lower() not in searched:
+                searched.add(terms[rank].lower())
+                out.append((hkey, terms[rank]))
+                if len(out) >= MAX_TOPICS:
+                    return out
     return out
 
 
@@ -177,6 +226,11 @@ def wants_images(answer: str) -> bool:
     return len(body) >= 0.6 * max(1, len(answer or ""))  # skip code-dominated answers (stock photos add noise)
 
 
+def _round_robin[T](lists: list[list[T]]) -> list[T]:
+    """[[a1, a2], [b1], [c1, c2]] → [a1, b1, c1, a2, c2]: the first of each before the second of any."""
+    return [lst[i] for i in range(max((len(lst) for lst in lists), default=0)) for lst in lists if i < len(lst)]
+
+
 def image_anchors(answer: str) -> list[str]:
     """The sections that will get images (in answer order), known before any search runs — the UI shows
     loading placeholders under exactly these headings. [] when the answer isn't worth illustrating."""
@@ -189,25 +243,20 @@ def gather_web_images(query: str, answer: str, job_id: str, config: Config) -> l
     """Context-aware image gathering: if the answer is worth illustrating (wants_images), search once per
     section heading, fetch the candidates, and tag each saved image with the `anchor` of the section it
     belongs to so the UI can place it there. → saved metadata (or [] when images don't suit the answer).
-    `query` is accepted for the caller's convenience but the decision is answer-driven, not query-driven."""
+    Whether to illustrate is decided from the answer alone; `query` only lends a vague heading its subject."""
     if not wants_images(answer):
         return []
-    plan = _topics(answer)                               # (anchor_key, search_term); several may share an anchor
+    plan = _topics(answer, query)                        # (anchor_key, search_term); several may share an anchor
     with ThreadPoolExecutor(max_workers=min(MAX_TOPICS, len(plan))) as pool:
         found = list(pool.map(lambda t: (t[0], search_images(t[1], config, PER_ANCHOR * 2)), plan))
-    # round-robin the result URLs within each anchor, so a section with several entities (Seoul, Busan,
-    # Jeju) contributes one of each before a second of any — a varied set, not 4 photos of one place.
-    from collections import OrderedDict
-
-    grouped: OrderedDict[str, list[list[str]]] = OrderedDict()
+    # Round-robin twice: within a section, so several entities (Seoul, Busan) each contribute one photo before
+    # a second of any; then across sections, so every section gets its first photo before any gets a second
+    # — the overall cap must not be used up by the first few sections.
+    grouped: dict[str, list[list[str]]] = {}
     for anchor, urls in found:
         grouped.setdefault(anchor, []).append(urls)
-    candidates: list[tuple[str, str]] = []
-    for anchor, url_lists in grouped.items():
-        for i in range(max((len(u) for u in url_lists), default=0)):
-            for urls in url_lists:
-                if i < len(urls):
-                    candidates.append((anchor, urls[i]))
+    per_section = [[(anchor, url) for url in _round_robin(url_lists)] for anchor, url_lists in grouped.items()]
+    candidates = _round_robin(per_section)
     if not candidates:
         return []
     # fetch all candidates concurrently — one slow or blocked image must not hold up the rest
