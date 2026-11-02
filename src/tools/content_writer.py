@@ -28,6 +28,7 @@ from src.core.config import Config
 from src.core.conversation import format_conversation_block
 from src.jobs import live
 from src.llm.llm_client import LLMClient, LLMError, LLMStopped
+from src.tools.serp import Benchmark, benchmark
 from src.tools.site_audit import (AUDIT_AGENT, DESCRIPTION_CHARS, TITLE_CHARS, AuditError, analyze_page,
                                   resolve_start, site_url)
 
@@ -41,6 +42,7 @@ LONG_SENTENCE_SHARE = 0.1          # more than this share of long sentences make
 HEADINGS_FROM_WORDS = 300          # longer copy needs sub-headings to be scannable
 OPENING_WORDS = 100                # the main keyword belongs in the title and the first ~100 words
 GOOD_EDITOR_SCORE = 8              # out of 10: with every check passed, good enough to stop revising
+COVER_SHARE = 0.5                  # web copy should use at least half the phrases the top-ranking pages share
 RUBRIC = ("clarity", "audience_fit", "persuasion", "structure", "originality")
 CURRENT_PAGE = "Current page"
 
@@ -99,12 +101,17 @@ class Brief:
     cta: str = ""
     language: str = "English"
     web: bool = True
+    benchmark: Benchmark | None = None      # what the pages ranking for the main keyword look like (BACKLOG L15 P4)
 
     def text(self) -> str:
+        top = self.benchmark
         return "\n".join(f"- {k}: {v}" for k, v in (
             ("Title", self.title), ("Kind", self.kind), ("Audience", self.audience), ("Goal", self.goal),
             ("Tone", self.tone), ("Keywords (main first)", ", ".join(self.keywords) or "none"),
             ("Length", f"about {self.words} words"), ("Call to action", self.cta), ("Language", self.language),
+            ("Top-ranking pages", f"{top.pages} read for “{top.keyword}”: median {top.words} words; phrases most of "
+                                  f"them use: {', '.join(top.phrases) or 'none'} — cover these topics in your own "
+                                  "words, never copy" if top else ""),
         ) if v)
 
 
@@ -213,6 +220,12 @@ def check_draft(draft: str, brief: Brief) -> list[Finding]:
         headed = bool(re.search(r"(?m)^##+ ", body))
         found.append(Finding("Sub-headings in long copy", headed,
                              "has sub-headings" if headed else "a wall of text: add ## sub-headings"))
+    if brief.benchmark and brief.benchmark.phrases:
+        missing = [p for p in brief.benchmark.phrases if not _has(body, p)]
+        used = len(brief.benchmark.phrases) - len(missing)
+        found.append(Finding("Covers what top pages cover", used >= COVER_SHARE * len(brief.benchmark.phrases),
+                             f"{used} of {len(brief.benchmark.phrases)} phrases the top pages share"
+                             + (f"; not yet: {', '.join(missing[:6])}" if missing else "")))
     norm = [re.sub(r"\W+", " ", s).strip().lower() for s in sentences]
     repeats = sorted({s for s in norm if s and norm.count(s) > 1})
     found.append(Finding("No repeated sentences", not repeats, f"repeated: “{repeats[0][:80]}”" if repeats else "none"))
@@ -348,6 +361,9 @@ def run_content_writer(query: str, *, job_id: str, config: Config, on_progress: 
         brief = plan_brief(asked, chat=client.chat, model=model, prior=prior,
                            keywords=[k.strip() for k in (keywords or "").split(",") if k.strip()])
         status(f"Brief: {brief.kind} · about {brief.words} words · keywords: {', '.join(brief.keywords) or 'none'}")
+        if brief.web and brief.keywords:
+            status(f"Reading the pages that rank for “{brief.keywords[0]}”…")
+            brief.benchmark = benchmark(brief.keywords[0], config)
         meta = META_RULE.format(t0=TITLE_CHARS[0], t1=TITLE_CHARS[1], d0=DESCRIPTION_CHARS[0],
                                 d1=DESCRIPTION_CHARS[1]) if brief.web else ""
         if page_text:

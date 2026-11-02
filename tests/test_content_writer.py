@@ -1,15 +1,26 @@
-"""L13 write_content: checks without a model, the editor's score, and the draft → check → revise loop."""
+"""L13/L15 write_content: checks without a model, the editor's score, the top-pages benchmark, and the draft →
+check → revise loop. Search is stubbed: no SearXNG, no internet."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
+
+import pytest
 
 from src.core.config import Config
 from src.tools import content_writer
 from src.tools.content_writer import (Brief, Critique, check_draft, draft_score, parse_critique, reading_ease,
                                       split_meta)
+from src.tools.serp import Benchmark
 
 BRIEF = Brief(title="Solar panels", kind="blog post", keywords=["solar panels", "net metering"], words=60)
+
+
+@pytest.fixture(autouse=True)
+def no_search(monkeypatch):
+    """The loop reads the top-ranking pages for the main keyword; tests never search the real web."""
+    monkeypatch.setattr(content_writer, "benchmark", lambda keyword, config: None)
 
 GOOD = """# Solar panels for your home
 
@@ -114,3 +125,13 @@ def test_the_loop_keeps_the_best_draft_when_a_revision_is_worse(monkeypatch):
     output, _errors, _ = content_writer.run_content_writer("write a blog post", job_id="t-content-2",
                                                            config=Config.from_env(), request="a blog post")
     assert output.startswith("# Energy") and "| Draft 1 ✅ |" in output and "| Draft 3" not in output
+
+
+def test_the_top_pages_benchmark_becomes_a_check():
+    top = Benchmark("solar panels", pages=5, words=900, phrases=["free quote", "power bill", "battery storage",
+                                                                 "roof space"], titles=[])
+    brief = dataclasses.replace(BRIEF, benchmark=top)
+    finding = next(f for f in check_draft(GOOD, brief) if f.label == "Covers what top pages cover")
+    assert finding.ok and finding.detail.startswith("2 of 4 phrases")          # free quote, power bill
+    assert "battery storage" in finding.detail
+    assert "median 900 words" in brief.text() and "never copy" in brief.text()

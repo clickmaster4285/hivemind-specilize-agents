@@ -254,7 +254,7 @@ content are and say what to fix, AND improve our own written content over severa
 - Measured on example.com (no model): 1 page, 37/100 Beginner — no robots.txt, sitemap, description, H1,
   canonical, Open Graph or structured data; title 14 chars
 
-### L15. SEO suite — Screaming Frog / Semrush capabilities — in progress (fixes O12)
+### L15. SEO suite — Screaming Frog / Semrush capabilities — P1, P3-P5 done; P2 on hold (fixes O12)
 
 Research + capability matrix: [SEO_TOOLS.md](SEO_TOOLS.md). Order (user, 2026-11-02): SEO capabilities first,
 then skills (L14) and sub-agents.
@@ -267,11 +267,24 @@ then skills (L14) and sub-agents.
       ≤ 0.8 s. 27 page + 6 site checks in 6 areas (+ Links, Performance). Every page and redirect in
       `seo-crawl-<host>.xlsx`. Real run python.org (10 pages): 79/100 Established — one description for all
       pages, several H1s, no canonical, a menu link through a redirect, no width/height on images
-- [ ] **P2 Performance**: PageSpeed Insights API (Core Web Vitals lab + real-user) for key pages
-- [ ] **P3 Keywords & SERP** via SearXNG: SERP overview, approximate rank check, keyword ideas, difficulty estimate
-      (no search volume — needs a paid data source)
-- [ ] **P4 Competitors & writing**: side-by-side audit, content gap, SERP-informed `write_content` briefs
-- [ ] **P5 Projects**: saved audits per site, scheduled re-crawl, trend, new/fixed issues
+- [ ] **P2 Performance** — ON HOLD (user wants to discuss first): options A-D compared in SEO_TOOLS.md (recommended: PageSpeed API for key pages + our crawl proxies)
+- [x] **P3 Keywords & SERP** (approximate is fine — user) — done 2026-11-02: `src/tools/serp.py` (SearXNG results with
+      positions, related searches, autocomplete ideas two levels deep, top pages read in parallel, shared two-word
+      phrases, difficulty estimate = share of top-10 titles targeting the keyword + share of home pages) →
+      `keyword_research` tool: table per keyword (your rank ≈, difficulty), who ranks, what top pages cover (median
+      length, phrases), ideas, the model's intent + what to target. States that it is approximate, no volume. Live
+      test: 2 keywords + a domain in 8 s (results come from SearXNG's region — UK)
+- [x] **P4 Competitors & writing** — done 2026-11-02: `compare_sites` tool (named competitors or the sites ranking
+      for a keyword; all audited in parallel, page budget shared; scores side by side; checks they pass and you
+      fail; content gap = phrases on ≥2 pages of each competitor, minus its menu/footer and brand, on ≥ half the
+      competitors, nowhere on your site; model plan). `write_content` reads the top pages for its main keyword:
+      median length + shared phrases go into the brief and a "Covers what top pages cover" check. Live:
+      python.org vs ruby-lang.org in 12 s
+- [x] **P5 Projects** — done 2026-11-02: every audit saved per user (`seo_audits`); the next audit of the same site
+      shows score/area changes and fixed / new / worse / better checks; "track it weekly" → `seo_projects` row,
+      re-audited by the `seo-tracker` thread (hourly check, crawl + checks, no model); `seo_projects` tool lists
+      sites, trend, latest changes, stops tracking
+- [x] 6 more assistant eval cases; 27 tests (search faked on 127.0.0.1, in-memory database)
 - Not possible locally: search volume, traffic estimates, backlinks (paid API — user's choice); Search Console
   (OAuth) and JS rendering later
 
@@ -288,6 +301,7 @@ then skills (L14) and sub-agents.
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-02 | **L15 P3-P5 keywords, competitors, projects** | `keyword_research` (SearXNG: ranks ≈, ideas, difficulty estimate, what top pages cover), `compare_sites` (side-by-side audit, what they do better, content gap), `write_content` briefed by the top pages, saved audits with change reports, tracked sites re-audited on a schedule, `seo_projects`. P2 page speed on hold for discussion. 695 tests |
 | 2026-11-02 | **L15 P1 SEO crawler depth** | Research of Semrush / Screaming Frog / PageSpeed / Search Console → SEO_TOOLS.md matrix + phases. Audit gains redirects + chains, response time, click depth, orphans, inlinks, reused link text, near-duplicates, canonical/mixed content/URL/security-header checks, Links + Performance areas, a spreadsheet of every page. 681 tests |
 | 2026-11-02 | **L13 marketing tools** | `site_audit`: polite crawl of a public site → 20 checks → maturity score per area + level → model writes the fix plan and judges the content. `write_content`: brief → draft → checks + editor → revisions, best draft wins with a score table; can start from an existing page's copy. 679 tests |
 | 2026-11-02 | **L12 chat memory** | Memory rebuilt from the chat's own jobs, budgeted in tokens (35% of LLM_NUM_CTX), oldest turns folded into a saved running summary; memory meter + 80% banner → "Summarize & continue in a new chat" / "Save summary". 662 tests |

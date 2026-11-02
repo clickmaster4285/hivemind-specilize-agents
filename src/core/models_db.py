@@ -157,6 +157,40 @@ class LlmUsage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
+class SeoProject(Base):
+    """A website a user tracks (BACKLOG L15 P5): re-audited every `every_days`, each run saved as an SeoAudit."""
+
+    __tablename__ = "seo_projects"
+    __table_args__ = (UniqueConstraint("user_id", "host", name="uq_seo_project_user_host"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    host: Mapped[str] = mapped_column(String(255))
+    start_url: Mapped[str] = mapped_column(String(1000))
+    every_days: Mapped[int] = mapped_column(Integer, default=7)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class SeoAudit(Base):
+    """One site audit's result, kept so the next audit can say what changed (BACKLOG L15 P5).
+    areas_json = {"On-page": 70, …}; checks_json = {"Exactly one H1": {"area", "score" 0..1, "failing": [urls]}}."""
+
+    __tablename__ = "seo_audits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    host: Mapped[str] = mapped_column(String(255), index=True)
+    start_url: Mapped[str] = mapped_column(String(1000))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    total: Mapped[int] = mapped_column(Integer)
+    level: Mapped[str] = mapped_column(String(20))
+    pages: Mapped[int] = mapped_column(Integer)
+    areas_json: Mapped[str] = mapped_column(Text)
+    checks_json: Mapped[str] = mapped_column(Text)
+    scheduled: Mapped[bool] = mapped_column(Boolean, default=False)      # run by the tracker, not asked in chat
+
+
 class ChatThreadRow(Base):
     """A chat's metadata (title, pin, project, deletion), per user, so history syncs across devices.
     The chat's messages are its jobs, grouped by the job payload's thread_id — not stored here."""

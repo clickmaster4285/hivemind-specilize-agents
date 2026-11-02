@@ -50,6 +50,10 @@ async def lifespan(_app: FastAPI):
     from src.brain.scheduler import start_scheduler
 
     start_scheduler(config)
+    # Tracked SEO projects (BACKLOG L15 P5): re-audit sites whose interval has passed
+    from src.tools.seo_projects import start_scheduler as start_seo_tracker
+
+    start_seo_tracker(config)
     if config.image_warm_on_start:
         # SDXL lives in its own process; start it (and load the model) in the background
         import threading

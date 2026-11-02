@@ -26,24 +26,24 @@ _Researched 2026-11-02. Sources: Screaming Frog [Issues](https://www.screamingfr
 | Crawl with robots.txt, sitemap | ✅ | ✅ | ✅ (L13) | |
 | Titles / descriptions / H1 / headings / canonical / lang / viewport / OG / schema | ✅ | ✅ | ✅ (L13) | |
 | Broken pages | ✅ | ✅ | ✅ | |
-| Redirects + chains, links pointing to redirects | ✅ | ✅ | ⛔ hidden by the fetcher | ➕ P1 |
-| Response time, page size | ✅ | ✅ | — | ➕ P1 |
-| Crawl depth, inlinks, orphan pages (in sitemap, not linked) | ✅ | ✅ | — | ➕ P1 |
-| Anchor text (non-descriptive / reused for many targets) | ✅ | ✅ | — | ➕ P1 |
-| Exact + near-duplicate content | ✅ | ✅ | — | ➕ P1 |
-| Canonical to another / broken URL | ✅ | ✅ | 🟡 present only | ➕ P1 |
-| Security headers, mixed content | ✅ | ✅ | 🟡 HTTPS only | ➕ P1 |
-| URL hygiene (uppercase, underscores, params, length) | ✅ | ✅ | — | ➕ P1 |
-| Images without width/height (layout shift) | ✅ | 🟡 | — | ➕ P1 |
-| Full crawl export (spreadsheet of every page) | ✅ | ✅ | — | ➕ P1 |
+| Redirects + chains, links pointing to redirects | ✅ | ✅ | ⛔ hidden by the fetcher | ✅ P1 |
+| Response time, page size | ✅ | ✅ | — | ✅ P1 |
+| Crawl depth, inlinks, orphan pages (in sitemap, not linked) | ✅ | ✅ | — | ✅ P1 |
+| Anchor text (non-descriptive / reused for many targets) | ✅ | ✅ | — | ✅ P1 |
+| Exact + near-duplicate content | ✅ | ✅ | — | ✅ P1 |
+| Canonical to another / broken URL | ✅ | ✅ | 🟡 present only | ✅ P1 |
+| Security headers, mixed content | ✅ | ✅ | 🟡 HTTPS only | ✅ P1 |
+| URL hygiene (uppercase, underscores, params, length) | ✅ | ✅ | — | ✅ P1 |
+| Images without width/height (layout shift) | ✅ | 🟡 | — | ✅ P1 |
+| Full crawl export (spreadsheet of every page) | ✅ | ✅ | — | ✅ P1 |
 | Core Web Vitals (lab + real users) | ✅ API | ✅ | — | ➕ P2 PageSpeed API |
-| SERP overview for a keyword (who ranks, what they wrote) | — | ✅ | 🟡 web_search | ➕ P3 via SearXNG |
-| Rank check of a domain for keywords | — | ✅ exact | — | ➕ P3 approximate (SearXNG mixes engines) |
-| Keyword ideas | — | ✅ with volume | — | ➕ P3 ideas, **no volume** |
-| Keyword difficulty | — | ✅ from backlinks | — | ➕ P3 estimate from the SERP |
-| Competitor / content gap (topics they cover, you don't) | — | ✅ | — | ➕ P4 crawl both + compare |
-| SEO writing assistant (recommended terms, length from top pages) | — | ✅ | 🟡 write_content | ➕ P4 SERP terms into the brief |
-| Projects: saved audits, scheduled re-crawl, trend, new/fixed issues | 🟡 | ✅ | — | ➕ P5 |
+| SERP overview for a keyword (who ranks, what they wrote) | — | ✅ | 🟡 web_search | ✅ P3 `keyword_research` |
+| Rank check of a domain for keywords | — | ✅ exact | — | ✅ P3 approximate (SearXNG mixes engines) |
+| Keyword ideas | — | ✅ with volume | — | ✅ P3 autocomplete ideas, **no volume** |
+| Keyword difficulty | — | ✅ from backlinks | — | ✅ P3 estimate from the SERP |
+| Competitor / content gap (topics they cover, you don't) | — | ✅ | — | ✅ P4 `compare_sites` |
+| SEO writing assistant (recommended terms, length from top pages) | — | ✅ | 🟡 write_content | ✅ P4 top pages in the brief + check |
+| Projects: saved audits, scheduled re-crawl, trend, new/fixed issues | 🟡 | ✅ | — | ✅ P5 `seo_projects` |
 | Search volume, traffic estimates, backlink index | — | ✅ | — | ⛔ needs a paid data API (Semrush/Ahrefs/DataForSEO) — user's choice |
 | Real clicks / queries / positions for the user's own site | ✅ API | ✅ API | — | ➕ later: Search Console OAuth |
 | JavaScript rendering | ✅ | ✅ | — | later (headless browser = heavy) |
@@ -54,7 +54,29 @@ _Researched 2026-11-02. Sources: Screaming Frog [Issues](https://www.screamingfr
   area in the score, every page in a downloadable spreadsheet.
 - **P2 Performance** — PageSpeed Insights API for the home page + a few key pages (`PAGESPEED_API_KEY` optional;
   only public URLs are sent to Google).
-- **P3 Keywords & SERP** — SearXNG: SERP overview, approximate rank check, keyword ideas and a difficulty estimate.
+- ✅ **P3 Keywords & SERP** — SearXNG: SERP overview, approximate rank check, keyword ideas and a difficulty estimate.
   Honest about what is missing: no search volume.
-- **P4 Competitors & writing** — side-by-side audit, content gap, SERP-informed briefs for `write_content`.
-- **P5 Projects** — save audits per site, re-run on the brain scheduler, trend and issue diff.
+- ✅ **P4 Competitors & writing** — side-by-side audit, content gap, SERP-informed briefs for `write_content`.
+- ✅ **P5 Projects** — save audits per site, re-run on the brain scheduler, trend and issue diff.
+
+## Decisions (user, 2026-11-02)
+
+- **P2 page speed — open, to discuss** (options below); decide later.
+- **P3 — approximate is fine**: SearXNG, no paid keyword data for now.
+- **P4, P5 — go.**
+
+## P2 options: how to measure page speed / Core Web Vitals
+
+Google ranks on **field data** — what real Chrome users experienced over the last 28 days (Chrome UX Report,
+CrUX). **Lab data** (Lighthouse) is one simulated load: useful to find *why* a page is slow, not what Google uses.
+
+| Option | What you get | Sends data to | Cost / limits | Speed | Fits MulteAgent? |
+|---|---|---|---|---|---|
+| **A. PageSpeed Insights API** | Lab (Lighthouse run by Google, mobile + desktop) **and** field CrUX for the URL and the whole origin, plus diagnostics (render-blocking, image sizes, unused JS) | Google: the page URL (already public, Google crawls it anyway) | free; anonymous quota is small, a free API key raises it a lot | 10-30 s per URL | ✅ best single source; key optional |
+| **B. CrUX API only** | Field data only (LCP, INP, CLS at p75, good/needs work/poor) for URL or origin | Google: the URL | free, API key required, generous rate | ~1 s | 🟡 fast, but nothing for low-traffic sites and no "why" |
+| **C. Local Lighthouse** (Node + headless Chrome on this PC) | Lab only, full report | nothing leaves the PC | free; needs Node + Chrome (~300 MB); uses CPU/RAM next to Ollama | 20-40 s per page | 🟡 private, but measured from *this* PC and connection — not what users or Google see; no field data |
+| **D. Our own crawl proxies** (have) | server response time, HTML size, images without width/height; could add: render-blocking scripts/styles, image weights, number of requests | nothing extra | free | instant (from the crawl) | ✅ always on, but not Core Web Vitals |
+
+**Recommendation:** keep D in every audit, add **A for a few key pages** (home + top pages; key optional; skipped
+when offline), show **field data first** and lab diagnostics as the "why". B can be a fast extra later; C only if
+nothing may leave the PC. Privacy note: only public page addresses would be sent, never page content or user data.

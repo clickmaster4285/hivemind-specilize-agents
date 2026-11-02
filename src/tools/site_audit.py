@@ -626,8 +626,25 @@ def plan_input(query: str, site: Site, score: Score) -> str:
             + (f"\n\n## Home page text ({_path(home.url)})\n{home.text[:6000]}" if home else ""))
 
 
+def _remember(config: Config, user_id: int, site: Site, score: Score, track: str | None) -> str:
+    """Save the audit (BACKLOG L15 P5) → what changed since the last one, and the tracking note when asked."""
+    from src.tools.seo_projects import changes, save_audit, snapshot, track as track_site
+
+    notes = []
+    previous = save_audit(config, user_id, site, score)
+    if previous:
+        notes.append(changes(previous, snapshot(score)))
+    days = re.search(r"\d+", track or "")
+    if days:
+        every = track_site(config, user_id, site, int(days.group(0)))
+        notes.append(f"📌 Tracking **{site.host}**: it is re-audited every {every} days. Ask “show my SEO projects” "
+                     "for the trend.")
+    return "\n\n".join(notes)
+
+
 def run_site_audit(query: str, *, job_id: str, config: Config, on_progress: Callable[[dict], None] | None = None,
-                   url: str | None = None, **_: object) -> tuple[str, list[str], float]:
+                   url: str | None = None, user_id: int | None = None, track: str | None = None,
+                   **_: object) -> tuple[str, list[str], float]:
     emit = on_progress or (lambda event: None)
     model = config.model_fast or config.llm_model
     agent = {"agent_id": "assistant", "name": "Assistant", "role": ROLE, "stage": "chat", "accent": "#c45c8a",
@@ -650,6 +667,12 @@ def run_site_audit(query: str, *, job_id: str, config: Config, on_progress: Call
             raise AuditError(f"could not read {start}: {reason}")
         score = score_site(site)
         output = report(site, score)
+        if user_id is not None:
+            try:
+                remembered = _remember(config, user_id, site, score, track)
+                output += f"\n\n{remembered}" if remembered else ""
+            except Exception as exc:  # noqa: BLE001 — the audit stands even if it cannot be saved
+                errors.append(f"saving the audit: {exc}")
         try:
             meta = export_crawl(site, score, job_id=job_id, config=config)
             emit(artifact_event(meta, job_id=job_id))

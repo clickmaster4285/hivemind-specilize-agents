@@ -120,7 +120,29 @@ TOOLS: tuple[Tool, ...] = (
          "titles, meta descriptions, headings, broken pages, image alt text, mobile, canonical, structured data, "
          "robots.txt and sitemap → a maturity score per area and the fixes in order of impact. Use for 'audit "
          "example.com', 'check the SEO of my website', 'how mature is this site', 'what should this site improve'.",
-         {"url": "the website address exactly as the user wrote it, e.g. example.com"}, ("url",)),
+         {"url": "the website address exactly as the user wrote it, e.g. example.com",
+          "track": "only when the user asks to track / monitor the site: re-audit every N days (7 = weekly, "
+                   "30 = monthly); empty otherwise"}, ("url",)),
+    Tool("seo_projects", "seo_projects",
+         "Show the websites the user has audited or tracks, with each one's SEO score trend over time and what "
+         "changed (fixed and new issues); can stop tracking a site. Use for 'show my SEO projects', 'how is my "
+         "site's SEO trending', 'stop tracking example.com'.",
+         {"untrack": "a website to stop tracking; empty otherwise"}),
+    Tool("compare_sites", "compare_sites",
+         "Compare the user's website with competitors: audits each site, scores them side by side, lists what "
+         "competitors do better and the topics they cover that the user's site doesn't (content gap), with pages to "
+         "write. Competitors can be named, or found from the sites ranking for a keyword. Use for 'compare mysite.com "
+         "with rival.com', 'what are my competitors doing better', 'content gap vs the sites ranking for X'.",
+         {"url": "the user's own website", "competitors": "comma-separated competitor websites; empty if none named",
+          "keyword": "a keyword to find competitors by when none are named; empty otherwise"}, ("url",)),
+    Tool("keyword_research", "keyword_research",
+         "Keyword research from live search results (approximate, no search volume): who ranks for a keyword, where "
+         "a given website ranks for it, keyword ideas people search, an estimated difficulty and what the top pages "
+         "cover. Use for 'keyword ideas for X', 'where does mysite.com rank for Y', 'how hard is it to rank for Z', "
+         "'who ranks for Z'.",
+         {"keywords": "comma-separated keywords exactly as the user wrote them (at most 5)",
+          "domain": "the user's website if they named one, e.g. mysite.com; empty if none"}, ("keywords",),
+         lambda c: bool(c.web_search_url)),
     Tool("write_content", "content_write",
          "Write a full piece of marketing or web copy — blog post, article, landing page, product or service page, "
          "email, newsletter, ad or social post — in rounds: brief, draft, checks (keywords, length, readability, meta "
