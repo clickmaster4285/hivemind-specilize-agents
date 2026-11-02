@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppProvider } from "@/components/app/AppProvider";
 import AppShell from "@/components/app/AppShell";
+import { THEME_BOOT_SCRIPT } from "@/lib/themeBoot";
 
 export const metadata: Metadata = {
   title: "MulteAgent — Control Deck",
@@ -14,8 +15,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <head></head>
+    // data-theme is set by the boot script before React hydrates, so the server's markup can't match it
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* set the colour theme before first paint: no flash of the wrong theme (src/lib/theme.ts) */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+      </head>
       <body>
         {/* The provider + shell keep the sidebar and navbar mounted; only `children` (the page) changes. */}
         <AppProvider>

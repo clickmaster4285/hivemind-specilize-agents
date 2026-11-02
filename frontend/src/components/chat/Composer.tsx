@@ -43,8 +43,8 @@ type Props = {
 };
 
 const iconBtn = "shrink-0 grid place-items-center w-[2.1rem] h-[2.1rem] border-0 rounded-full cursor-pointer";
-const composerIcon = `${iconBtn} bg-transparent text-[var(--muted)] hover:bg-white/[0.06] hover:text-[var(--text)]`;
-const sendBtn = `${iconBtn} bg-[linear-gradient(180deg,var(--copper)_0%,var(--copper-deep)_100%)] text-[#1a1208] enabled:hover:brightness-[1.06] disabled:opacity-45 disabled:cursor-not-allowed`;
+const composerIcon = `${iconBtn} bg-transparent text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--text)]`;
+const sendBtn = `${iconBtn} bg-[linear-gradient(180deg,var(--copper)_0%,var(--copper-deep)_100%)] text-[var(--on-copper)] enabled:hover:brightness-[1.06] disabled:opacity-45 disabled:cursor-not-allowed`;
 const stopBtn = `${iconBtn} bg-[var(--danger)] text-white`;
 const menuSelect =
   "w-auto min-w-0 m-0 px-[0.35rem] py-[0.2rem] text-[0.72rem] rounded-[0.4rem] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--text)]";
@@ -75,7 +75,7 @@ function MenuItem({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.85rem] text-[var(--text)] hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-40"
+      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.85rem] text-[var(--text)] hover:bg-[var(--hover)] disabled:cursor-not-allowed disabled:opacity-40"
     >
       <span className="w-5 text-center">{icon}</span>
       <span className="flex-1">{label}</span>
@@ -143,7 +143,7 @@ export default function Composer(props: Props) {
 
   return (
     <form
-      className="mx-auto w-full max-w-[820px] shrink-0 border-t border-[var(--line)] bg-[rgba(14,17,22,0.92)] px-4 pt-[0.55rem] pb-[0.7rem]"
+      className="mx-auto w-full max-w-[820px] shrink-0 border-t border-[var(--line)] bg-[var(--glass)] px-4 pt-[0.55rem] pb-[0.7rem]"
       onSubmit={onSubmit}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
@@ -161,7 +161,7 @@ export default function Composer(props: Props) {
           {images.images.map((img) => (
             <div
               key={img.id}
-              className="relative block h-[4.4rem] w-[4.4rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-black/25"
+              className="relative block h-[4.4rem] w-[4.4rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[var(--sunken)]"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={img.url} alt={img.file.name} className="block h-full w-full object-cover" />

@@ -73,7 +73,7 @@ export default function SpecialistModal({ specialist, options, onSave, onDelete,
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[rgba(6,8,12,0.72)] p-4 backdrop-blur-[4px]"
+      className="fixed inset-0 z-50 grid place-items-center bg-[var(--backdrop)] p-4 backdrop-blur-[4px]"
       onClick={onClose}
     >
       <form

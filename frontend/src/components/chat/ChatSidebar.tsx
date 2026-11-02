@@ -25,13 +25,13 @@ const list = "list-none m-0 px-[0.15rem] pb-[0.2rem] flex flex-1 min-h-0 flex-co
 // `!` forces these over navBase's `bg-transparent border-transparent` (Tailwind resolves by CSS order,
 // not class order, so without `!` the active highlight was being overridden and never showed).
 const navActive = "!bg-[color-mix(in_srgb,var(--copper)_20%,var(--panel-2))] !border-[var(--copper)]";
-const navHover = "hover:bg-[rgba(208,138,60,0.1)] hover:border-[color-mix(in_srgb,var(--copper)_35%,var(--line))]";
+const navHover = "hover:bg-[var(--copper-soft)] hover:border-[color-mix(in_srgb,var(--copper)_35%,var(--line))]";
 const navBase = `w-full border border-transparent bg-transparent text-left font-[inherit] text-[var(--text)] rounded-[0.65rem] cursor-pointer ${navHover}`;
 const navRow = `${navBase} flex items-center gap-[0.15rem] py-[0.2rem] pl-[0.15rem] pr-[0.25rem]`;
 const navMain = "flex-1 min-w-0 border-0 bg-transparent text-left font-[inherit] text-inherit cursor-pointer px-[0.4rem] py-[0.35rem]";
 const navMainTitle = "block truncate text-[0.86rem]";
 const navMainSub = "block text-[0.72rem] text-[var(--muted)] mt-[0.15rem]";
-const menuRow = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[0.8rem] text-[var(--text)] hover:bg-white/[0.06]";
+const menuRow = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[0.8rem] text-[var(--text)] hover:bg-[var(--hover)]";
 
 function Dots() {
   return (
@@ -63,7 +63,7 @@ export default function ChatSidebar({
 
   return (
     <aside
-      className="flex h-full min-h-0 flex-col gap-3 overflow-hidden border-r border-[var(--line)] bg-[rgba(14,17,22,0.92)] px-[0.85rem] py-4 max-[900px]:h-auto max-[900px]:max-h-none max-[900px]:border-r-0 max-[900px]:border-b"
+      className="flex h-full min-h-0 flex-col gap-3 overflow-hidden border-r border-[var(--line)] bg-[var(--glass)] px-[0.85rem] py-4 max-[900px]:h-auto max-[900px]:max-h-none max-[900px]:border-r-0 max-[900px]:border-b"
       aria-label="Chat navigation"
     >
       <div className="flex shrink-0 items-center gap-[0.7rem] px-[0.35rem] pt-[0.2rem] pb-[0.4rem]">
@@ -78,7 +78,7 @@ export default function ChatSidebar({
         New chat
       </button>
 
-      <div className="grid shrink-0 grid-cols-2 gap-[0.35rem] rounded-[0.7rem] border border-[var(--line)] bg-white/[0.02] p-[0.2rem]">
+      <div className="grid shrink-0 grid-cols-2 gap-[0.35rem] rounded-[0.7rem] border border-[var(--line)] bg-[var(--row-alt)] p-[0.2rem]">
         <button type="button" className={tabBtn(tab === "history")} onClick={() => setTab("history")}>
           History
         </button>
@@ -207,7 +207,7 @@ function ThreadList({
             const turns = thread.jobIds.length;
             const active = history.activeThreadId === thread.id;
             const pinned = thread.pinned
-              ? "border-[color-mix(in_srgb,var(--copper)_40%,var(--line))] bg-[rgba(208,138,60,0.06)]"
+              ? "border-[color-mix(in_srgb,var(--copper)_40%,var(--line))] bg-[var(--copper-soft)]"
               : "";
             return (
               <li key={thread.id}>
@@ -298,7 +298,7 @@ function ThreadList({
             <div className="my-1 border-t border-[var(--line)]" />
             <button
               type="button"
-              className={`${menuRow} text-[#e0837a]`}
+              className={`${menuRow} text-[var(--danger-text)]`}
               onClick={() => { setMenu(null); onDelete(menuThread); }}
             >
               <span>🗑️</span>

@@ -29,9 +29,9 @@ function cardClass(kind: FeedItem["kind"], isError: boolean) {
   }
   // system
   if (isError) {
-    return "min-w-0 w-fit max-w-[85%] rounded-[0.45rem] border px-[0.6rem] py-[0.2rem] border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-[rgba(214,90,74,0.12)]";
+    return "min-w-0 w-fit max-w-[85%] rounded-[0.45rem] border px-[0.6rem] py-[0.2rem] border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-[var(--danger-soft)]";
   }
-  return "min-w-0 w-fit max-w-[85%] rounded-full border border-transparent px-[0.6rem] py-[0.15rem] bg-white/[0.045]";
+  return "min-w-0 w-fit max-w-[85%] rounded-full border border-transparent px-[0.6rem] py-[0.15rem] bg-[var(--hover)]";
 }
 
 /** Inline edit of a user message (ChatGPT-style): the bubble becomes a textarea with Cancel / Send. */
@@ -221,7 +221,7 @@ function AnswerImages({ images }: { images: ChatImage[] }) {
         target="_blank"
         rel="noreferrer"
         title="Open image"
-        className="mt-[0.6rem] block w-fit max-w-full overflow-hidden rounded-[0.6rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)]"
+        className="mt-[0.6rem] block w-fit max-w-full overflow-hidden rounded-[0.6rem] border border-[var(--line)] bg-[var(--sunken)] hover:border-[var(--teal)]"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={img.url} alt={img.filename} loading="lazy" className="block h-auto max-h-[18rem] w-auto max-w-full object-contain" />
@@ -240,7 +240,7 @@ function AnswerImages({ images }: { images: ChatImage[] }) {
           target="_blank"
           rel="noreferrer"
           title="Open image"
-          className="relative block overflow-hidden rounded-[0.5rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)] hover:border-[var(--teal)]"
+          className="relative block overflow-hidden rounded-[0.5rem] border border-[var(--line)] bg-[var(--sunken)] hover:border-[var(--teal)]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={img.url} alt={img.filename} loading="lazy" className={`block ${h} w-auto max-w-full object-contain`} />
@@ -352,8 +352,8 @@ function MessageRow({
 }) {
   const { images: webImgs, loading: webImgsLoading } = useWebImages(item, fallbackJobId);
   const rowAlign = item.kind === "user" ? "justify-end" : item.kind === "system" ? "items-center justify-center" : "";
-  const labelCls = `font-semibold ${isError ? "text-[#ffb4aa]" : "text-[var(--muted)]"}`;
-  const metaCls = isError ? "text-[#ffb4aa]" : "text-[var(--muted)]";
+  const labelCls = `font-semibold ${isError ? "text-[var(--danger-text)]" : "text-[var(--muted)]"}`;
+  const metaCls = isError ? "text-[var(--danger-text)]" : "text-[var(--muted)]";
   return (
     <article
       className={`flex w-full max-w-full items-start ${editing ? "" : rowAlign}`}
@@ -364,7 +364,7 @@ function MessageRow({
       ) : (
       <div className={cardClass(item.kind, isError)}>
         {item.kind === "system" ? (
-          <p className={`m-0 text-[0.72rem] leading-[1.25] ${isError ? "text-[#ffb4aa]" : "text-[var(--muted)]"}`}>
+          <p className={`m-0 text-[0.72rem] leading-[1.25] ${isError ? "text-[var(--danger-text)]" : "text-[var(--muted)]"}`}>
             <span className={labelCls}>{item.title}</span>
             {item.body ? <span className={metaCls}> {item.body}</span> : null}
           </p>
@@ -389,7 +389,7 @@ function MessageRow({
                         href={img.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="relative block h-[4.4rem] w-[4.4rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)]"
+                        className="relative block h-[4.4rem] w-[4.4rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[var(--sunken)]"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={img.url} alt={img.filename} className="block h-full w-full object-cover" />

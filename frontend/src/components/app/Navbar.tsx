@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 
 import { useApp } from "@/components/app/AppProvider";
+import ThemeToggle from "@/components/app/ThemeToggle";
 import type { RunMode } from "@/lib/types";
 
 /** The persistent top bar. Stays mounted across pages; shows the current page's title and status. */
@@ -55,6 +56,7 @@ export default function Navbar() {
               ))}
           </select>
         </div>
+        <ThemeToggle />
       </div>
     </header>
   );

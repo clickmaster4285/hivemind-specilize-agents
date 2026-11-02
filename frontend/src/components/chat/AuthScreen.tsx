@@ -71,7 +71,7 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
           />
         </label>
         {error ? (
-          <p className="m-0 rounded-[0.7rem] border border-[color-mix(in_srgb,var(--danger)_40%,var(--line))] bg-[rgba(214,90,74,0.12)] px-[0.9rem] py-[0.7rem] text-[#ffb4aa]">
+          <p className="m-0 rounded-[0.7rem] border border-[color-mix(in_srgb,var(--danger)_40%,var(--line))] bg-[var(--danger-soft)] px-[0.9rem] py-[0.7rem] text-[var(--danger-text)]">
             {error}
           </p>
         ) : null}

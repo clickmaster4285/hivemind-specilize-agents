@@ -444,7 +444,7 @@ export function AgentThumbs({ item, fallbackJobId }: ItemProps) {
           href={img.url}
           target="_blank"
           rel="noreferrer"
-          className="relative block max-h-[min(70vh,36rem)] max-w-[min(36rem,100%)] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[rgba(0,0,0,0.25)]"
+          className="relative block max-h-[min(70vh,36rem)] max-w-[min(36rem,100%)] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[var(--sunken)]"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -605,7 +605,7 @@ export function SourceList({ item }: { item: FeedItem }) {
               idx === 0 ? "" : "border-t border-t-[color-mix(in_srgb,var(--line)_70%,transparent)]"
             }`;
             return (
-              <tr key={s.n} className="hover:[&>td]:bg-[rgba(255,255,255,0.025)]">
+              <tr key={s.n} className="hover:[&>td]:bg-[var(--row-alt)]">
                 <td className={`${td} w-[1.4rem] text-[var(--muted)] [font-variant-numeric:tabular-nums]`}>{s.n}</td>
                 <td className={td}>
                   {linkable ? (
@@ -660,14 +660,14 @@ export function ToolDrawer({ item }: { item: FeedItem }) {
         {tools.map((step) => (
           <li
             key={step.id}
-            className={`rounded-[0.55rem] border bg-[rgba(0,0,0,0.18)] px-[0.55rem] py-[0.45rem] ${
+            className={`rounded-[0.55rem] border bg-[var(--sunken)] px-[0.55rem] py-[0.45rem] ${
               step.error ? "border-[color-mix(in_srgb,var(--danger)_45%,var(--line))]" : "border-[var(--line)]"
             }`}
           >
             <strong className="mb-[0.15rem] block text-[var(--text)]">{step.tool}</strong>
             {step.args ? <span className="mb-[0.25rem] block text-[var(--muted)]">{step.args}</span> : null}
             {step.result ? (
-              <pre className="m-0 max-h-[10rem] overflow-auto whitespace-pre-wrap break-words text-[0.72rem] leading-[1.4] text-[#d7d2c8] [font-family:var(--font-mono)]">
+              <pre className="m-0 max-h-[10rem] overflow-auto whitespace-pre-wrap break-words text-[0.72rem] leading-[1.4] text-[var(--text)] [font-family:var(--font-mono)]">
                 {step.result}
               </pre>
             ) : (
