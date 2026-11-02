@@ -57,6 +57,52 @@ def test_direct_answer_streams_and_finishes(monkeypatch):
     assert live.snapshot("a1") == {}
 
 
+def test_direct_answer_gets_post_answer_extras(monkeypatch):
+    # regression: the direct-reply path used to end at session_done, so it never got suggestions/quiz/images
+    answer = "## Seoul\nPalaces and markets.\n\n## Busan\nBeaches and temples. " + "More detail. " * 10
+    _fake_model(monkeypatch, text=answer)
+    monkeypatch.setattr("src.jobs.chat_runner.generate_suggestions", lambda *a, **kw: ["What about Jeju?"])
+    cfg = dataclasses.replace(CFG, suggestions_enabled=True, quiz_enabled=False, web_images_enabled=False)
+    events = []
+    assistant.decide("places to visit in korea", job_id="a1x", config=cfg, on_progress=events.append)
+    types = [e["type"] for e in events]
+    assert types[-3:] == ["agent_done", "answer_extras", "session_done"]
+    assert events[-2]["suggestions"] == ["What about Jeju?"]
+
+
+@pytest.mark.parametrize("found", [[{"filename": "web_01.jpg", "mime": "image/jpeg", "anchor": "seoul"}], []])
+def test_image_placeholders_come_first_then_images_clear_them(monkeypatch, found):
+    answer = "## Seoul\nPalaces and markets.\n\n## Busan\nBeaches and temples. " + "More detail. " * 10
+    _fake_model(monkeypatch, text=answer)
+    monkeypatch.setattr("src.tools.web_images.gather_web_images", lambda *a, **kw: found)
+    cfg = dataclasses.replace(CFG, suggestions_enabled=False, quiz_enabled=False, web_images_enabled=True)
+    events = []
+    assistant.decide("places to visit in korea", job_id="a1w", config=cfg, on_progress=events.append)
+    extras = [e for e in events if e["type"] == "answer_extras"]
+    assert extras[0]["images_pending"] == ["seoul", "busan"]          # known before any search runs
+    assert extras[1]["web_images"] == found                            # [] still sent: it clears them
+    assert events[-1]["type"] == "session_done"
+
+
+def test_preface_then_unusable_tool_call_is_not_published_as_the_answer(monkeypatch):
+    # regression: "Here are some places…\n\n### 🏛️ **I" + a tool call we can't run was shown as the reply
+    _fake_model(monkeypatch, text="Here are some places:\n\n### **I", calls=[{"name": "no_such_tool", "arguments": {}}])
+    events = []
+    d = assistant.decide("places to visit in turkey", job_id="a1z", config=CFG, on_progress=events.append)
+    assert not d.answered and d.intent == "kb"
+    assert "agent_done" not in [e["type"] for e in events]
+    assert live.snapshot("a1z") == {}
+
+
+def test_stopped_answer_gets_no_extras(monkeypatch):
+    _fake_model(monkeypatch, stop=True)
+    monkeypatch.setattr("src.jobs.chat_runner.generate_suggestions", lambda *a, **kw: ["never"])
+    events = []
+    assistant.decide("x", job_id="a1y", config=dataclasses.replace(CFG, suggestions_enabled=True),
+                     on_progress=events.append)
+    assert "answer_extras" not in [e["type"] for e in events]
+
+
 def test_tool_call_returns_tool_and_arguments(monkeypatch):
     _fake_model(monkeypatch, calls=[{"name": "get_weather", "arguments": {"place": "Lahore"}}])
     d = assistant.decide("kal Lahore mein barish hogi?", job_id="a2", config=CFG)

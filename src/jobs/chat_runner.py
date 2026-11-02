@@ -118,6 +118,55 @@ def _verify(answer: Any, *, client: LLMClient, model: str, job_id: str | None,
     return checked
 
 
+def emit_answer_extras(query: str, output: str, *, job_id: str | None, config: Config, model: str,
+                       client: LLMClient, on_progress: ProgressCallback | None) -> None:
+    """Post-answer extras (suggestions, quiz, images) for ANY finished answer — this runner's and the
+    assistant's direct reply alike. Computed AFTER the answer is sent and run side by side (images are
+    network-bound, the others model-bound); each is emitted as its own event the moment it is ready, so
+    the message completes at once and the extras pop in. Never affects the answer itself."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    from src.tools.web_images import gather_web_images, image_anchors
+
+    def web_images() -> list[dict[str, Any]]:
+        # each image carries the anchor of the answer section it belongs to, so the UI places it under
+        # that heading (context-aware) instead of one flat strip
+        return [{"filename": i["filename"], "mime": i["mime"], "anchor": i.get("anchor", "")}
+                for i in gather_web_images(query, output, job_id or "", config)]
+
+    try:
+        if len(output.strip()) <= 120 or live.is_stopped(job_id):
+            return
+        # the tool self-selects from the answer's shape (wants_images) — no query keyword gate
+        anchors = image_anchors(output) if config.web_images_enabled and job_id else []
+        if anchors:   # the UI shows loading placeholders under these sections while photos are fetched
+            _emit(on_progress, {"type": "answer_extras", "agent_id": "assistant", "images_pending": anchors})
+        jobs: dict[str, Callable[[], Any]] = {}
+        if anchors:
+            jobs["web_images"] = web_images
+        if config.suggestions_enabled:
+            jobs["suggestions"] = lambda: generate_suggestions(
+                query, output, client_chat=lambda **kw: client.chat(**kw), model=model, n=config.suggestions_count)
+        if config.quiz_enabled and wants_quiz(output):     # answer-driven, no query keyword gate
+            jobs["quiz"] = lambda: generate_quiz(
+                query, output, client_chat=lambda **kw: client.chat(**kw), model=model, n=config.quiz_count)
+        if not jobs:
+            return
+        with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+            futures = {pool.submit(fn): key for key, fn in jobs.items()}
+            for future in as_completed(futures):           # emitted from this thread, in finishing order
+                key = futures[future]
+                try:
+                    value = future.result()
+                except Exception as exc:  # noqa: BLE001 — one failed extra must not hide the others
+                    log.warning("post-answer %s failed: %s", key, exc)
+                    value = []
+                if value or key == "web_images":           # an empty image list clears the placeholders
+                    _emit(on_progress, {"type": "answer_extras", "agent_id": "assistant", key: value})
+    except Exception as exc:  # noqa: BLE001 — extras are optional; never affect the emitted answer
+        log.warning("post-answer extras failed: %s", exc)
+
+
 def run_chat(
     query: str,
     *,
@@ -327,37 +376,9 @@ def run_chat(
                 **extra,
             },
         )
-        # Post-answer extras (suggestions, quiz, images): computed AFTER the answer is finalised and sent
-        # as a SEPARATE event, so the message completes at once and the extras pop in a few seconds later.
-        try:
-            if "options" not in extra and len(output.strip()) > 120 and not live.is_stopped(job_id):
-                post: dict[str, Any] = {}
-                if config.suggestions_enabled:
-                    sugg = generate_suggestions(query, output, client_chat=lambda **kw: client.chat(**kw),
-                                                model=model, n=config.suggestions_count)
-                    if sugg:
-                        post["suggestions"] = sugg
-                if config.quiz_enabled and wants_quiz(output):     # answer-driven, no query keyword gate
-                    quiz = generate_quiz(query, output, client_chat=lambda **kw: client.chat(**kw),
-                                         model=model, n=config.quiz_count)
-                    if quiz:
-                        post["quiz"] = quiz
-                if config.web_images_enabled:
-                    from src.tools.web_images import gather_web_images
-
-                    # the tool self-selects from the answer's shape (wants_images) — no query keyword gate
-                    imgs = gather_web_images(query, output, job_id, config)
-                    if imgs:
-                        # each image carries the anchor of the answer section it belongs to, so the UI
-                        # places it under that heading (context-aware) instead of one flat strip
-                        post["web_images"] = [
-                            {"filename": i["filename"], "mime": i["mime"], "anchor": i.get("anchor", "")}
-                            for i in imgs
-                        ]
-                if post:
-                    _emit(on_progress, {"type": "answer_extras", "agent_id": "assistant", **post})
-        except Exception as exc:  # noqa: BLE001 — extras are optional; never affect the emitted answer
-            log.warning("post-answer extras failed: %s", exc)
+        if "options" not in extra:                   # option cards are a choice, not an answer to extend
+            emit_answer_extras(query, output, job_id=job_id, config=config, model=model, client=client,
+                               on_progress=on_progress)
     except WebSearchError as exc:
         # the message already says what to do (start the container, set WEB_SEARCH_URL)
         result.errors.append(str(exc))

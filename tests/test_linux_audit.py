@@ -240,11 +240,12 @@ def test_wired_and_credential_gated_not_admin_only():
 def api(monkeypatch):
     from fastapi.testclient import TestClient
 
+    from src.core.auth import get_current_user, require_admin
     from web import server
 
     admin = type("U", (), {"id": 7, "role": "admin", "username": "admin"})()
-    server.app.dependency_overrides[server.require_admin] = lambda: admin
-    server.app.dependency_overrides[server.get_current_user] = lambda: admin
+    server.app.dependency_overrides[require_admin] = lambda: admin
+    server.app.dependency_overrides[get_current_user] = lambda: admin
     monkeypatch.setattr(la, "test_login", lambda login: {"host_key": "ssh-ed25519 SHA256:abc", "os": "Ubuntu 22.04",
                                                           "access": "sudo: password"})
     yield TestClient(server.app)

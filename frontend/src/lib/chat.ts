@@ -108,7 +108,11 @@ export async function chatImagesToPending(images?: ChatImage[]): Promise<Pending
   return out;
 }
 
-/** The images a user attached to a job (not the generated ones), for an opened chat. */
+/** Web images are stored as web_NN.ext (src/tools/web_images.py); uploads as NN_name.ext. Chats saved
+ *  before web images carried kind="web" are recognised by that server-chosen name. */
+const LEGACY_WEB_IMAGE = /^web_\d+\.\w+$/;
+
+/** The images a user attached to a job (not generated ones or the answer's web images), for an opened chat. */
 export async function attachmentsFromJob(job: Job): Promise<ChatImage[]> {
   const raw = job.payload?.attachments;
   if (!Array.isArray(raw) || raw.length === 0) return [];
@@ -116,9 +120,9 @@ export async function attachmentsFromJob(job: Job): Promise<ChatImage[]> {
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
     const kind = String((item as { kind?: string }).kind || "user");
-    if (kind === "generated") continue;
+    if (kind === "generated" || kind === "web") continue;
     const filename = String((item as { filename?: string }).filename || "");
-    if (!filename) continue;
+    if (!filename || LEGACY_WEB_IMAGE.test(filename)) continue;
     const mime = String((item as { mime?: string }).mime || "");
     const isImage = mime.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(filename);
     if (!isImage) continue;

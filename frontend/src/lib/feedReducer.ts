@@ -338,6 +338,9 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           .filter((img) => img && img.filename)
           .map((img) => ({ filename: String(img.filename), mime: img.mime, anchor: img.anchor }))
       : undefined;
+    const imagesPending = Array.isArray(event.images_pending)
+      ? (event.images_pending as unknown[]).filter((a): a is string => typeof a === "string")
+      : undefined;
     let lastAgent = -1;
     for (let i = prev.length - 1; i >= 0; i--) {
       if (prev[i].kind === "agent") {
@@ -353,6 +356,8 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
             suggestions: suggestions ?? item.suggestions,
             quiz: quiz ?? item.quiz,
             webImages: webImages ?? item.webImages,
+            // the images event (even an empty one) ends the wait for them
+            imagesPending: webImages ? undefined : (imagesPending ?? item.imagesPending),
           }
         : item,
     );
@@ -474,7 +479,8 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
   if (type === "session_done" || type === "agentic_done") {
     const errors = Array.isArray(event.errors) ? event.errors.join("; ") : "";
     return upsertStatus(
-      prev,
+      // the job is over: no more images can arrive, so no placeholder may linger
+      prev.map((item) => (item.imagesPending ? { ...item, imagesPending: undefined } : item)),
       errors ? "Finished with issues" : "Done",
       `${Number(event.total_seconds || 0).toFixed(1)}s${errors ? ` · ${errors.slice(0, 100)}` : ""}`,
       Boolean(errors),

@@ -177,6 +177,14 @@ def wants_images(answer: str) -> bool:
     return len(body) >= 0.6 * max(1, len(answer or ""))  # skip code-dominated answers (stock photos add noise)
 
 
+def image_anchors(answer: str) -> list[str]:
+    """The sections that will get images (in answer order), known before any search runs — the UI shows
+    loading placeholders under exactly these headings. [] when the answer isn't worth illustrating."""
+    if not wants_images(answer):
+        return []
+    return list(dict.fromkeys(anchor for anchor, _term in _topics(answer)))
+
+
 def gather_web_images(query: str, answer: str, job_id: str, config: Config) -> list[dict[str, str]]:
     """Context-aware image gathering: if the answer is worth illustrating (wants_images), search once per
     section heading, fetch the candidates, and tag each saved image with the `anchor` of the section it
@@ -236,8 +244,10 @@ def _attach_to_job(config: Config, job_id: str, saved: list[dict[str, str]]) -> 
                 return
             payload = json.loads(job.payload_json or "{}")
             existing = payload.get("attachments") if isinstance(payload.get("attachments"), list) else []
+            # kind="web": the answer's illustrations, not images the user attached to the question
             payload["attachments"] = existing + [
-                {"filename": s["filename"], "mime": s["mime"], "relpath": s["relpath"]} for s in saved
+                {"filename": s["filename"], "mime": s["mime"], "relpath": s["relpath"], "kind": "web"}
+                for s in saved
             ]
             job.payload_json = json.dumps(payload)
     except Exception as exc:  # noqa: BLE001 — serving the images is best-effort

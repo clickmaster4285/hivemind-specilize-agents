@@ -255,14 +255,32 @@ function AnswerImages({ images }: { images: ChatImage[] }) {
   );
 }
 
+/** Where a section's photos are on their way: shimmering tiles the size of a typical image row, so the
+ *  layout doesn't jump when the real images land. */
+function ImagesPlaceholder() {
+  return (
+    <div className="mt-[0.6rem] flex flex-wrap gap-[0.4rem]" role="status" aria-label="Loading images">
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="h-[8.5rem] w-[12rem] max-w-full animate-pulse rounded-[0.5rem] border border-[var(--line)] bg-[var(--panel-2)]"
+          style={{ animationDelay: `${i * 150}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
+
 /** The assistant answer, with its web images placed under the section each one illustrates (context-aware):
  *  images are grouped by their anchor and dropped in right after the matching heading, so a React diagram
  *  sits under "React" and Istanbul photos under "Istanbul". Unanchored images lead the answer; any whose
- *  section isn't found trail at the end so nothing is lost. While streaming / imageless, it's plain Markdown. */
-function AnswerContent({ item, webImgs }: { item: FeedItem; webImgs: ChatImage[] }) {
+ *  section isn't found trail at the end so nothing is lost. Sections still waiting for photos (announced by
+ *  the backend, or fetched but not loaded yet) show placeholders. While streaming / imageless, plain Markdown. */
+function AnswerContent({ item, webImgs, loading }: { item: FeedItem; webImgs: ChatImage[]; loading: boolean }) {
   if (!item.body) return null;
   const done = !item.pending && !item.streaming;
-  if (!done || webImgs.length === 0) {
+  const waiting = new Set(item.imagesPending ?? (loading ? (item.webImages || []).map((img) => img.anchor || "") : []));
+  if (!done || (webImgs.length === 0 && waiting.size === 0)) {
     return <MarkdownBody content={item.body} pending={item.pending && !item.streaming} sources={item.sources} />;
   }
   const byAnchor = new Map<string, ChatImage[]>();
@@ -284,7 +302,7 @@ function AnswerContent({ item, webImgs }: { item: FeedItem; webImgs: ChatImage[]
       <Fragment key={i}>
         <MarkdownBody content={s.text} sources={item.sources} />
         {i === 0 && intro ? <AnswerImages images={intro} /> : null}
-        {imgs ? <AnswerImages images={imgs} /> : null}
+        {imgs ? <AnswerImages images={imgs} /> : s.heading && waiting.has(key) ? <ImagesPlaceholder /> : null}
       </Fragment>
     );
   });
@@ -332,7 +350,7 @@ function MessageRow({
   onPickSuggestion: (q: string) => void;
   isLastAgent: boolean;
 }) {
-  const webImgs = useWebImages(item, fallbackJobId);
+  const { images: webImgs, loading: webImgsLoading } = useWebImages(item, fallbackJobId);
   const rowAlign = item.kind === "user" ? "justify-end" : item.kind === "system" ? "items-center justify-center" : "";
   const labelCls = `font-semibold ${isError ? "text-[#ffb4aa]" : "text-[var(--muted)]"}`;
   const metaCls = isError ? "text-[#ffb4aa]" : "text-[var(--muted)]";
@@ -386,7 +404,7 @@ function MessageRow({
                 <AgentThumbs item={item} fallbackJobId={fallbackJobId} />
                 <ArtifactChips item={item} fallbackJobId={fallbackJobId} />
                 {/* answer text; once done, web images are spread between its blocks at varied sizes */}
-                <AnswerContent item={item} webImgs={webImgs} />
+                <AnswerContent item={item} webImgs={webImgs} loading={webImgsLoading} />
                 {item.pending ? (
                   <LiveStatus text={item.statusText} steps={item.steps} startedAt={item.startedAt} />
                 ) : null}

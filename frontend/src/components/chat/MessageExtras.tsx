@@ -458,12 +458,12 @@ export function AgentThumbs({ item, fallbackJobId }: ItemProps) {
   );
 }
 
-/** Load the web images an answer found (from the job's attachment store) into blob URLs. Returns []
- *  until they resolve; one that fails to load is skipped. Shared by the spread-in-answer renderer and
- *  the fallback strip. */
-export function useWebImages(item: FeedItem, fallbackJobId: string | null): ChatImage[] {
+/** Load the web images an answer found (from the job's attachment store) into blob URLs; one that fails
+ *  to load is skipped. `loading` is true while the current list is still being fetched, so the answer
+ *  can keep its placeholders up until the photos are actually there. */
+export function useWebImages(item: FeedItem, fallbackJobId: string | null): { images: ChatImage[]; loading: boolean } {
   const jobId = item.jobId || fallbackJobId;
-  const [loaded, setLoaded] = useState<ChatImage[]>([]);
+  const [loaded, setLoaded] = useState<{ src?: FeedItem["webImages"]; images: ChatImage[] }>({ images: [] });
   useEffect(() => {
     const files = item.webImages || [];
     let cancelled = false;
@@ -482,13 +482,13 @@ export function useWebImages(item: FeedItem, fallbackJobId: string | null): Chat
           }
         }
       }
-      if (!cancelled) setLoaded(out);
+      if (!cancelled) setLoaded({ src: item.webImages, images: out });
     })();
     return () => {
       cancelled = true;
     };
   }, [jobId, item.webImages]);
-  return loaded;
+  return { images: loaded.images, loading: Boolean(item.webImages?.length) && loaded.src !== item.webImages };
 }
 
 /** Download buttons for the files a job wrote (documents, scan tables). */

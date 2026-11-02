@@ -387,9 +387,11 @@ def decide(
         )
     except LLMStopped as exc:
         return _finish_direct(emit, agent, job_id, query, opened, started,
-                              (exc.partial + "\n\n_— stopped —_") if exc.partial else "_Stopped._", [], "Stopped")
+                              (exc.partial + "\n\n_— stopped —_") if exc.partial else "_Stopped._", [],
+                              "Stopped", config)
     except LLMError as exc:
-        return _finish_direct(emit, agent, job_id, query, opened, started, friendly_error(exc, config), [str(exc)], "Error")
+        return _finish_direct(emit, agent, job_id, query, opened, started, friendly_error(exc, config),
+                              [str(exc)], "Error", config)
     allowed = set(specialist.tools) | {"about_multeagent", "ask_clarification"} if specialist else None
     for call in calls:
         tool = BY_NAME.get(call["name"])
@@ -404,9 +406,12 @@ def decide(
             live.finish_agent(job_id, "assistant")
             logger.info("assistant chose %s %s", tool.name, call["arguments"])
             return Decision(False, tool.intent, tool.name, dict(call["arguments"] or {}))
-    if not text:            # neither text nor a usable tool: let the knowledge-base answer path handle it
+    if calls:               # it wanted a tool we can't run: its text was only a preface cut off mid-sentence
+        logger.info("assistant: unusable tool call(s) %s — answering normally", [c["name"] for c in calls])
+    if not text or calls:   # no usable answer: the knowledge-base path answers (its bubble replaces this one)
+        live.finish_agent(job_id, "assistant")
         return Decision(False, "kb", "search_knowledge_base", {"query": query})
-    return _finish_direct(emit, agent, job_id, query, opened, started, text, [], "Direct reply")
+    return _finish_direct(emit, agent, job_id, query, opened, started, text, [], "Direct reply", config)
 
 
 def speaker(specialist: Specialist | None) -> dict[str, str]:
@@ -416,13 +421,19 @@ def speaker(specialist: Specialist | None) -> dict[str, str]:
     return {"name": f"{specialist.name} specialist", "accent": specialist.accent}
 
 
-def _finish_direct(emit, agent, job_id, query, opened, started, output, errors, role) -> Decision:
+def _finish_direct(emit, agent, job_id, query, opened, started, output, errors, role, config) -> Decision:
     if not opened["done"]:
         emit({"type": "session_start", "mode": "chat", "query": query})
         emit({"type": "agent_start", **agent})
     live.finish_agent(job_id, "assistant")
     elapsed = time.perf_counter() - started
     emit({"type": "agent_done", **{**agent, "role": role}, "elapsed_seconds": elapsed, "output": output})
+    if not errors and role == "Direct reply":   # a real answer gets the same extras as the chat runner's
+        from src.jobs.chat_runner import emit_answer_extras
+        from src.llm.llm_client import LLMClient
+
+        emit_answer_extras(query, output, job_id=job_id, config=config, model=agent["model"],
+                           client=LLMClient(config), on_progress=emit)
     emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
     return Decision(True, errors=errors)
 
