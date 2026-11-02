@@ -210,13 +210,19 @@ Ollama returns `prompt_eval_count`, `eval_count` and `total_duration` on every c
 - Note: Ollama counts only newly evaluated prompt tokens — a reused (cached) prompt prefix is not counted again,
   so "in" can be lower than the real prompt size. L12's context meter must measure the prompt it builds instead
 
-### L12. Context awareness: meter, auto-compaction, new chat — planned (needs L11; fixes O9)
+### L12. Context awareness: meter, auto-compaction, new chat — ✅ done 2026-11-02 (fixes O9)
 
-- [ ] Budget history in **tokens** against `LLM_NUM_CTX`, not fixed character caps
-- [ ] Context meter in the composer (how full this chat is)
-- [ ] Auto-compaction: when history exceeds the budget, older turns are summarised once into a running summary
-      stored on the chat; recent turns stay verbatim
-- [ ] At ~80%: banner "This chat is getting long" → **Summarize & continue in a new chat** / **Save summary**
+- [x] Memory rebuilt **server-side** from the chat's own jobs, in full (`src/jobs/chat_memory.py`), not the
+      browser's last 10 turns cut to 6,000 chars; budgeted in **tokens**: `CONTEXT_HISTORY_SHARE` (0.35) of
+      `LLM_NUM_CTX` → 2,867 tokens at 8K; the rest is for instructions, sources and the answer
+- [x] Auto-compaction: past the budget the oldest exchanges are folded ONCE into a running summary on the chat
+      (`chat_threads.summary` / `summary_through`) until the verbatim part is half the budget; later turns reuse
+      it. The prompt gets [summary] + recent turns word for word; a summary failure drops the oldest turns
+      instead. Summaries of chats bigger than the model are built piece by piece. A feed note says when it happens
+- [x] Memory meter under the message bar (chat size vs budget; past 100% = "full · summarizing")
+- [x] At 80%: banner "This chat is getting long" → **Summarize & continue in a new chat** (new chat starts with
+      the summary as its memory, shown as its first card) / **Save summary** (.md) / dismiss for this chat
+- [x] The summary turn always leads the prompt (`normalize_conversation`, tool-calling messages as a system note)
 
 ### L13. Marketing / SEO tools — planned (fixes O11)
 
@@ -238,6 +244,7 @@ Ollama returns `prompt_eval_count`, `eval_count` and `total_duration` on every c
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-02 | **L12 chat memory** | Memory rebuilt from the chat's own jobs, budgeted in tokens (35% of LLM_NUM_CTX), oldest turns folded into a saved running summary; memory meter + 80% banner → "Summarize & continue in a new chat" / "Save summary". 662 tests |
 | 2026-11-02 | **L10 documents + L11 token usage** | Answers export to md/txt/docx/pdf/pptx/html with no model call ("Download as", "make this a PDF" reads the full earlier answer); new documents written section by section with checks; file names follow the topic. Every model call recorded in `llm_usage` → usage per answer, per chat (under the message bar) and per user (Settings → Usage). 655 tests |
 | 2026-10-14 | Model setup | `LLM_THINK` setting added; all roles on `qwen3.5:9b`; embedding models hidden from chat model list |
 | 2026-10-14 | Backlog created | This file |

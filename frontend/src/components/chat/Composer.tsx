@@ -11,12 +11,13 @@ import {
   type RefObject,
 } from "react";
 
+import { MemoryBanner, MemoryMeter, type MemoryBusy } from "@/components/chat/ChatMemory";
 import { IconSend, IconStop } from "@/components/chat/Icons";
 import { useAutoResize } from "@/hooks/useAutoResize";
 import type { SendOptions } from "@/hooks/useChat";
 import type { PendingImagesApi } from "@/hooks/usePendingImages";
 import type { ImageProfile } from "@/lib/api";
-import type { EditStrength } from "@/lib/chat";
+import type { ChatMemory, EditStrength } from "@/lib/chat";
 import { usageLine } from "@/lib/format";
 import type { Health, RunMode, UsageTotals } from "@/lib/types";
 
@@ -44,6 +45,12 @@ type Props = {
   imagePipeline: Health["image_pipeline"];
   /** What this chat has used so far (all its answers added up), shown under the message bar. */
   chatUsage?: UsageTotals | null;
+  /** How full the model's memory of this chat is (BACKLOG L12), and the "getting long" banner's actions. */
+  chatId?: string | null;
+  memory?: ChatMemory | null;
+  memoryBusy?: MemoryBusy;
+  onContinueChat?: () => void;
+  onSaveSummary?: () => void;
 };
 
 const iconBtn = "shrink-0 grid place-items-center w-[2.1rem] h-[2.1rem] border-0 rounded-full cursor-pointer";
@@ -158,6 +165,15 @@ export default function Composer(props: Props) {
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
     >
+      {props.memory && props.onContinueChat && props.onSaveSummary ? (
+        <MemoryBanner
+          chatId={props.chatId ?? null}
+          memory={props.memory}
+          busy={props.memoryBusy ?? null}
+          onContinue={props.onContinueChat}
+          onSave={props.onSaveSummary}
+        />
+      ) : null}
       {editing ? (
         <div className="mb-[0.4rem] flex items-center justify-between gap-2 px-[0.15rem] py-[0.25rem] text-[0.78rem] text-[var(--muted)]">
           <span>Editing previous message</span>
@@ -334,12 +350,14 @@ export default function Composer(props: Props) {
           </button>
         )}
       </div>
-      {props.chatUsage ? (
-        <div
-          className="mt-[0.3rem] text-center text-[0.7rem] tabular-nums text-[var(--muted)]"
-          title={`${props.chatUsage.calls} model calls in this chat`}
-        >
-          This chat: {usageLine(props.chatUsage)}
+      {props.memory || props.chatUsage ? (
+        <div className="mt-[0.3rem] flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[0.7rem] tabular-nums text-[var(--muted)]">
+          {props.memory ? <MemoryMeter memory={props.memory} /> : null}
+          {props.chatUsage ? (
+            <span className="cursor-default" title={`${props.chatUsage.calls} model calls in this chat`}>
+              This chat: {usageLine(props.chatUsage)}
+            </span>
+          ) : null}
         </div>
       ) : null}
     </form>

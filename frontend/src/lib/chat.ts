@@ -54,6 +54,31 @@ export function conversationFromFeed(items: FeedItem[], maxTurns = 10): Conversa
   return turns.slice(-maxTurns);
 }
 
+/** Chat memory (BACKLOG L12) — same rough measure as the server: ~4 characters per token. */
+const CHARS_PER_TOKEN = 4;
+export const MEMORY_WARN_PERCENT = 80;
+
+export type ChatMemory = { tokens: number; budget: number; percent: number };
+
+/** How much of the model's chat memory this conversation fills: its messages (and any carried summary)
+ *  against the history budget. Past 100% the server has folded the oldest turns into a summary. */
+export function chatMemory(items: FeedItem[], budget: number | undefined): ChatMemory | null {
+  if (!budget) return null;
+  const chars = items
+    .filter((i) => !i.pending && (i.kind === "user" || i.kind === "agent"))
+    .reduce((n, i) => n + (i.body || "").length, 0);
+  if (!chars) return null;
+  const tokens = Math.ceil(chars / CHARS_PER_TOKEN);
+  return { tokens, budget, percent: Math.round((tokens / budget) * 100) };
+}
+
+export const SUMMARY_CARD_TITLE = "Summary of the previous chat";
+
+/** The first card of a chat continued from another: the summary it carries as its memory. */
+export function summaryCard(summary: string): FeedItem {
+  return { id: `summary-${newId()}`, kind: "agent", title: SUMMARY_CARD_TITLE, meta: "carried over", body: summary, accent: "#8a6fb0" };
+}
+
 export function titleFromQuery(query: string): string {
   const t = query.trim().replace(/\s+/g, " ");
   return t.length > 42 ? `${t.slice(0, 42)}…` : t || "Untitled chat";

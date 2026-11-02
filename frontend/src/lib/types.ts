@@ -67,6 +67,8 @@ export type Health = {
     path?: string | null;
   };
   auth_required?: boolean;
+  /** Chat memory (BACKLOG L12): the model's context window and how much of it a chat's history may use. */
+  context?: { window: number; history_budget: number };
 };
 
 export type UserStatus = "active" | "disabled";

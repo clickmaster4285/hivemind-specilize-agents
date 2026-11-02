@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { exportAnswer, fetchJobAttachment, sendFeedback, type ExportFormat } from "@/lib/api";
 import { errorText, timeAgo } from "@/lib/chat";
+import { saveUrl } from "@/lib/download";
 import { usageLine } from "@/lib/format";
 import type { AnswerOption, AnswerUsage, ChatImage, FeedItem } from "@/lib/types";
 
@@ -189,15 +190,6 @@ const Icon = {
     </svg>
   ),
 };
-
-/** Save an object URL as a file, then free it. */
-function saveUrl(url: string, filename: string) {
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
 
 const EXPORTS: { format: ExportFormat; label: string }[] = [
   { format: "pdf", label: "PDF" },

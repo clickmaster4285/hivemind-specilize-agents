@@ -32,6 +32,9 @@ def _thread_dict(row: ChatThreadRow) -> dict[str, Any]:
         "pinned": bool(row.pinned),
         "deleted_at": row.deleted_at.isoformat() if row.deleted_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+        # a chat continued from another shows what it carried over (BACKLOG L12)
+        "continued_from": row.continued_from,
+        "carried_summary": row.summary if row.continued_from else None,
     }
 
 

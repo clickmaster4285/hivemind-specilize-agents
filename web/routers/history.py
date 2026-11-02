@@ -9,13 +9,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from src.core.auth import get_current_user, get_db
+from src.core.config import Config
 from src.core.models_db import User
 from src.jobs import history_store
+from src.jobs.chat_memory import summarize_chat
+from src.llm.llm_client import LLMError
 from web.schemas import (
     FeedbackPayload,
     HistoryImportPayload,
     ProjectCreatePayload,
     ProjectRenamePayload,
+    ThreadContinuePayload,
     ThreadUpsertPayload,
 )
 
@@ -63,6 +67,43 @@ def upsert_thread_endpoint(
         raise HTTPException(status_code=403, detail="Forbidden") from exc
     db.commit()
     return history_store._thread_dict(row)
+
+
+def _chat_summary(thread_id: str, user: User) -> str:
+    """The whole chat as one summary (a model call — the route runs in a worker thread)."""
+    try:
+        return summarize_chat(Config.from_env(), thread_id, user.id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(status_code=503, detail=f"The model could not summarise this chat: {exc}") from exc
+
+
+@router.post("/api/threads/{thread_id}/summary")
+def summary_endpoint(thread_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """"Save summary": the chat summarised (goal, key facts and decisions, open questions)."""
+    return {"summary": _chat_summary(thread_id, user)}
+
+
+@router.post("/api/threads/{thread_id}/continue")
+def continue_endpoint(
+    thread_id: str,
+    payload: ThreadContinuePayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """"Summarize & continue in a new chat": the new chat starts with this chat's summary as its memory."""
+    summary = _chat_summary(thread_id, user)
+    old = history_store._owned_thread(db, thread_id, user.id)
+    try:
+        row = history_store.upsert_thread(db, user.id, payload.new_thread_id,
+                                          title=f"{old.title if old else 'Chat'} (continued)"[:200],
+                                          project_id=old.project_id if old else None)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Forbidden") from exc
+    row.summary, row.continued_from = summary, thread_id
+    db.commit()
+    return {"thread": history_store._thread_dict(row), "summary": summary}
 
 
 @router.delete("/api/threads/{thread_id}")

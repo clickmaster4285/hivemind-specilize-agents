@@ -87,6 +87,11 @@ class SoftDeleteJobsPayload(BaseModel):
     job_ids: list[str] = Field(default_factory=list)
 
 
+class ThreadContinuePayload(BaseModel):
+    # the client-made id of the new chat that continues this one
+    new_thread_id: str = Field(min_length=1, max_length=36)
+
+
 class ThreadUpsertPayload(BaseModel):
     # all optional: only the fields sent are changed (title=rename, pinned=pin, project_id=move)
     title: str | None = None

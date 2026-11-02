@@ -324,6 +324,19 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
     }
     return upsertStatus(next, "File ready", `${filename} — download below`);
   }
+  if (type === "memory_compacted") {
+    // the chat outgrew the model's memory: its oldest messages were folded into a summary (BACKLOG L12)
+    const n = Number(event.folded) || 0;
+    return [
+      ...prev,
+      {
+        id: uid(),
+        kind: "system",
+        title: "Memory",
+        body: `Summarized ${n} earlier exchange${n === 1 ? "" : "s"} so this chat fits the model's memory.`,
+      },
+    ];
+  }
   if (type === "usage") {
     // the answer's token usage (sent just before session_done) → the last answer of that job
     const steps = Array.isArray(event.steps) ? (event.steps as AnswerUsage["steps"]) : [];

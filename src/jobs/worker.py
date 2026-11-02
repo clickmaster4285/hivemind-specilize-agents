@@ -10,6 +10,7 @@ from typing import Any
 from src.agentic.runtime import run_agentic
 from src.brain.answer import should_use_brain
 from src.core.conversation import normalize_conversation
+from src.jobs.chat_memory import chat_memory
 from src.jobs.chat_runner import run_chat
 from src.core.clock import set_time_zone
 from src.tools.diagram_gen import run_diagram
@@ -164,7 +165,9 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
         attachments = payload.get("attachments") if isinstance(payload.get("attachments"), list) else []
         has_images = bool(payload.get("has_images") or attachments)
         images = load_b64_images(config, attachments) if attachments else []
-        conversation = normalize_conversation(payload.get("conversation"))
+        # the chat's memory, rebuilt in full from its own jobs and kept within the token budget (BACKLOG L12)
+        conversation = chat_memory(config, job_id=job_id, fallback=normalize_conversation(payload.get("conversation")),
+                                   model=model_plan.get("worker") or None, on_progress=on_progress)
         intent = (route or {}).get("intent")
         # "Try again, better": the user's reason for a 👎, steered into the regenerate (feedback phase 2)
         refine = (str(payload.get("refine") or "").strip() or None)

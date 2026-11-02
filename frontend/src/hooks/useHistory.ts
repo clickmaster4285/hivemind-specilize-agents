@@ -234,6 +234,7 @@ export function useHistory() {
     dropJobs,
     loadHistory,
     noteThread,
+    patchMeta,
     selectThread,
     selectProject,
     newProject,

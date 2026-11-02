@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from src.core.auth import get_db
 from src.core.config import Config
+from src.jobs.chat_memory import history_budget
 from src.jobs.jobs import estimate_wait_seconds, queue_depth
 from src.llm.llm_client import LLMClient
 
@@ -33,5 +34,7 @@ def health(db: Session = Depends(get_db)) -> dict[str, Any]:
         "image_profile": config.image_profile,
         "image_pipeline": ImageServiceClient(config).status(),
         "sso_enabled": config.sso_enabled,
+        # chat memory (BACKLOG L12): the model's context window and the share of it a chat's history may use
+        "context": {"window": config.llm_num_ctx, "history_budget": history_budget(config)},
         "auth_required": True,
     }

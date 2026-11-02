@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useApp } from "@/components/app/AppProvider";
 import Composer from "@/components/chat/Composer";
 import MessageFeed from "@/components/chat/MessageFeed";
+import { chatMemory } from "@/lib/chat";
 import { sumUsage } from "@/lib/format";
 
 /** The chat page content (below the persistent navbar): the run/specialist/model controls, the message
@@ -53,6 +54,11 @@ export default function ChatView() {
         onEditStrength={app.setEditStrength}
         imagePipeline={app.health.health?.image_pipeline}
         chatUsage={sumUsage(app.chat.feed)}
+        chatId={app.history.activeThreadId}
+        memory={chatMemory(app.chat.feed, app.health.health?.context?.history_budget)}
+        memoryBusy={app.memoryBusy}
+        onContinueChat={() => void app.continueInNewChat()}
+        onSaveSummary={() => void app.saveSummary()}
       />
     </div>
   );

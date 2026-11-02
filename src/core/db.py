@@ -98,6 +98,9 @@ def init_db(config: Config | None = None) -> None:
     _ensure_column(engine, "model_registry", "vision", "vision BOOLEAN DEFAULT 0")
     _ensure_column(engine, "model_registry", "image_gen", "image_gen BOOLEAN DEFAULT 0")
     _ensure_column(engine, "model_registry", "available", "available BOOLEAN DEFAULT 1")
+    _ensure_column(engine, "chat_threads", "summary", "summary TEXT")
+    _ensure_column(engine, "chat_threads", "summary_through", "summary_through DATETIME")
+    _ensure_column(engine, "chat_threads", "continued_from", "continued_from VARCHAR(36)")
 
 
 @contextmanager

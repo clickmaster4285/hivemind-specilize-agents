@@ -307,10 +307,22 @@ export type ThreadMeta = {
   pinned: boolean;
   deletedAt: string | null;
   updatedAt: string | null;
+  /** "Summarize & continue in a new chat": the chat this one continues, and the summary it carried over. */
+  continuedFrom?: string | null;
+  carriedSummary?: string | null;
 };
 export type ProjectMeta = { id: string; name: string; createdAt: string | null };
 
-type ThreadRow = { id: string; title: string; project_id?: string | null; pinned?: boolean; deleted_at?: string | null; updated_at?: string | null };
+type ThreadRow = {
+  id: string;
+  title: string;
+  project_id?: string | null;
+  pinned?: boolean;
+  deleted_at?: string | null;
+  updated_at?: string | null;
+  continued_from?: string | null;
+  carried_summary?: string | null;
+};
 type ProjectRow = { id: string; name: string; created_at?: string | null };
 
 function toThreadMeta(t: ThreadRow): ThreadMeta {
@@ -321,7 +333,26 @@ function toThreadMeta(t: ThreadRow): ThreadMeta {
     pinned: Boolean(t.pinned),
     deletedAt: t.deleted_at ?? null,
     updatedAt: t.updated_at ?? null,
+    continuedFrom: t.continued_from ?? null,
+    carriedSummary: t.carried_summary ?? null,
   };
+}
+
+/** "Save summary": the chat summarised by the model (goal, key facts and decisions, open questions). */
+export async function summarizeThread(threadId: string): Promise<string> {
+  const data = await request<{ summary: string }>(`/api/threads/${encodeURIComponent(threadId)}/summary`, {
+    method: "POST",
+  });
+  return data.summary;
+}
+
+/** "Summarize & continue in a new chat": the server summarises this chat and starts `newThreadId` from it. */
+export async function continueThread(threadId: string, newThreadId: string): Promise<{ thread: ThreadMeta; summary: string }> {
+  const data = await request<{ thread: ThreadRow; summary: string }>(
+    `/api/threads/${encodeURIComponent(threadId)}/continue`,
+    { method: "POST", body: JSON.stringify({ new_thread_id: newThreadId }) },
+  );
+  return { thread: toThreadMeta(data.thread), summary: data.summary };
 }
 function toProjectMeta(p: ProjectRow): ProjectMeta {
   return { id: p.id, name: p.name, createdAt: p.created_at ?? null };

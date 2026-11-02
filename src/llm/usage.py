@@ -21,13 +21,13 @@ from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.orm import Session
 
 from src.core.config import Config
+from src.core.conversation import estimate_tokens
 
 logger = logging.getLogger(__name__)
 
 _job: ContextVar[tuple[str, int | None] | None] = ContextVar("llm_usage_job", default=None)
 _SKIP_MODULES = {__name__, "src.llm.llm_client"}
 _PASS_THROUGH = {"<lambda>", "chat"}
-CHARS_PER_TOKEN = 4          # only for a call stopped before Ollama sent its counts
 
 
 @contextmanager
@@ -65,8 +65,8 @@ def record_call(config: Config, *, model: str, done: dict[str, Any] | None, star
     estimated = "eval_count" not in counts
     row = LlmUsage(
         job_id=job[0], user_id=job[1], step=_caller(), model=model[:120], estimated=estimated,
-        prompt_tokens=int(counts.get("prompt_eval_count") or (len(prompt_text) // CHARS_PER_TOKEN if estimated else 0)),
-        output_tokens=int(counts.get("eval_count") or len(output_text) // CHARS_PER_TOKEN),
+        prompt_tokens=int(counts.get("prompt_eval_count") or (estimate_tokens(prompt_text) if estimated else 0)),
+        output_tokens=int(counts.get("eval_count") or estimate_tokens(output_text)),
         duration_ms=int(counts["total_duration"] / 1e6) if counts.get("total_duration")
         else int((time.monotonic() - started) * 1000),
     )

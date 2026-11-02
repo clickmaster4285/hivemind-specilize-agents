@@ -25,6 +25,7 @@ import yaml
 
 from src.jobs import live
 from src.core.config import ROOT, Config
+from src.core.conversation import split_summary
 from src.llm.diagram_rules import DIAGRAM_RULES, NETDIAGRAM_RULES
 
 if TYPE_CHECKING:
@@ -216,7 +217,10 @@ def messages_for(
     # NETDIAGRAM_RULES carries JSON braces, so it is appended AFTER .format (never inside a .format template)
     system = SYSTEM.format(identity=identity, now=current_time_text()) + NETDIAGRAM_RULES
     msgs = [{"role": "system", "content": system}]
-    for turn in (conversation or [])[-8:]:
+    summary, turns = split_summary(conversation or [])
+    if summary:          # a long chat's earlier part, folded into a summary (BACKLOG L12) — always kept
+        msgs.append({"role": "system", "content": f"Summary of the earlier part of this chat:\n{summary['content']}"})
+    for turn in turns[-8:]:
         msgs.append({"role": turn["role"], "content": turn["content"][:4000]})
     # a "Try again, better" regenerate carries the user's reason as a hidden instruction on the question
     content = f"{query}\n\n{refine_note}" if refine_note else query

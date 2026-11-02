@@ -171,3 +171,8 @@ class ChatThreadRow(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # Chat memory (BACKLOG L12): the earlier part of a long chat folded into a running summary, and the
+    # creation time of the last message it covers; a chat continued from another one starts from its summary.
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    summary_through: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    continued_from: Mapped[str | None] = mapped_column(String(36), nullable=True)

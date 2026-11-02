@@ -14,6 +14,8 @@ export type ChatThread = {
   /** ISO timestamp when soft-deleted; null = active */
   deletedAt: string | null;
   updatedAt: string;
+  /** Set on a chat continued from another: the summary it started from (shown as the first card). */
+  carriedSummary?: string | null;
 };
 
 const ACTIVE_KEY = "multeagent_active_thread";
@@ -65,6 +67,7 @@ export function buildThreads(jobs: Job[], metas: ThreadMeta[]): ChatThread[] {
         pinned: m?.pinned ?? false,
         deletedAt: m?.deletedAt ?? null,
         updatedAt: m?.updatedAt || job.created_at || now,
+        carriedSummary: m?.carriedSummary ?? null,
       };
       byId.set(tid, thread);
     }
@@ -80,6 +83,7 @@ export function buildThreads(jobs: Job[], metas: ThreadMeta[]): ChatThread[] {
       pinned: m.pinned,
       deletedAt: m.deletedAt,
       updatedAt: m.updatedAt || now,
+      carriedSummary: m.carriedSummary ?? null,
     });
   }
   return sortThreads([...byId.values()].filter((t) => !t.deletedAt));

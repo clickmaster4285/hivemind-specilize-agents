@@ -15,8 +15,11 @@ import { useModels } from "@/hooks/useModels";
 import { usePendingImages } from "@/hooks/usePendingImages";
 import { useSpecialists } from "@/hooks/useSpecialists";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
-import { confirmCommand, forgetServers, type ImageProfile } from "@/lib/api";
+import type { MemoryBusy } from "@/components/chat/ChatMemory";
+import { confirmCommand, continueThread, forgetServers, summarizeThread, type ImageProfile } from "@/lib/api";
 import { chatImagesToPending, errorText, IMAGE_QUESTION, type EditStrength } from "@/lib/chat";
+import { saveText } from "@/lib/download";
+import { newId } from "@/lib/id";
 import { markConfirmAnswered } from "@/lib/feedReducer";
 import type { ChatThread } from "@/lib/threads";
 import type { AuthUser, FeedItem, RunMode } from "@/lib/types";
@@ -133,6 +136,41 @@ function useAppState() {
     void confirmCommand(jobId, commandId, approved).catch(() => undefined);
   }
 
+  // Chat memory (BACKLOG L12): the "this chat is getting long" banner's two actions. Both summarise the
+  // open chat with the model on the server, so they take a few seconds (memoryBusy drives the buttons).
+  const [memoryBusy, setMemoryBusy] = useState<MemoryBusy>(null);
+
+  async function continueInNewChat() {
+    const from = history.activeThreadId;
+    if (!from || chat.running || memoryBusy) return;
+    setMemoryBusy("continue");
+    try {
+      const { thread, summary } = await continueThread(from, newId());
+      chat.startContinuedChat(thread.id, thread.title, summary);
+      setQuery("");
+      images.clear();
+    } catch (err) {
+      alert(errorText(err));
+    } finally {
+      setMemoryBusy(null);
+    }
+  }
+
+  async function saveSummary() {
+    const from = history.activeThreadId;
+    if (!from || memoryBusy) return;
+    setMemoryBusy("save");
+    try {
+      const title = history.threads.find((t) => t.id === from)?.title || "Chat";
+      const stem = title.replace(/[^\w-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 60) || "chat";
+      saveText(`# ${title} — summary\n\n${await summarizeThread(from)}\n`, `${stem}-summary.md`);
+    } catch (err) {
+      alert(errorText(err));
+    } finally {
+      setMemoryBusy(null);
+    }
+  }
+
   async function deleteThread(thread: ChatThread) {
     if (!confirm(`Delete chat “${thread.title}”? Related messages will be hidden.`)) return;
     try {
@@ -160,6 +198,7 @@ function useAppState() {
     canStop: Boolean(chat.activeJobId && chat.running),
     stop: () => void chat.stop(),
     send, newChat, cancelEdit, beginEdit, editAndResend, retry, regenerate, onConfirm, deleteThread,
+    memoryBusy, continueInNewChat, saveSummary,
   };
 }
 

@@ -8,6 +8,7 @@ import {
   fileToBase64,
   IMAGE_QUESTION,
   strengthValue,
+  summaryCard,
   titleFromQuery,
   type EditStrength,
   type PendingImage,
@@ -85,6 +86,18 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
     setRunning(false);
   }
 
+  /** "Summarize & continue in a new chat": open the new chat (already created on the server with the old
+   *  one's summary as its memory) showing that summary as its first card. */
+  function startContinuedChat(id: string, title: string, summary: string) {
+    history.patchMeta(id, { title, projectId: history.projectId, carriedSummary: summary });
+    history.selectThread(id);
+    clear();
+    setTitle(title);
+    setFeed([summaryCard(summary)]);
+    setEditingFromId(null);
+    setRunning(false);
+  }
+
   /** Rebuild a saved chat from its jobs' event histories. */
   async function openThread(thread: ChatThread) {
     history.selectThread(thread.id);
@@ -124,12 +137,14 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
           if (job) built = appendUserMessage(built, job.query, `${job.mode} · ${job.status} · history unavailable`);
         }
       }
+      // a chat continued from another opens with the summary it carries as its memory
+      const carried = thread.carriedSummary ? [summaryCard(thread.carriedSummary)] : [];
       if (built.length === 0 && count === 0) {
-        setFeed([]);
+        setFeed(carried);
       } else if (errors.length && built.length === 0) {
         setFeed([{ id: `err-${thread.id}`, kind: "system", title: "Could not load chat", body: errors[0], meta: "error" }]);
       } else {
-        setFeed(built);
+        setFeed([...carried, ...built]);
       }
     } catch (err) {
       setFeed([{ id: `err-${thread.id}`, kind: "system", title: "Error", body: errorText(err), meta: "error" }]);
@@ -257,6 +272,7 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
     setEditingFromId,
     clear,
     newChat,
+    startContinuedChat,
     openThread,
     send,
     stop,
