@@ -23,7 +23,9 @@ from src.llm.assistant import decide, speaker
 from src.llm.usage import job_totals, job_usage
 from src.llm.specialists import resolve as resolve_specialist
 from src.tools.answer_export import run_answer_export
+from src.tools.content_writer import run_content_writer
 from src.tools.doc_writer import run_document_writer
+from src.tools.site_audit import run_site_audit
 from src.tools.weather import run_weather
 from src.jobs import live
 from src.images.image_gen import run_image_gen
@@ -40,7 +42,8 @@ _stop = threading.Event()
 DIRECT_TOOLS = {"network_scan": run_network_scan, "security_check": run_security_check,
                 "server_audit": run_server_audit, "server_diagnose": run_server_diagnose,
                 "server_operate": run_server_operate, "host_check": run_host_check,
-                "weather": run_weather, "diagram": run_diagram}
+                "weather": run_weather, "diagram": run_diagram,
+                "site_audit": run_site_audit, "content_write": run_content_writer}
 # tools only admins may run (doc/SECURITY_TOOLS_DECISION.md §2): they probe the local network in depth.
 # server_audit / server_diagnose need a stored server login, so they are already gated by who holds the
 # credentials (SERVER_ACCESS_DECISION.md §8) — not listed here.

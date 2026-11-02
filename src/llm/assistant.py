@@ -115,6 +115,21 @@ TOOLS: tuple[Tool, ...] = (
     Tool("draw_diagram", "diagram",
          "Draw or change a diagram with boxes, arrows and exact labels: architecture, flowchart, network schematic, "
          "sequence, hierarchy, org chart.", {"request": "what the diagram shows"}, ("request",)),
+    Tool("site_audit", "site_audit",
+         "Actually read a PUBLIC website now (politely, up to a few dozen pages) and audit its SEO and content: "
+         "titles, meta descriptions, headings, broken pages, image alt text, mobile, canonical, structured data, "
+         "robots.txt and sitemap → a maturity score per area and the fixes in order of impact. Use for 'audit "
+         "example.com', 'check the SEO of my website', 'how mature is this site', 'what should this site improve'.",
+         {"url": "the website address exactly as the user wrote it, e.g. example.com"}, ("url",)),
+    Tool("write_content", "content_write",
+         "Write a full piece of marketing or web copy — blog post, article, landing page, product or service page, "
+         "email, newsletter, ad or social post — in rounds: brief, draft, checks (keywords, length, readability, meta "
+         "title and description) and an editor's review, then improved drafts; shows every draft's score. Also "
+         "rewrites and improves an existing web page's copy when given its address. Not for stories, poems, code "
+         "or a quick slogan (answer those directly).",
+         {"request": "what to write: topic, audience, goal, length if said",
+          "keywords": "comma-separated search keywords the user wants targeted; empty if none",
+          "url": "address of an existing page to improve; empty for new content"}, ("request",)),
     Tool("create_document", "doc_gen",
          "Create a downloadable Word, PDF, PowerPoint or Excel file for the user to save on their own computer. "
          "This is NOT for creating files on a server — to create or write a file on a Linux server, use "
@@ -320,7 +335,8 @@ _WEB_SKIP = re.compile(
     r"\b(write|create|generate|fix|debug|refactor)\b.{0,30}\b(code|function|script|program|class|component|regex|sql|query)\b|"
     r"\b(story|poem|joke|lyrics|image|picture|photo|diagram|flow\s*chart|draw|paint)\b|"
     r"\b(translate|calculate|solve|remember)\b|\bmy\s+name\b|"
-    r"\d{1,3}(\.\d{1,3}){3}",                                                # an IP address → local / network tool
+    r"\d{1,3}(\.\d{1,3}){3}|"                                                # an IP address → local / network tool
+    r"https?://|\bwww\.",                                                    # a given site → the model picks (site_audit)
     re.I,
 )
 

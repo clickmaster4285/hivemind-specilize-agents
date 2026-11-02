@@ -224,12 +224,35 @@ Ollama returns `prompt_eval_count`, `eval_count` and `total_duration` on every c
       the summary as its memory, shown as its first card) / **Save summary** (.md) / dismiss for this chat
 - [x] The summary turn always leads the prompt (`normalize_conversation`, tool-calling messages as a system note)
 
-### L13. Marketing / SEO tools — planned (fixes O11)
+### L13. Marketing / SEO tools — ✅ done 2026-11-02 (fixes O11; assistant eval run pending)
 
-- [ ] Site crawler + SEO audit: polite bounded crawl (reuse `src/brain/web.py` rules: robots.txt, 1 req/s/host)
-      → titles, meta, headings, links, robots/sitemap, broken pages → scored report
-- [ ] Content writing flow: brief → outline → draft → checks (keywords, length, readability)
-- [ ] "Maturity / improvement" — scope to confirm with the user (site/content maturity score + fixes?)
+"Maturity / improvement" means **both** (user, 2026-11-02): score how mature another website's SEO and
+content are and say what to fix, AND improve our own written content over several drafts.
+
+- [x] **`site_audit` tool** (`src/tools/site_audit.py`): polite bounded crawl of a PUBLIC site (`src/brain/web.py`:
+      robots.txt, 1 req/s/host, same host only; every redirect hop of the start address must resolve to a public
+      address — private/loopback/link-local refused) — sitemap pages first, then links, up to `SITE_AUDIT_MAX_PAGES`
+      (25). Links that are not web pages (PDFs) are skipped, not counted as broken
+- [x] 16 page checks + 4 site checks (title / description present, length, unique; one H1; heading order; thin
+      pages vs the site's own median; alt text; canonical; lang; viewport; noindex; Open Graph; structured data;
+      HTTPS; robots.txt; sitemap; broken pages). A check's score = share of pages passing → areas Technical /
+      On-page / Content / Sharing → **maturity 0-100 + level** (Beginner < 40 ≤ Developing < 60 ≤ Established
+      < 80 ≤ Advanced). No model in the score: the same site scores the same
+- [x] The model reads the failing checks + page titles + the home page text (as data) → "Fix first" (≤ 5, by
+      impact, with rewritten titles/descriptions) + "Content maturity" (audience, offer, CTA, trust signals)
+- [x] **`write_content` tool** (`src/tools/content_writer.py`): JSON brief (kind, audience, reader, keywords, length,
+      CTA, language, web?) → draft (streamed) → checks without a model (length ±25%, keywords, main keyword in title
+      and opening, Flesch reading ease vs the reader, long sentences, sub-headings in long copy, repeats, meta
+      title/description length) + an editor's rubric (5 × 1-10 + fixes) → revise, up to `CONTENT_MAX_ROUNDS` (2).
+      Stops when all checks pass and the editor gives ≥ 8, or a revision scores no better. Best draft wins; a
+      "How this was improved" table shows every draft's score
+- [x] Improve an existing page: `write_content` with a URL scores the page's current copy first ("Current page"),
+      then the drafts improve it
+- [x] Offered to every reading specialist (Marketing included) via `seen_tools`; the web-search nudge no longer
+      swallows messages with an explicit address (http(s)://, www.) so the model can pick site_audit
+- [x] 7 assistant eval cases (`data/assistant/eval.yaml`, incl. "3 slogans" → direct answer); 17 tests
+- Measured on example.com (no model): 1 page, 37/100 Beginner — no robots.txt, sitemap, description, H1,
+  canonical, Open Graph or structured data; title 14 chars
 
 ### L14. Skills — reusable instruction packs — planned
 
@@ -244,6 +267,7 @@ Ollama returns `prompt_eval_count`, `eval_count` and `total_duration` on every c
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-02 | **L13 marketing tools** | `site_audit`: polite crawl of a public site → 20 checks → maturity score per area + level → model writes the fix plan and judges the content. `write_content`: brief → draft → checks + editor → revisions, best draft wins with a score table; can start from an existing page's copy. 679 tests |
 | 2026-11-02 | **L12 chat memory** | Memory rebuilt from the chat's own jobs, budgeted in tokens (35% of LLM_NUM_CTX), oldest turns folded into a saved running summary; memory meter + 80% banner → "Summarize & continue in a new chat" / "Save summary". 662 tests |
 | 2026-11-02 | **L10 documents + L11 token usage** | Answers export to md/txt/docx/pdf/pptx/html with no model call ("Download as", "make this a PDF" reads the full earlier answer); new documents written section by section with checks; file names follow the topic. Every model call recorded in `llm_usage` → usage per answer, per chat (under the message bar) and per user (Settings → Usage). 655 tests |
 | 2026-10-14 | Model setup | `LLM_THINK` setting added; all roles on `qwen3.5:9b`; embedding models hidden from chat model list |

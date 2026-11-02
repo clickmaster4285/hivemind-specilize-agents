@@ -140,6 +140,10 @@ class Config:
     # Chat memory (BACKLOG L12): the share of the model's context (LLM_NUM_CTX) given to earlier turns of the
     # chat; the rest is for instructions, sources and the answer. Past it, older turns are summarised.
     context_history_share: float = 0.35
+    # Marketing tools (BACKLOG L13): pages one website audit reads (1 request/s → about that many seconds),
+    # and how many times write_content may revise its draft after the first one
+    site_audit_max_pages: int = 25
+    content_max_rounds: int = 2
     # Options toggle: how many candidate approaches to offer before writing the full answer
     options_count: int = 3
     # Follow-up suggestions: clickable "ask this next" chips under each substantive answer
@@ -266,6 +270,8 @@ class Config:
             deep_subqueries=max(1, min(8, int(os.getenv("DEEP_SUBQUERIES", "4")))),
             deep_max_passages=max(4, min(24, int(os.getenv("DEEP_MAX_PASSAGES", "12")))),
             context_history_share=max(0.1, min(0.6, float(os.getenv("CONTEXT_HISTORY_SHARE", "0.35")))),
+            site_audit_max_pages=max(1, min(200, int(os.getenv("SITE_AUDIT_MAX_PAGES", "25")))),
+            content_max_rounds=max(0, min(4, int(os.getenv("CONTENT_MAX_ROUNDS", "2")))),
             options_count=max(2, min(5, int(os.getenv("OPTIONS_COUNT", "3")))),
             suggestions_enabled=_bool("SUGGESTIONS_ENABLED", True),
             suggestions_count=max(2, min(5, int(os.getenv("SUGGESTIONS_COUNT", "3")))),
