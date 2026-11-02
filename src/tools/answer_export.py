@@ -34,20 +34,31 @@ def export_format(raw: str | None) -> str | None:
     return name if name in FORMATS else None
 
 
-def split_sections(markdown: str, fallback_title: str) -> tuple[str, list[dict[str, str]]]:
-    """→ (title, sections) cut at the answer's own top heading level. A lone leading H1 becomes the title;
-    text before the first heading is an "Overview" section. Headings inside code fences are not headings."""
-    lines = (markdown or "").strip().splitlines()
-    headings: list[tuple[int, int, str]] = []          # (line index, level, text)
+def _headings(lines: list[str]) -> list[tuple[int, int, str]]:
+    """(line index, level, text) of each Markdown heading; headings inside code fences are not headings."""
+    found: list[tuple[int, int, str]] = []
     fenced = False
     for i, line in enumerate(lines):
         if _FENCE.match(line):
             fenced = not fenced
         elif not fenced and (m := _HEADING.match(line.strip())):
-            headings.append((i, len(m.group(1)), m.group(2).strip()))
+            found.append((i, len(m.group(1)), m.group(2).strip()))
+    return found
+
+
+def _lone_h1(lines: list[str], headings: list[tuple[int, int, str]]) -> bool:
+    """The text opens with its only H1 — the document's own title."""
+    return bool(headings) and headings[0][1] == 1 and sum(1 for h in headings if h[1] == 1) == 1 \
+        and not "".join(lines[: headings[0][0]]).strip()
+
+
+def split_sections(markdown: str, fallback_title: str) -> tuple[str, list[dict[str, str]]]:
+    """→ (title, sections) cut at the answer's own top heading level. A lone leading H1 becomes the title;
+    text before the first heading is an "Overview" section."""
+    lines = (markdown or "").strip().splitlines()
+    headings = _headings(lines)
     title = fallback_title.strip() or "Answer"
-    if headings and headings[0][1] == 1 and sum(1 for h in headings if h[1] == 1) == 1 \
-            and not "".join(lines[: headings[0][0]]).strip():
+    if _lone_h1(lines, headings):
         title = headings[0][2]
         lines[headings[0][0]] = ""
         headings = headings[1:]
@@ -63,6 +74,29 @@ def split_sections(markdown: str, fallback_title: str) -> tuple[str, list[dict[s
         end = cuts[n + 1][0] if n + 1 < len(cuts) else len(lines)
         sections.append({"heading": text, "body": "\n".join(lines[start + 1:end]).strip()})
     return title, sections
+
+
+TITLE_SYSTEM = """Name the topic of this text as a short, specific document title (3-8 words), e.g.
+"Docker Networking Basics". Output only the title: no quotes, no trailing punctuation, no "Title:".
+Use the language of the text."""
+
+
+def topic_title(text: str, question: str, config: Config) -> str:
+    """The file's title (and so its name): the answer's own title when it opens with one, else a short topic
+    title from the model, else the question — so "make this a pdf" never names the file "make_this_a_pdf"."""
+    lines = (text or "").strip().splitlines()
+    headings = _headings(lines)
+    if _lone_h1(lines, headings):
+        return headings[0][2]
+    from src.llm.llm_client import LLMClient
+
+    try:
+        raw = LLMClient(config).chat(system=TITLE_SYSTEM, user=f"Question: {question}\n\n{text[:2000]}",
+                                     temperature=0.2, max_tokens=24, max_retries=0)
+        title = next((ln for ln in raw.splitlines() if ln.strip()), "").strip().strip("\"'*#.: ")
+    except Exception:  # noqa: BLE001 — the model is a nicety here; the question still names the file
+        title = ""
+    return title[:80] or question
 
 
 def _sources_markdown(sources: list[dict[str, Any]] | None) -> str:
@@ -155,7 +189,8 @@ def run_answer_export(query: str, *, job_id: str, config: Config, user_id: int |
     emit({"type": "agent_start", **agent, "model": "converter"})
     errors: list[str] = []
     try:
-        meta = export_answer(text, kind, title=question, job_id=job_id, config=config, sources=sources)
+        meta = export_answer(text, kind, title=topic_title(text, question, config), job_id=job_id, config=config,
+                             sources=sources)
         emit(artifact_event(meta, job_id=job_id))
         output = f"Here is the previous answer as **{meta['filename']}** — the whole answer, nothing re-written."
     except Exception as exc:  # noqa: BLE001 — a writer failure is reported in the chat, never a crash

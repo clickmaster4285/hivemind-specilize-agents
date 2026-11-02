@@ -28,7 +28,7 @@ from src.jobs.jobs import (
     soft_delete_jobs,
 )
 from src.agentic.tools import ToolError
-from src.tools.answer_export import answer_in_events, export_answer
+from src.tools.answer_export import answer_in_events, export_answer, topic_title
 from src.tools.artifacts import resolve_job_file
 from src.tools.attachments import image_path
 from web.schemas import ConfirmPayload, ExportPayload, JobCreatePayload, SoftDeleteJobsPayload
@@ -203,8 +203,8 @@ def export_answer_endpoint(
     config = Config.from_env()
     found = answer_in_events([json.loads(r.event_json) for r in list_events_after(db, job_id, 0)], payload.text)
     try:
-        meta = export_answer(payload.text, payload.format, title=job.query, job_id=job_id, config=config,
-                             sources=found[1] if found else None)
+        meta = export_answer(payload.text, payload.format, title=topic_title(payload.text, job.query, config),
+                             job_id=job_id, config=config, sources=found[1] if found else None)
         path = resolve_job_file(config, job_id, meta["filename"])
     except (ValueError, FileNotFoundError, ToolError) as exc:
         raise HTTPException(status_code=422, detail=f"Could not create the file: {exc}") from exc

@@ -176,7 +176,7 @@ there we could read the real serial with one read-only command per OS — Linux 
 to the authenticated `server_ops`/`host_check` flow, **not** the read-only LAN sweep, so it was deferred out of the
 net_scan identification work (phases 1–3). Pick it up when inventory + stored SSH credentials exist. _Noted 2026-10-31._
 
-### L10. Documents from answers: direct export + "Download as" — 🔨 export done 2026-11-02; step-wise generation next (fixes ISSUES_LOG O8)
+### L10. Documents: direct export, "Download as", section-by-section writer — ✅ done 2026-11-02 (fixes ISSUES_LOG O8)
 
 **Problem:** "make this a PDF" re-sends the earlier answer (cut by the history caps) to the agentic worker,
 which must re-type it as one JSON tool call — the 9B model truncates it, so the file is short or missing.
@@ -187,8 +187,12 @@ which must re-type it as one JSON tool call — the 9B model truncates it, so th
 - [x] "This / that / the above as a PDF" in chat: `create_document` gets `source=previous_answer` (the model
       decides) → the chat's previous answer is read in full from its job events and exported
 - [x] Markdown tables and code blocks survive: real Word tables, HTML `<table>`/`<pre>`, aligned rows in PDF/txt
-- [ ] New documents (not an export): the worker writes one section per step and each step is checked
-      (extract → outline → content → align → check), never one huge JSON body
+- [x] New documents (not an export): `src/tools/doc_writer.py` — outline (small JSON: topic title, format,
+      sections + what each covers) → each section written on its own, streamed, knowing the whole plan → checked
+      (empty / repeats an earlier section / open code fence) and rewritten once → same converters as export.
+      Spreadsheets (xlsx) and unusable outlines still go to the agentic worker
+- [x] File names follow the topic, not the request: the document's own title, else a short model-made topic
+      title (`topic_title`), else the question — never "make_this_a_pdf.pdf" or "document.docx"
 
 ### L11. Token usage tracking — planned
 

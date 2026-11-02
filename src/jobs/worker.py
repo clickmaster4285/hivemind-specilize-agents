@@ -21,6 +21,7 @@ from src.servers.host_check import run_host_check
 from src.llm.assistant import decide, speaker
 from src.llm.specialists import resolve as resolve_specialist
 from src.tools.answer_export import run_answer_export
+from src.tools.doc_writer import run_document_writer
 from src.tools.weather import run_weather
 from src.jobs import live
 from src.images.image_gen import run_image_gen
@@ -310,6 +311,19 @@ def process_job(job_id: str, config: Config | None = None) -> None:
             )
             _finish(config, job_id, result.errors, failed=bool(result.errors and not result.output))
             return
+
+        if mode == "agentic" and intent == "doc_gen":
+            # a new document: outline → each section written and checked → file (BACKLOG L10); a spreadsheet
+            # or an unusable outline falls through to the agentic worker below
+            written = run_document_writer(
+                query, job_id=job_id, config=config, conversation=conversation, on_progress=on_progress,
+                model=model_plan.get("worker") or config.model_strong or config.llm_model,
+                format=tool_args.get("format"), request=tool_args.get("request"),
+            )
+            if written is not None:
+                doc, errors, _elapsed = written
+                _finish(config, job_id, errors, failed=not doc)
+                return
 
         if mode == "agentic":
             result = run_agentic(
