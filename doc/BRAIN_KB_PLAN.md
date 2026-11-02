@@ -37,7 +37,7 @@ faithful, routing verified). Everything below is **not started / not finished** 
 higher-priority work is cleared.
 
 **Brain (this plan):**
-- [ ] **Item 6 — freshness scheduler:** run `ingest --due` on a cadence so sources self-refresh.
+- [x] **Item 6 — freshness scheduler:** already wired — see §6.
 - [ ] **Gate precision (the 3 OOS false positives):** `oos-vlan` (Cisco), `oos-linux-root` (forgotten-pw),
       `oos-instagram` (Meta ads) leak at 0.57–0.66. A score-only threshold can't reject them (§2c). Fix =
       add a topic/keyword cross-check to the gate, or add the missing sources — then decide MIN_SIMILARITY.
@@ -52,8 +52,9 @@ higher-priority work is cleared.
 - [ ] **Item 8 — add more sources:** only where the eval shows a gap, each with a verified open licence.
 
 **Other threads (also not done — see [BACKLOG.md](BACKLOG.md)):**
-- [ ] **User management:** create the 3 remaining IT users — `umer.farooq` (IT), `kamran.khan` (IT),
-      `israr.sawati` (marketing); verify edit/deactivate (PATCH/DELETE) — needs a backend restart.
+- [x] **User management:** `umer.farooq` (IT), `kamran.khan` (IT), `israr.sawati` (marketing) exist
+      (checked 2026-11-02 with `python -m src.core.seed_users --list`); edit/deactivate covered by
+      `tests/test_auth_users.py` and the admin Users panel.
 - [ ] **Voice input feature** (local, OpenWhispr-based) — see [OPEN_SOURCE_INTEGRATION_RESEARCH.md](OPEN_SOURCE_INTEGRATION_RESEARCH.md).
 
 ---
@@ -176,9 +177,11 @@ Cisco / Meta-ads sources (then they become answerable in-scope). Do **not** recl
       `src/llm/assistant.py`; spot-check a few live questions.
 
 ### 6. Automate freshness  **[C] wire, [U] enable**
-- [ ] Schedule `python -m src.brain.ingest --due` (see `src/brain/scheduler.py::run_due`) as a recurring
-      task so sources refresh on their own `refresh_every` cadence instead of manual runs. Git sources are
-      near-free to re-check (ETag/hash); web sources cost a polite crawl.
+- [x] Runs inside the API: `web/server.py` lifespan → `start_scheduler` checks every
+      `BRAIN_SCHEDULER_MINUTES` (30) and ingests sources past their `refresh_every` (on by default,
+      `BRAIN_SCHEDULER=false` to turn off, `BRAIN_REFRESH_WINDOW=01-06` for nights only). Postgres advisory
+      lock = one refresh at a time. Only refreshes while the API is up; `python -m src.brain.ingest --due`
+      does the same by hand. Checked 2026-11-02: nothing due yet — first 7-day sources fall due ~2026-11-06.
 
 ### 7. Chunk-quality pass (optional)  **[C]**
 - [ ] Spot-check low-value chunks: section/landing/`_index` pages, changelog dumps (e.g. schema.org
