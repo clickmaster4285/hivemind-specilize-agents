@@ -19,6 +19,7 @@ from src.servers.linux_audit import run_server_audit
 from src.servers.server_ops import run_server_diagnose, run_server_operate
 from src.servers.host_check import run_host_check
 from src.llm.assistant import decide, speaker
+from src.llm.usage import job_totals, job_usage
 from src.llm.specialists import resolve as resolve_specialist
 from src.tools.answer_export import run_answer_export
 from src.tools.doc_writer import run_document_writer
@@ -107,6 +108,19 @@ def process_job(job_id: str, config: Config | None = None) -> None:
         payload = json.loads(job.payload_json or "{}")
         model_plan = json.loads(job.model_plan_json or "{}")
 
+    with job_usage(job_id, user_id):          # every model call of this job is counted (BACKLOG L11)
+        _run_job(job_id, config, mode=mode, query=query, user_id=user_id, payload=payload, model_plan=model_plan)
+
+
+def _append_usage(session, job_id: str) -> None:
+    """The answer's token usage, sent just before session_done so the UI shows it under the answer."""
+    totals = job_totals(session, job_id)
+    if totals:
+        append_event(session, job_id, {"type": "usage", **totals})
+
+
+def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int, payload: dict[str, Any],
+             model_plan: dict[str, Any]) -> None:
     # After Stop the job is "cancelled", but the partly written answer must still be saved
     # (chat history), so the closing events get through; everything else is dropped.
     keep_after_stop = {"agent_done", "session_done"}
@@ -135,6 +149,8 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 arts.append(entry)
                 payload_now["attachments"] = arts
                 current.payload_json = json.dumps(payload_now)
+            if event.get("type") == "session_done":
+                _append_usage(session, job_id)
             append_event(session, job_id, event)
 
     try:
@@ -338,6 +354,7 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 if get_job(session, job_id) and get_job(session, job_id).status == "cancelled":
                     return
                 # Emit completion event before terminal status so SSE clients drain it.
+                _append_usage(session, job_id)
                 append_event(
                     session,
                     job_id,

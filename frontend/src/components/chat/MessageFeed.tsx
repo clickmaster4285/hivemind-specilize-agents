@@ -418,6 +418,7 @@ function MessageRow({
                   <AnswerActions
                     text={item.body}
                     jobId={item.jobId || fallbackJobId}
+                    usage={item.usage}
                     onRetry={isLastAgent && !running ? onRetry : undefined}
                     onRegenerate={isLastAgent && !running ? onRegenerate : undefined}
                   />

@@ -139,6 +139,24 @@ class Feedback(Base):
     __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_feedback_user_job"),)
 
 
+class LlmUsage(Base):
+    """One model call: who/what made it and what it cost (BACKLOG L11). Tokens come from Ollama's own counts
+    (prompt_eval_count / eval_count); a call stopped mid-answer has no counts, so it is estimated."""
+
+    __tablename__ = "llm_usage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, index=True, nullable=True)
+    step: Mapped[str] = mapped_column(String(60))               # the code that asked: chat_runner, doc_writer, …
+    model: Mapped[str] = mapped_column(String(120))
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+    estimated: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class ChatThreadRow(Base):
     """A chat's metadata (title, pin, project, deletion), per user, so history syncs across devices.
     The chat's messages are its jobs, grouped by the job payload's thread_id — not stored here."""

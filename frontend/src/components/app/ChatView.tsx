@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useApp } from "@/components/app/AppProvider";
 import Composer from "@/components/chat/Composer";
 import MessageFeed from "@/components/chat/MessageFeed";
+import { sumUsage } from "@/lib/format";
 
 /** The chat page content (below the persistent navbar): the run/specialist/model controls, the message
  *  feed, and the composer. All state comes from the shared provider. */
@@ -51,6 +52,7 @@ export default function ChatView() {
         editStrength={app.editStrength}
         onEditStrength={app.setEditStrength}
         imagePipeline={app.health.health?.image_pipeline}
+        chatUsage={sumUsage(app.chat.feed)}
       />
     </div>
   );

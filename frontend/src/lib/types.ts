@@ -213,6 +213,18 @@ export type ClarifyQuestion = { question: string; options: string[] };
 /** A multiple-choice quiz question under an educational answer; `correct` is the right option's index. */
 export type QuizQuestion = { question: string; options: string[]; correct: number };
 
+/** Model usage: calls, tokens in/out and model time — for one answer, or summed per chat / user / step. */
+export type UsageTotals = { calls: number; prompt_tokens: number; output_tokens: number; seconds: number };
+export type AnswerUsage = UsageTotals & { estimated?: boolean; steps: (UsageTotals & { step: string })[] };
+export type UsageSummary = {
+  days: number;
+  all_users: boolean;
+  since: string;
+  total: UsageTotals;
+  users: (UsageTotals & { user_id: number | null; username: string; answers: number })[];
+  steps: (UsageTotals & { step: string })[];
+};
+
 export type FeedItem = {
   id: string;
   kind: "user" | "agent" | "system";
@@ -242,6 +254,8 @@ export type FeedItem = {
   suggestions?: string[];
   /** A short multiple-choice self-check under an educational answer. */
   quiz?: QuizQuestion[];
+  /** What this answer cost: tokens in/out and model time, split by the step that asked (BACKLOG L11). */
+  usage?: AnswerUsage;
   /** Web images found for an educational answer: small thumbnails loaded from the job's attachments. */
   webImages?: { filename: string; mime?: string; anchor?: string }[];
   /** Section anchors whose web images are still being fetched — loading placeholders sit there meanwhile. */

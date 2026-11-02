@@ -5,7 +5,8 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { exportAnswer, fetchJobAttachment, sendFeedback, type ExportFormat } from "@/lib/api";
 import { errorText, timeAgo } from "@/lib/chat";
-import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
+import { usageLine } from "@/lib/format";
+import type { AnswerOption, AnswerUsage, ChatImage, FeedItem } from "@/lib/types";
 
 type ItemProps = { item: FeedItem; fallbackJobId: string | null };
 
@@ -255,6 +256,22 @@ function DownloadMenu({ jobId, text }: { jobId: string; text: string }) {
   );
 }
 
+/** What the answer cost — tokens in/out and model time; hover for the split by step (BACKLOG L11). */
+function UsageNote({ usage }: { usage: AnswerUsage }) {
+  const detail = usage.steps.map((s) => `${s.step}: ${usageLine(s)} (${s.calls} call${s.calls === 1 ? "" : "s"})`);
+  const title = [
+    `${usage.calls} model call${usage.calls === 1 ? "" : "s"}`,
+    ...detail,
+    ...(usage.estimated ? ["Stopped early — part of it is estimated"] : []),
+  ].join("\n");
+  return (
+    <span className="ml-auto cursor-default pl-2 text-[0.7rem] tabular-nums text-[var(--muted)]" title={title}>
+      {usage.estimated ? "≈ " : ""}
+      {usageLine(usage)}
+    </span>
+  );
+}
+
 /** One icon button in the answer action bar. */
 function ActionIcon({
   title, onClick, active, disabled, children,
@@ -283,11 +300,13 @@ function ActionIcon({
 export function AnswerActions({
   text,
   jobId,
+  usage,
   onRetry,
   onRegenerate,
 }: {
   text: string;
   jobId?: string | null;
+  usage?: AnswerUsage;
   onRetry?: () => void;
   onRegenerate?: (reason: string) => void;
 }) {
@@ -383,6 +402,7 @@ export function AnswerActions({
         {rating === "up" || sent ? (
           <span className="ml-[0.3rem] text-[0.72rem] text-[var(--muted)]">Thanks — noted.</span>
         ) : null}
+        {usage ? <UsageNote usage={usage} /> : null}
       </div>
       {open ? (
         <div className="mt-[0.5rem] max-w-[32rem] rounded-[0.6rem] border border-[var(--line)] bg-[var(--panel-2)] p-[0.7rem]">

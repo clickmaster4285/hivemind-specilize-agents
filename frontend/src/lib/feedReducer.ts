@@ -1,5 +1,6 @@
 import type {
   AnswerOption,
+  AnswerUsage,
   AnswerVerification,
   BrainSource,
   ClarifyQuestion,
@@ -322,6 +323,22 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
       });
     }
     return upsertStatus(next, "File ready", `${filename} — download below`);
+  }
+  if (type === "usage") {
+    // the answer's token usage (sent just before session_done) → the last answer of that job
+    const steps = Array.isArray(event.steps) ? (event.steps as AnswerUsage["steps"]) : [];
+    const usage: AnswerUsage = {
+      calls: Number(event.calls) || 0,
+      prompt_tokens: Number(event.prompt_tokens) || 0,
+      output_tokens: Number(event.output_tokens) || 0,
+      seconds: Number(event.seconds) || 0,
+      estimated: Boolean(event.estimated),
+      steps,
+    };
+    for (let i = prev.length - 1; i >= 0; i--) {
+      if (prev[i].kind === "agent") return prev.map((item, j) => (j === i ? { ...item, usage } : item));
+    }
+    return prev;
   }
   if (type === "answer_extras") {
     // post-answer extras streamed separately (see RESPONSE_QUALITY.md) → merge into the last answer

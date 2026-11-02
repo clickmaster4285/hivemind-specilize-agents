@@ -11,6 +11,7 @@ import requests
 
 from src.core.config import Config
 from src.llm.llm_lock import llm_slot
+from src.llm.usage import record_call
 
 
 class LLMError(RuntimeError):
@@ -99,6 +100,7 @@ class LLMClient:
         if cfg.llm_keep_alive:
             payload["keep_alive"] = cfg.llm_keep_alive
         last_error: Exception | None = None
+        started = time.monotonic()
         for attempt in range(max_retries + 1):
             try:
                 response = requests.post(url, json=payload, timeout=cfg.timeout_seconds)
@@ -115,6 +117,7 @@ class LLMClient:
                 content = data.get("message", {}).get("content")
                 if not content or not str(content).strip():
                     raise LLMError("Local LLM returned an empty response.")
+                record_call(cfg, model=cfg.llm_model, done=data, started=started)
                 return str(content).strip()
             except (requests.RequestException, ValueError, LLMError) as exc:
                 last_error = exc
@@ -151,6 +154,9 @@ class LLMClient:
         keep_going = should_continue or (lambda: True)
         url = f"{cfg.llm_base_url}/api/chat"
         text, calls = "", []
+        done: dict[str, Any] | None = None
+        started = time.monotonic()
+        prompt_text = json.dumps(messages)
         with llm_slot(cfg):
             try:
                 with requests.post(url, json=payload, stream=True, timeout=(10, cfg.timeout_seconds)) as response:
@@ -183,11 +189,17 @@ class LLMClient:
                             if on_delta is not None and not calls:
                                 on_delta(text)
                         if data.get("done"):
+                            done = data
                             break
+            except LLMStopped:
+                record_call(cfg, model=cfg.llm_model, done=None, started=started, prompt_text=prompt_text,
+                            output_text=text)
+                raise
             except (requests.RequestException, ValueError) as exc:
                 raise LLMError(
                     f"Failed to reach local LLM at {url} (model={cfg.llm_model}). Last error: {_llm_err(exc)}."
                 ) from exc
+        record_call(cfg, model=cfg.llm_model, done=done, started=started, prompt_text=prompt_text, output_text=text)
         return text.strip(), calls
 
     def _chat_ollama_stream(
@@ -219,10 +231,12 @@ class LLMClient:
         keep_going = should_continue or (lambda: True)
         last_error: Exception | None = None
         attempt = 0
+        started = time.monotonic()
         while attempt <= max_retries:
             if not keep_going():
                 raise LLMStopped("")
             text = ""
+            done: dict[str, Any] | None = None
             try:
                 # (connect timeout, timeout between two pieces of text) — a stuck model fails, a slow one does not
                 with requests.post(url, json=payload, stream=True, timeout=(10, cfg.timeout_seconds)) as response:
@@ -244,11 +258,16 @@ class LLMClient:
                             if on_delta is not None:
                                 on_delta(text)
                         if data.get("done"):
+                            done = data
                             break
                 if not text.strip():
                     raise LLMError("Local LLM returned an empty response.")
+                record_call(cfg, model=cfg.llm_model, done=done, started=started, prompt_text=system + user,
+                            output_text=text)
                 return text.strip()
             except LLMStopped:
+                record_call(cfg, model=cfg.llm_model, done=None, started=started, prompt_text=system + user,
+                            output_text=text)
                 raise
             except (requests.RequestException, ValueError, LLMError) as exc:
                 last_error = exc

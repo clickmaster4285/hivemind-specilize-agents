@@ -124,6 +124,7 @@ def emit_answer_extras(query: str, output: str, *, job_id: str | None, config: C
     assistant's direct reply alike. Computed AFTER the answer is sent and run side by side (images are
     network-bound, the others model-bound); each is emitted as its own event the moment it is ready, so
     the message completes at once and the extras pop in. Never affects the answer itself."""
+    import contextvars
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     from src.tools.web_images import gather_web_images, image_anchors
@@ -153,7 +154,8 @@ def emit_answer_extras(query: str, output: str, *, job_id: str | None, config: C
         if not jobs:
             return
         with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
-            futures = {pool.submit(fn): key for key, fn in jobs.items()}
+            # each extra runs in a copy of this context, so its model calls count toward this job's usage
+            futures = {pool.submit(contextvars.copy_context().run, fn): key for key, fn in jobs.items()}
             for future in as_completed(futures):           # emitted from this thread, in finishing order
                 key = futures[future]
                 try:

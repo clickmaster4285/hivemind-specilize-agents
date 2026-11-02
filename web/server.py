@@ -22,7 +22,7 @@ from src.core.db import init_db
 from src.jobs.worker import start_inprocess_worker
 from src.llm.model_registry import sync_models_from_ollama
 from web.brain_routes import router as brain_router
-from web.routers import auth, history, jobs, models, servers, specialists, system, users
+from web.routers import auth, history, jobs, models, servers, specialists, system, usage, users
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -70,7 +70,7 @@ app.add_middleware(
 )
 
 # One router per domain (web/routers/*). brain_router carries its own /api/brain prefix.
-for module in (system, auth, users, specialists, servers, models, jobs, history):
+for module in (system, auth, users, specialists, servers, models, jobs, history, usage):
     app.include_router(module.router)
 app.include_router(brain_router)
 

@@ -12,6 +12,7 @@ import type {
   Specialist,
   SpecialistInput,
   SpecialistOptions,
+  UsageSummary,
   UserCreateInput,
   UserUpdateInput,
 } from "./types";
@@ -378,7 +379,12 @@ export async function fetchJobAttachment(jobId: string, filename: string): Promi
   return URL.createObjectURL(blob);
 }
 
-export type ExportFormat = "md" | "txt" | "docx" | "pdf" | "pptx" | "html";
+/** Token usage over the last `days`: everyone's for an admin, your own otherwise (BACKLOG L11). */
+export async function getUsage(days: number): Promise<UsageSummary> {
+  return request(`/api/usage?days=${days}`);
+}
+
+export type ExportFormat ="md" | "txt" | "docx" | "pdf" | "pptx" | "html";
 
 /** "Download as": the server converts the answer (as shown) to a file → object URL + file name. */
 export async function exportAnswer(

@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import ServersSection from "@/components/chat/ServersSection";
 import SpecialistModal from "@/components/chat/SpecialistModal";
+import UsageSection from "@/components/chat/UsageSection";
 import UsersSection from "@/components/chat/UsersSection";
 import { useServers } from "@/hooks/useServers";
 import { useUsers } from "@/hooks/useUsers";
@@ -17,7 +18,7 @@ const heading = "text-base font-semibold [font-family:var(--font-display)]";
 const hint = "text-xs leading-relaxed text-[var(--muted)]";
 const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5";
 
-type TabId = "users" | "servers" | "models" | "agents";
+type TabId = "users" | "servers" | "usage" | "models" | "agents";
 
 /** The Settings content, organised into tabs: Users and Servers (admins only), Models, Agents. One
  *  section shows at a time; the shell provides the navbar + sidebar. */
@@ -44,6 +45,7 @@ export default function SettingsBody({
           { id: "servers" as const, label: "Servers" },
         ]
       : []),
+    { id: "usage", label: "Usage" },
     { id: "models", label: "Models" },
     { id: "agents", label: "Agents" },
   ];
@@ -83,6 +85,13 @@ export default function SettingsBody({
       {tab === "servers" && isAdmin ? (
         <section className={panel}>
           <ServersSection servers={servers} />
+        </section>
+      ) : null}
+
+      {/* Usage (admins: everyone; members: their own) */}
+      {tab === "usage" ? (
+        <section className={panel}>
+          <UsageSection />
         </section>
       ) : null}
 

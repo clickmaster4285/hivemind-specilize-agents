@@ -194,11 +194,21 @@ which must re-type it as one JSON tool call — the 9B model truncates it, so th
 - [x] File names follow the topic, not the request: the document's own title, else a short model-made topic
       title (`topic_title`), else the question — never "make_this_a_pdf.pdf" or "document.docx"
 
-### L11. Token usage tracking — planned
+### L11. Token usage tracking — ✅ done 2026-11-02
 
-Ollama already returns `prompt_eval_count`, `eval_count` and durations on every call; we drop them.
-- [ ] Record one row per LLM call: job, user, step/phase (planner, worker, writer, extras…), model, tokens in/out, ms
-- [ ] Show per answer ("1.2k in / 850 out · 14 s"), per chat, and per user (admin page)
+Ollama returns `prompt_eval_count`, `eval_count` and `total_duration` on every call; we now keep them.
+- [x] One `llm_usage` row per model call (`src/llm/usage.py`): job, user, step, model, tokens in/out, ms. The
+      worker binds each job (`job_usage`, a context variable — post-answer extras threads carry it); the step is
+      read from the call site (chat_runner, doc_writer, suggestions, quiz, deep_research …), so callers label
+      nothing. A call stopped mid-answer has no counts → estimated (chars/4, wall time), flagged. Calls outside
+      a job (evals, benchmarks) are not recorded; recording can never fail an answer
+- [x] Per answer: a `usage` event just before `session_done` → "1.2k in · 850 out · 14 s" in the action bar,
+      hover = split by step (replayed from history after a reload)
+- [x] Per chat: the answers added up, under the message bar ("This chat: …")
+- [x] Per user: Settings → **Usage** (`GET /api/usage?days=`), Today / 7 / 30 / 90 days, totals + per user
+      (admins see everyone, members themselves) + per step
+- Note: Ollama counts only newly evaluated prompt tokens — a reused (cached) prompt prefix is not counted again,
+  so "in" can be lower than the real prompt size. L12's context meter must measure the prompt it builds instead
 
 ### L12. Context awareness: meter, auto-compaction, new chat — planned (needs L11; fixes O9)
 
@@ -228,6 +238,7 @@ Ollama already returns `prompt_eval_count`, `eval_count` and durations on every 
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-02 | **L10 documents + L11 token usage** | Answers export to md/txt/docx/pdf/pptx/html with no model call ("Download as", "make this a PDF" reads the full earlier answer); new documents written section by section with checks; file names follow the topic. Every model call recorded in `llm_usage` → usage per answer, per chat (under the message bar) and per user (Settings → Usage). 655 tests |
 | 2026-10-14 | Model setup | `LLM_THINK` setting added; all roles on `qwen3.5:9b`; embedding models hidden from chat model list |
 | 2026-10-14 | Backlog created | This file |
 | 2026-10-17 | **Web search on request** (step 4) | SearXNG in Docker (`searxng/searxng:2026.9.30-a9d990033`, 127.0.0.1:8888 only, secret `SEARXNG_SECRET`); `src/web_search.py`: SearXNG → top 4 pages read in parallel with the brain's polite fetcher → embeddings pick the 6 best passages → answer with `[n]` citations + source list; web text treated as data, nothing stored in the brain. Router intent `web_search` (`data/router/intents.yaml`, examples EN+Hinglish) + **Web** button (`force_intent: web_search`); eval 56/56, 0 wrong. `WEB_SEARCH_URL` in `.env`/`.env.example` |

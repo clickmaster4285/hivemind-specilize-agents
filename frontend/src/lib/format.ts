@@ -1,3 +1,5 @@
+import type { UsageTotals } from "@/lib/types";
+
 function formatStructuredBlob(text: string): string | null {
   try {
     const data = JSON.parse(text);
@@ -23,6 +25,34 @@ function formatStructuredBlob(text: string): string | null {
     // not JSON
   }
   return null;
+}
+
+/** 950 → "950", 1234 → "1.2k", 48210 → "48k" */
+export function compactCount(n: number): string {
+  if (n < 1000) return String(n);
+  return `${(n / 1000).toFixed(n < 10000 ? 1 : 0)}k`;
+}
+
+export function formatSeconds(s: number): string {
+  if (s < 60) return `${s < 10 ? s.toFixed(1) : Math.round(s)} s`;
+  return `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`;
+}
+
+/** "1.2k in · 850 out · 14 s" — tokens the model read, tokens it wrote, and its time. */
+export function usageLine(u: UsageTotals): string {
+  return `${compactCount(u.prompt_tokens)} in · ${compactCount(u.output_tokens)} out · ${formatSeconds(u.seconds)}`;
+}
+
+/** The usage of several answers added up (a whole chat); null when none has any. */
+export function sumUsage(items: { usage?: UsageTotals }[]): UsageTotals | null {
+  const used = items.map((i) => i.usage).filter((u): u is UsageTotals => Boolean(u));
+  if (!used.length) return null;
+  return used.reduce((a, u) => ({
+    calls: a.calls + u.calls,
+    prompt_tokens: a.prompt_tokens + u.prompt_tokens,
+    output_tokens: a.output_tokens + u.output_tokens,
+    seconds: a.seconds + u.seconds,
+  }));
 }
 
 /** Full agent / assistant answers — never truncate with "…". */

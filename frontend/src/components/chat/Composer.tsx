@@ -17,7 +17,8 @@ import type { SendOptions } from "@/hooks/useChat";
 import type { PendingImagesApi } from "@/hooks/usePendingImages";
 import type { ImageProfile } from "@/lib/api";
 import type { EditStrength } from "@/lib/chat";
-import type { Health, RunMode } from "@/lib/types";
+import { usageLine } from "@/lib/format";
+import type { Health, RunMode, UsageTotals } from "@/lib/types";
 
 type Props = {
   query: string;
@@ -41,6 +42,8 @@ type Props = {
   editStrength: EditStrength;
   onEditStrength: (strength: EditStrength) => void;
   imagePipeline: Health["image_pipeline"];
+  /** What this chat has used so far (all its answers added up), shown under the message bar. */
+  chatUsage?: UsageTotals | null;
 };
 
 const iconBtn = "shrink-0 grid place-items-center w-[2.1rem] h-[2.1rem] border-0 rounded-full cursor-pointer";
@@ -331,6 +334,14 @@ export default function Composer(props: Props) {
           </button>
         )}
       </div>
+      {props.chatUsage ? (
+        <div
+          className="mt-[0.3rem] text-center text-[0.7rem] tabular-nums text-[var(--muted)]"
+          title={`${props.chatUsage.calls} model calls in this chat`}
+        >
+          This chat: {usageLine(props.chatUsage)}
+        </div>
+      ) : null}
     </form>
   );
 }
