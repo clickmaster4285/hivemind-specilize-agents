@@ -248,7 +248,6 @@ export async function createJob(payload: {
   /** "auto" = the assistant picks · "none" = no specialist · or a specialist id */
   specialist?: string;
   model?: string;
-  allow_overflow?: boolean;
   images?: { filename: string; mime: string; data: string }[];
   /** Prior turns so follow-ups like “write that as docx” keep context */
   conversation?: { role: "user" | "assistant"; content: string }[];

@@ -84,7 +84,7 @@ class ModelRecord(Base):
     name: Mapped[str] = mapped_column(String(200), unique=True, index=True)
     backend: Mapped[str] = mapped_column(String(40), default="local_ollama")
     vram_class: Mapped[str] = mapped_column(String(20), default="medium")  # small|medium|large
-    role: Mapped[str] = mapped_column(String(20), default="general")  # fast|strong|cloud|general
+    role: Mapped[str] = mapped_column(String(20), default="general")  # fast|strong|general
     max_concurrency: Mapped[int] = mapped_column(Integer, default=1)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     vision: Mapped[bool] = mapped_column(Boolean, default=False)

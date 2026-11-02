@@ -77,7 +77,7 @@ class ServerModePayload(BaseModel):
 # ── models ──────────────────────────────────────────────────────────────────
 class ModelUpdatePayload(BaseModel):
     enabled: bool | None = None
-    role: Literal["fast", "strong", "cloud", "general"] | None = None
+    role: Literal["fast", "strong", "general"] | None = None
     vram_class: Literal["small", "medium", "large"] | None = None
     max_concurrency: int | None = None
 
@@ -132,7 +132,6 @@ class JobCreatePayload(BaseModel):
     # auto = the assistant picks a specialist · none = no specialist · or a specialist id (src/specialists.py)
     specialist: str = "auto"
     model: str | None = None
-    allow_overflow: bool = True
     priority: int = 100
     images: list[ImageAttachmentIn] = Field(default_factory=list)
     # Prior turns in this chat (so “write that as docx” sees previous answers)

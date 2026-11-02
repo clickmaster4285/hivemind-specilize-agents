@@ -1,4 +1,4 @@
-"""Discover and route models across local/cloud backends."""
+"""Discover the local Ollama models and pick one per role (everything runs on our own hardware)."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def classify_vram(name: str) -> str:
     lower = name.lower()
     if any(x in lower for x in ("1.7b", "3b", "0.5b", "mini", "tiny")):
         return "small"
-    if any(x in lower for x in ("70b", "34b", "32b", "cloud", "405b", "397b")):
+    if any(x in lower for x in ("70b", "34b", "32b", "405b", "397b")):
         return "large"
     return "medium"
 
@@ -27,12 +27,8 @@ def infer_role(name: str, config: Config) -> str:
         return "fast"
     if name == config.model_strong:
         return "strong"
-    if config.model_cloud and name == config.model_cloud:
-        return "cloud"
     if config.model_vision and name == config.model_vision:
         return "general"
-    if name.endswith(":cloud"):
-        return "cloud"
     if classify_vram(name) == "small":
         return "fast"
     if classify_vram(name) == "large":
@@ -106,7 +102,7 @@ def sync_models_from_ollama(
             # Not added to `seen`, so any stale chat row for it is marked unavailable below.
             continue
         existing = session.scalar(select(ModelRecord).where(ModelRecord.name == name))
-        backend = "remote_openai_compatible" if name.endswith(":cloud") else "local_ollama"
+        backend = "local_ollama"
         vision = _name_looks_like_vision(name)
         image_gen = looks_like_image_gen_model(name)
         details = None
@@ -152,7 +148,6 @@ def sync_models_from_ollama(
     for name, role in (
         (config.model_fast, "fast"),
         (config.model_strong, "strong"),
-        (config.model_cloud, "cloud"),
         (config.model_vision, "general"),
     ):
         if not name:
@@ -162,16 +157,15 @@ def sync_models_from_ollama(
             if role != "general":
                 existing.role = role
             existing.enabled = True
-            if existing.name in seen or existing.name.endswith(":cloud"):
+            if existing.name in seen:
                 existing.available = True
 
+    # Ollama is the source of truth: a model that is no longer installed (or an old :cloud entry) leaves the
+    # list instead of lingering as an unavailable row; it comes back if it is pulled again. Only reached
+    # when the tag listing succeeded, so an Ollama outage never empties the list.
     for row in session.scalars(select(ModelRecord)).all():
-        if row.name in seen:
-            continue
-        if row.name.endswith(":cloud") or row.backend == "remote_openai_compatible":
-            row.available = True
-            continue
-        row.available = False
+        if row.name not in seen:
+            session.delete(row)
 
     session.flush()
     return list(session.scalars(select(ModelRecord).order_by(ModelRecord.name)).all())
@@ -204,11 +198,8 @@ def resolve_model_plan(
     config: Config,
     *,
     override_model: str | None = None,
-    queue_wait_seconds: float = 0.0,
-    prefer_cloud_overflow: bool = True,
 ) -> dict[str, str]:
-    """Return the model for each role (planner, worker, critic, vision, image), using the cloud model
-    as overflow when the queue is long."""
+    """Return the local model for each role (planner, worker, critic, vision, image)."""
     enabled = {
         r.name: r
         for r in session.scalars(select(ModelRecord).where(ModelRecord.enabled.is_(True))).all()
@@ -238,7 +229,6 @@ def resolve_model_plan(
 
     fast = pick("fast", config.model_fast or config.llm_model)
     strong = pick("strong", config.model_strong or config.llm_model)
-    cloud = pick("cloud", config.model_cloud)
     vision = pick_vision()
 
     def pick_image() -> str:
@@ -269,24 +259,14 @@ def resolve_model_plan(
             "critic": override_model,
             "vision": override_vision,
             "image": image,
-            "overflow": cloud or override_model,
         }
 
-    use_cloud = (
-        prefer_cloud_overflow
-        and cloud
-        and queue_wait_seconds >= config.overflow_wait_seconds
-    )
-    panel = cloud if use_cloud else fast
-    consensus = cloud if use_cloud else strong
     return {
-        "planner": panel,
-        "worker": consensus,
-        "critic": consensus,
+        "planner": fast,
+        "worker": strong,
+        "critic": strong,
         "vision": vision,
         "image": image,
-        "overflow": cloud or "",
-        "overflow_applied": "1" if use_cloud else "0",
     }
 
 

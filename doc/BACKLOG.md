@@ -94,10 +94,11 @@ To build:
 - Clear message when something stops or fails: timeout, Ollama down, out of memory, cancelled
 - Pause between agent steps (maybe)
 
-### L4. Enforce local-only (no cloud)
+### L4. Enforce local-only (no cloud) — ✅ done 2026-11-02
 
-- `qwen3.5:cloud` is still in the model registry with role `cloud`, and cloud rows are always treated as available — remove it and make the registry ignore `:cloud` models
-- Remove or disable the cloud overflow path (`OVERFLOW_WAIT_SECONDS`) and the `REMOTE_LLM_*` settings
+- Removed: `MODEL_CLOUD` / `OVERFLOW_WAIT_SECONDS` / `REMOTE_LLM_*` settings, the OpenAI-compatible remote
+  backend in `LLMClient`, the `cloud` role and queue overflow in `resolve_model_plan`, and `allow_overflow`
+  end to end (API + frontend). `:cloud` rows are no longer forced "available"
 
 ### L5. Router heuristics
 
@@ -145,10 +146,11 @@ Original notes:
 - Measure per-component dtype/size once, fix (e.g. explicit fp16 for every component, `low_cpu_mem_usage`), re-time
 - Option after that: `enable_sequential_cpu_offload` vs model offload, TinyVAE
 
-### L6. Cleanup
+### L6. Cleanup — ✅ done 2026-11-02
 
-- `deepseek-r1:1.5b` is still installed — failed JSON/instruction tests and ignores `think:false`; remove
-- Old rows in the model registry (`llama3.1`, `llava`, `qwen2.5:3b`, …) — mark as unused or delete
+- `deepseek-r1:1.5b` is no longer installed (Ollama has only `qwen3.5:9b` + `qwen3-embedding:0.6b`)
+- Old registry rows: the startup sync now deletes rows for models Ollama no longer has (they return if the
+  model is pulled again); an Ollama outage skips this, so the list is never emptied
 
 ### L8. Serving throughput: revisit vLLM — only if we go multi-user on Linux + GPU
 

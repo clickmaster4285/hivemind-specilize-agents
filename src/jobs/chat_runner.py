@@ -300,6 +300,9 @@ def run_chat(
                 ),
                 conversation_block=prior,
                 should_continue=keep_going,
+                # the knowledge base joins the research and is cross-checked against the live web
+                account_id=account_id,
+                collections=specialist.collections if specialist else None,
             )
             output = text
             role = "Deep research"

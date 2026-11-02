@@ -177,8 +177,6 @@ def create_job(
         session,
         config,
         override_model=payload.get("model"),
-        queue_wait_seconds=wait,
-        prefer_cloud_overflow=bool(payload.get("allow_overflow", True)),
     )
     if has_images and route.intent != "image_gen":
         model_plan, vision_name = force_vision_model(

@@ -40,16 +40,8 @@ def _llm_err(exc: BaseException | None) -> str:
 
 
 class LLMClient:
-    def __init__(self, config: Config, *, model: str | None = None, backend: str | None = None) -> None:
+    def __init__(self, config: Config, *, model: str | None = None) -> None:
         self.config = config.with_model(model) if model else config
-        self.backend = backend or self._infer_backend(self.config.llm_model)
-
-    def _infer_backend(self, model: str) -> str:
-        if model.endswith(":cloud") or model.startswith("cloud:"):
-            return "remote_openai_compatible"
-        if self.config.remote_llm_base_url and model.startswith("remote:"):
-            return "remote_openai_compatible"
-        return "local_ollama"
 
     def chat(
         self,
@@ -68,13 +60,10 @@ class LLMClient:
         and should_continue() returning False stops the model mid-answer (raises LLMStopped).
         max_tokens caps the reply (Ollama num_predict) — for one-word answers such as a choice."""
         cfg = self.config.with_model(model) if model else self.config
-        backend = self._infer_backend(cfg.llm_model)
         temp = cfg.temperature if temperature is None else temperature
         pics = [img for img in (images or []) if img]
 
         with llm_slot(cfg):
-            if backend == "remote_openai_compatible":
-                return self._chat_openai_compatible(cfg, system, user, temp, max_retries, pics)
             if on_delta is not None or should_continue is not None:
                 return self._chat_ollama_stream(cfg, system, user, temp, max_retries, pics,
                                                 on_delta, should_continue)
@@ -275,87 +264,12 @@ class LLMClient:
             f"Last error: {_llm_err(last_error)}. Is Ollama running? (ollama serve)"
         )
 
-    def _chat_openai_compatible(
-        self,
-        cfg: Config,
-        system: str,
-        user: str,
-        temperature: float,
-        max_retries: int,
-        images: list[str] | None = None,
-    ) -> str:
-        base = cfg.remote_llm_base_url or cfg.llm_base_url
-        # Ollama cloud models can still use local /v1 endpoint
-        if not cfg.remote_llm_base_url and cfg.llm_model.endswith(":cloud"):
-            base = cfg.llm_base_url
-        url = f"{base}/v1/chat/completions"
-        model_name = cfg.llm_model.removeprefix("remote:")
-        headers = {"Content-Type": "application/json"}
-        if cfg.remote_llm_api_key:
-            headers["Authorization"] = f"Bearer {cfg.remote_llm_api_key}"
-        if images:
-            content: Any = [{"type": "text", "text": user}]
-            for img in images:
-                content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{img}"},
-                    }
-                )
-            user_content = content
-        else:
-            user_content = user
-        payload = {
-            "model": model_name,
-            "temperature": temperature,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ],
-        }
-        last_error: Exception | None = None
-        for attempt in range(max_retries + 1):
-            try:
-                response = requests.post(
-                    url, json=payload, headers=headers, timeout=cfg.timeout_seconds
-                )
-                response.raise_for_status()
-                data = response.json()
-                choices = data.get("choices") or []
-                if not choices:
-                    raise LLMError("Remote LLM returned no choices.")
-                content = choices[0].get("message", {}).get("content")
-                if not content or not str(content).strip():
-                    raise LLMError("Remote LLM returned an empty response.")
-                return str(content).strip()
-            except (requests.RequestException, ValueError, LLMError, IndexError, KeyError) as exc:
-                last_error = exc
-                if attempt < max_retries:
-                    time.sleep(1.5 * (attempt + 1))
-                    continue
-                break
-        raise LLMError(f"Failed remote LLM at {url} (model={model_name}). Last error: {last_error}")
-
     def ping(self) -> bool:
         try:
             response = requests.get(f"{self.config.llm_base_url}/api/tags", timeout=10)
             response.raise_for_status()
             return True
         except requests.RequestException:
-            if self.config.remote_llm_base_url:
-                try:
-                    response = requests.get(
-                        f"{self.config.remote_llm_base_url}/models",
-                        headers=(
-                            {"Authorization": f"Bearer {self.config.remote_llm_api_key}"}
-                            if self.config.remote_llm_api_key
-                            else {}
-                        ),
-                        timeout=10,
-                    )
-                    return response.ok
-                except requests.RequestException:
-                    return False
             return False
 
     def list_tags(self) -> list[dict[str, Any]]:

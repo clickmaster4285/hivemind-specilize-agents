@@ -30,7 +30,6 @@ function useAppState() {
 
   const [query, setQuery] = useState("");
   const [runMode, setRunMode] = useState<RunMode>("auto");
-  const [allowOverflow] = useState(true);
   const [imageProfile, setImageProfile] = useState<ImageProfile>("fast");
   const [editStrength, setEditStrength] = useState<EditStrength>("medium");
   const [deep, setDeep] = useState(false);          // Deep research toggle (next to Send)
@@ -42,7 +41,6 @@ function useAppState() {
       mode: runMode,
       specialist: specialists.choice,
       specialistLabel: specialists.label,
-      allowOverflow,
       imageProfile,
       editStrength,
       deep,

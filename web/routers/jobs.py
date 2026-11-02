@@ -62,7 +62,6 @@ def create_job_endpoint(
             payload={
                 "model": payload.model,
                 "specialist": payload.specialist,
-                "allow_overflow": payload.allow_overflow,
                 "images": [img.model_dump() for img in payload.images],
                 "conversation": [t.model_dump() for t in payload.conversation],
                 "force_intent": payload.force_intent,

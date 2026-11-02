@@ -13,6 +13,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
+from src.brain.retrieve import Passage as BrainPassage
+from src.brain.retrieve import search as kb_search
 from src.core.config import Config
 from src.tools.web_search import (
     MAX_PER_PAGE,
@@ -45,6 +47,15 @@ Rules:
 - If the passages do not cover part of the question, say so plainly rather than inventing facts.
 - Reply in the language of the question. Never put images or image links in the answer."""
 
+# Added only when the knowledge base contributed passages: the writer cross-checks the two kinds.
+COMPARE_RULES = """
+- The sources are of two kinds: KNOWLEDGE BASE (official documentation we keep; it can lag behind) and
+  LIVE WEB (fetched just now). Check them against each other.
+- Where they agree, cite both. Where they differ — a newer version, a changed default or limit, a renamed
+  or deprecated command — say so where it matters, cite both, and prefer the newer official source.
+- If they differ anywhere, end with a short section "### Knowledge base vs live web" listing each difference
+  in one line with both citations. Leave that section out when they agree."""
+
 
 def plan_subqueries(question: str, *, client_chat: Callable[..., str], model: str, n: int) -> list[str]:
     """Ask the model for n focused search queries; always keep the original question as one of them."""
@@ -74,6 +85,23 @@ def _dedupe(passages: list[Passage]) -> list[Passage]:
     return out
 
 
+def knowledge_base_passages(question: str, config: Config, *, account_id: str | None,
+                            collections: list[str] | None, limit: int) -> list[BrainPassage]:
+    """The knowledge base's best passages for the question — only when it really covers it (the same evidence
+    gate as a normal knowledge-base answer, with the same whole-KB fallback). [] when the brain is off, down,
+    or has nothing on it; the web research then runs alone."""
+    if not config.brain_enabled or limit <= 0:
+        return []
+    try:
+        result = kb_search(question, config=config, account_id=account_id, collections=collections)
+        if collections and not result.enough_evidence:
+            result = kb_search(question, config=config, account_id=account_id)
+    except Exception as exc:  # noqa: BLE001 — the knowledge base is a bonus here, never a blocker
+        logger.info("deep research: knowledge base unavailable: %s", exc)
+        return []
+    return result.passages[:limit] if result.enough_evidence else []
+
+
 def deep_research(
     question: str,
     config: Config,
@@ -85,12 +113,20 @@ def deep_research(
     status: Callable[[str], None] = lambda message: None,
     conversation_block: str = "",
     should_continue: Callable[[], bool] = lambda: True,
+    account_id: str | None = None,
+    collections: list[str] | None = None,
 ) -> tuple[str, list[dict]]:
     """→ (a thorough report with [n] citations, sources for the UI). `client_chat` is a plain (non-streamed)
-    call used for planning; `chat` streams the final report into the answer."""
+    call used for planning; `chat` streams the final report into the answer. When the knowledge base covers
+    the question, its passages join the web's (up to half the passage budget) and the writer cross-checks
+    the two, calling out where our docs and the live web differ."""
     if not config.web_search_url:
         raise WebSearchError("web search is not set up (WEB_SEARCH_URL in .env)")
     t0 = time.perf_counter()
+
+    status("Checking the knowledge base…")
+    kb = knowledge_base_passages(question, config, account_id=account_id, collections=collections,
+                                 limit=config.deep_max_passages // 2)
 
     status("Planning the research…")
     subqueries = plan_subqueries(question, client_chat=client_chat, model=model, n=config.deep_subqueries)
@@ -111,7 +147,7 @@ def deep_research(
     t_research = time.perf_counter()
 
     passages = _dedupe([p for p in pool if p.text.strip()])
-    if not passages:
+    if not passages and not kb:
         return "The deep search could not read enough sources. Try rephrasing the topic.", []
 
     # Rank everything we found against the ORIGINAL question, keep the best, capped per page.
@@ -124,29 +160,43 @@ def deep_research(
             continue
         per_page[p.url] = per_page.get(p.url, 0) + 1
         chosen.append(p)
-        if len(chosen) >= config.deep_max_passages:
+        if len(chosen) >= config.deep_max_passages - len(kb):    # the knowledge base shares the budget
             break
 
-    status(f"Writing a sourced report from {len(chosen)} passages across {len(per_page)} sites…")
-    numbered = "\n\n".join(
-        f'<source id="{n}">\n[{n}] {p.title} — {urlsplit(p.url).hostname}'
+    fetched = datetime.now(timezone.utc).date().isoformat()
+    kb_blocks = [
+        f'<source id="{n}" kind="knowledge base">\n[{n}] {p.title} — {p.publisher or p.source} '
+        f"(KNOWLEDGE BASE, last updated {p.updated_at.date().isoformat() if p.updated_at else 'unknown'})"
+        + (f"\nSection: {p.heading_path}" if p.heading_path else "") + f"\n\n{p.content[:PASSAGE_CHARS]}\n</source>"
+        for n, p in enumerate(kb, 1)
+    ]
+    web_blocks = [
+        f'<source id="{n}" kind="live web">\n[{n}] {p.title} — {urlsplit(p.url).hostname} (LIVE WEB, fetched {fetched})'
         + (f"\nSection: {p.heading}" if p.heading else "") + f"\n\n{p.text[:PASSAGE_CHARS]}\n</source>"
-        for n, p in enumerate(chosen, 1)
-    )
-    user = f"{conversation_block}## Sources\n\n{numbered}\n\n## Question\n{question}"
-    text = chat(system=DEEP_SYSTEM.format(now=now), user=user, model=model, temperature=0.3)
+        for n, p in enumerate(chosen, len(kb) + 1)
+    ]
+    where = f"{len(kb)} knowledge-base and {len(chosen)} web passages" if kb else f"{len(chosen)} passages"
+    status(f"Writing a sourced report from {where} across {len(per_page)} sites…")
+    system = DEEP_SYSTEM.format(now=now) + (COMPARE_RULES if kb and chosen else "")
+    user = f"{conversation_block}## Sources\n\n" + "\n\n".join(kb_blocks + web_blocks) + f"\n\n## Question\n{question}"
+    text = chat(system=system, user=user, model=model, temperature=0.3)
 
     from src.brain.answer import cited_numbers
 
-    cited = cited_numbers(text, len(chosen))
-    fetched = datetime.now(timezone.utc).date().isoformat()
+    cited = cited_numbers(text, len(kb) + len(chosen))
     sources = [
+        {"n": n, "title": p.title, "url": p.url, "heading_path": p.heading_path,
+         "publisher": p.publisher or p.source,
+         "updated_at": p.updated_at.date().isoformat() if p.updated_at else None,
+         "source": p.source, "cited": n in cited}
+        for n, p in enumerate(kb, 1)
+    ] + [
         {"n": n, "title": p.title, "url": p.url, "heading_path": p.heading or None,
          "publisher": urlsplit(p.url).hostname, "updated_at": fetched, "source": "web", "cited": n in cited}
-        for n, p in enumerate(chosen, 1)
+        for n, p in enumerate(chosen, len(kb) + 1)
     ]
     logger.info(
-        "deep_timing research=%.2fs synth=%.2fs subqueries=%d sites=%d passages=%d",
-        t_research - t0, time.perf_counter() - t_research, len(subqueries), len(per_page), len(chosen),
+        "deep_timing research=%.2fs synth=%.2fs subqueries=%d sites=%d kb=%d passages=%d",
+        t_research - t0, time.perf_counter() - t_research, len(subqueries), len(per_page), len(kb), len(chosen),
     )
     return text, sources

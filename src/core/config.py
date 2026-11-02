@@ -59,10 +59,8 @@ class Config:
     image_slots: int
     max_active_jobs_per_user: int
     queue_depth_limit: int
-    overflow_wait_seconds: float
     model_fast: str
     model_strong: str
-    model_cloud: str
     model_vision: str
     model_image: str
     model_image_path: Path | None
@@ -77,8 +75,6 @@ class Config:
     image_warm_on_start: bool
     image_unload_ollama: bool
     image_tiny_vae: bool
-    remote_llm_base_url: str
-    remote_llm_api_key: str
     http_allowlist: str
     artifacts_dir: Path
     sso_enabled: bool
@@ -192,10 +188,8 @@ class Config:
             image_slots=max(1, int(os.getenv("IMAGE_SLOTS", "1"))),
             max_active_jobs_per_user=max(1, int(os.getenv("MAX_ACTIVE_JOBS_PER_USER", "1"))),
             queue_depth_limit=max(1, int(os.getenv("QUEUE_DEPTH_LIMIT", "40"))),
-            overflow_wait_seconds=float(os.getenv("OVERFLOW_WAIT_SECONDS", "45")),
             model_fast=os.getenv("MODEL_FAST", "qwen3.5:9b"),
             model_strong=os.getenv("MODEL_STRONG", "qwen3.5:9b"),
-            model_cloud=os.getenv("MODEL_CLOUD", ""),
             model_vision=os.getenv("MODEL_VISION", "qwen3.5:9b"),
             model_image=os.getenv("MODEL_IMAGE", "sdxl-local"),
             model_image_path=image_path,
@@ -224,8 +218,6 @@ class Config:
             image_warm_on_start=_bool("IMAGE_WARM_ON_START", False),
             image_unload_ollama=_bool("IMAGE_UNLOAD_OLLAMA", True),
             image_tiny_vae=_bool("IMAGE_TINY_VAE", False),
-            remote_llm_base_url=os.getenv("REMOTE_LLM_BASE_URL", "").rstrip("/"),
-            remote_llm_api_key=os.getenv("REMOTE_LLM_API_KEY", ""),
             http_allowlist=os.getenv(
                 "HTTP_ALLOWLIST",
                 "localhost,127.0.0.1,ollama.com,raw.githubusercontent.com",
