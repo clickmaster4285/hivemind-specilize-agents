@@ -147,8 +147,15 @@ def test_max_two_passages_per_document(config, corpus):
 def test_collection_filter(config, corpus):
     result = search("zzqtoken", config=config, mode="keyword", collections=["marketing"], limit=20)
     assert set(_urls(result)) == {"zzq-ads"}
+    # vector path filtered too: the query vector is aimed at an IT chunk, yet only marketing passages come
+    # back. The live KB holds real marketing sources as well, so check the collection, not one test source.
     hybrid = search("zzqtoken", config=config, collections=["marketing"], limit=20, embed=_aimed_at(FORWARDER_CHUNK))
-    assert all(p.source == PREFIX + "mk" for p in hybrid.passages)  # vector path filtered too
+    with brain_db.connect(config, system=True) as conn:
+        marketing = {slug for (slug,) in conn.execute(
+            """SELECT s.slug FROM brain.sources s JOIN brain.collections c ON c.id = s.collection_id
+               WHERE c.slug = 'marketing'""").fetchall()}
+    assert hybrid.passages and {p.source for p in hybrid.passages} <= marketing
+    assert "zzq-forwarders" not in _urls(hybrid)
 
 
 def test_private_passages_only_for_their_owner(config, corpus):
