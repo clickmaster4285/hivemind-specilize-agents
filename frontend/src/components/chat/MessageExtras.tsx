@@ -3,7 +3,7 @@
 /** The parts shown under a message: generated images, downloads, the source check, sources, tools. */
 import { useEffect, useState, type ReactNode } from "react";
 
-import { fetchJobAttachment, sendFeedback } from "@/lib/api";
+import { exportAnswer, fetchJobAttachment, sendFeedback, type ExportFormat } from "@/lib/api";
 import { errorText, timeAgo } from "@/lib/chat";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 
@@ -182,7 +182,78 @@ const Icon = {
       <polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
     </svg>
   ),
+  download: (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  ),
 };
+
+/** Save an object URL as a file, then free it. */
+function saveUrl(url: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+const EXPORTS: { format: ExportFormat; label: string }[] = [
+  { format: "pdf", label: "PDF" },
+  { format: "docx", label: "Word (.docx)" },
+  { format: "pptx", label: "PowerPoint (.pptx)" },
+  { format: "html", label: "Web page (.html)" },
+  { format: "md", label: "Markdown (.md)" },
+  { format: "txt", label: "Plain text (.txt)" },
+];
+
+/** "Download as": converts this answer exactly as shown (server-side, no model call) and saves the file. */
+function DownloadMenu({ jobId, text }: { jobId: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<ExportFormat | null>(null);
+
+  async function pick(format: ExportFormat) {
+    setBusy(format);
+    try {
+      const { url, filename } = await exportAnswer(jobId, format, text);
+      saveUrl(url, filename);
+      setOpen(false);
+    } catch (err) {
+      alert(errorText(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <ActionIcon title="Download as…" onClick={() => setOpen((o) => !o)} active={open}>
+        {Icon.download}
+      </ActionIcon>
+      {open ? (
+        <>
+          <button type="button" className="fixed inset-0 z-40 cursor-default" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />
+          <div role="menu" className="absolute left-0 bottom-full z-50 mb-1.5 w-[12rem] rounded-xl border border-[var(--line)] bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]">
+            <div className="px-2.5 pb-1 pt-0.5 text-[0.72rem] text-[var(--muted)]">Download as</div>
+            {EXPORTS.map((e) => (
+              <button
+                key={e.format}
+                type="button"
+                role="menuitem"
+                disabled={busy !== null}
+                onClick={() => void pick(e.format)}
+                className="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-[0.84rem] text-[var(--text)] hover:bg-[var(--hover)] disabled:opacity-50"
+              >
+                <span className="flex-1">{e.label}</span>
+                {busy === e.format ? <span className="text-[0.72rem] text-[var(--muted)]">…</span> : null}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
 
 /** One icon button in the answer action bar. */
 function ActionIcon({
@@ -307,6 +378,7 @@ export function AnswerActions({
           {speaking ? Icon.stop : Icon.speaker}
         </ActionIcon>
         <ActionIcon title="Share" onClick={share}>{Icon.share}</ActionIcon>
+        {jobId ? <DownloadMenu jobId={jobId} text={text} /> : null}
         {onRetry ? <ActionIcon title="Try again" onClick={onRetry}>{Icon.retry}</ActionIcon> : null}
         {rating === "up" || sent ? (
           <span className="ml-[0.3rem] text-[0.72rem] text-[var(--muted)]">Thanks — noted.</span>
@@ -499,12 +571,7 @@ export function ArtifactChips({ item, fallbackJobId }: ItemProps) {
 
   async function download(filename: string) {
     try {
-      const url = await fetchJobAttachment(jobId as string, filename);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      saveUrl(await fetchJobAttachment(jobId as string, filename), filename);
     } catch (err) {
       alert(errorText(err));
     }

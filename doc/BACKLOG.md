@@ -176,6 +176,48 @@ there we could read the real serial with one read-only command per OS — Linux 
 to the authenticated `server_ops`/`host_check` flow, **not** the read-only LAN sweep, so it was deferred out of the
 net_scan identification work (phases 1–3). Pick it up when inventory + stored SSH credentials exist. _Noted 2026-10-31._
 
+### L10. Documents from answers: direct export + "Download as" — 🔨 export done 2026-11-02; step-wise generation next (fixes ISSUES_LOG O8)
+
+**Problem:** "make this a PDF" re-sends the earlier answer (cut by the history caps) to the agentic worker,
+which must re-type it as one JSON tool call — the 9B model truncates it, so the file is short or missing.
+
+- [x] **Export, not regenerate:** an answer already in the chat is converted straight to the format with the
+      existing converters (`src/tools/answer_export.py` → `doc_builder.py` writers) — no LLM, nothing truncated
+- [x] **"Download as ▾"** under every answer: md · txt · docx · pdf · pptx · html (`POST /api/jobs/{id}/export`)
+- [x] "This / that / the above as a PDF" in chat: `create_document` gets `source=previous_answer` (the model
+      decides) → the chat's previous answer is read in full from its job events and exported
+- [x] Markdown tables and code blocks survive: real Word tables, HTML `<table>`/`<pre>`, aligned rows in PDF/txt
+- [ ] New documents (not an export): the worker writes one section per step and each step is checked
+      (extract → outline → content → align → check), never one huge JSON body
+
+### L11. Token usage tracking — planned
+
+Ollama already returns `prompt_eval_count`, `eval_count` and durations on every call; we drop them.
+- [ ] Record one row per LLM call: job, user, step/phase (planner, worker, writer, extras…), model, tokens in/out, ms
+- [ ] Show per answer ("1.2k in / 850 out · 14 s"), per chat, and per user (admin page)
+
+### L12. Context awareness: meter, auto-compaction, new chat — planned (needs L11; fixes O9)
+
+- [ ] Budget history in **tokens** against `LLM_NUM_CTX`, not fixed character caps
+- [ ] Context meter in the composer (how full this chat is)
+- [ ] Auto-compaction: when history exceeds the budget, older turns are summarised once into a running summary
+      stored on the chat; recent turns stay verbatim
+- [ ] At ~80%: banner "This chat is getting long" → **Summarize & continue in a new chat** / **Save summary**
+
+### L13. Marketing / SEO tools — planned (fixes O11)
+
+- [ ] Site crawler + SEO audit: polite bounded crawl (reuse `src/brain/web.py` rules: robots.txt, 1 req/s/host)
+      → titles, meta, headings, links, robots/sitemap, broken pages → scored report
+- [ ] Content writing flow: brief → outline → draft → checks (keywords, length, readability)
+- [ ] "Maturity / improvement" — scope to confirm with the user (site/content maturity score + fixes?)
+
+### L14. Skills — reusable instruction packs — planned
+
+- [ ] **MulteAgent skills:** saved, named instruction packs a specialist follows (e.g. "SEO audit", "Blog brief",
+      "Incident report"), selectable in chat; specialists stay the domain, skills are the repeatable task
+- [ ] **Claude Code skills for this repo** (`.claude/skills/<name>/SKILL.md`): e.g. run-checks (pytest + tsc/eslint),
+      commit-message handoff
+
 ---
 
 ## Progress log

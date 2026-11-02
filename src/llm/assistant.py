@@ -118,7 +118,10 @@ TOOLS: tuple[Tool, ...] = (
          "Create a downloadable Word, PDF, PowerPoint or Excel file for the user to save on their own computer. "
          "This is NOT for creating files on a server — to create or write a file on a Linux server, use "
          "operate_server instead.",
-         {"format": "docx, pdf, pptx or xlsx", "request": "what the file should contain"}, ("format", "request")),
+         {"format": "docx, pdf, pptx, xlsx, html, md or txt", "request": "what the file should contain",
+          "source": "'previous_answer' when the user wants an answer already given in this chat turned into the "
+                    "file as it is ('this', 'that', 'the above', 'your answer' as a PDF); otherwise 'new'"},
+         ("format", "request")),
     Tool("about_multeagent", "about",
          "Live facts about this assistant: what is in its knowledge base ('your brain', your data, your sources), "
          "its model, and what it can do. Use whenever the user asks about you — you do not know your sources by heart."),

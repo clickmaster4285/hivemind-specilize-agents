@@ -117,6 +117,15 @@ def _md_html_blocks(body: str, *, skip: tuple[str, ...] = ()) -> list[str]:
         elif kind == "rule":
             flush_bullets()
             out.append("<hr/>")
+        elif kind == "code":
+            flush_bullets()
+            out.append(f"<pre><code>{_esc(block['text'])}</code></pre>")
+        elif kind == "table":
+            flush_bullets()
+            head, *rows = block["rows"]
+            th = "".join(f"<th>{_md_html_inline(c)}</th>" for c in head)
+            trs = "".join("<tr>" + "".join(f"<td>{_md_html_inline(c)}</td>" for c in r) + "</tr>" for r in rows)
+            out.append(f"<table><thead><tr>{th}</tr></thead><tbody>{trs}</tbody></table>")
         else:
             flush_bullets()
             out.append(f"<p>{_md_html_inline(block.get('inline') or block.get('text') or '')}</p>")
@@ -236,6 +245,10 @@ def _tool_write_html(args: dict[str, Any], *, job_id: str, config: Config) -> st
         ".sub{color:#555;margin-top:-0.5rem}img{max-width:100%;height:auto}"
         "figure{margin:1.2rem 0}hr{border:none;border-top:1px solid #ccc;margin:1.2rem 0}"
         "code{background:#f2f2f2;padding:0 0.2rem;border-radius:3px}"
+        "pre{background:#f2f2f2;padding:0.7rem 0.9rem;border-radius:6px;overflow-x:auto}pre code{padding:0}"
+        "table{border-collapse:collapse;margin:0.8rem 0;width:100%}"
+        "th,td{border:1px solid #d0d0d0;padding:0.35rem 0.55rem;text-align:left;vertical-align:top}"
+        "th{background:#f5f5f5}"
         "</style>"
         f"</head><body><h1>{_esc(title)}</h1>{''.join(body_parts)}</body></html>"
     )
@@ -399,6 +412,8 @@ def _tool_write_pptx(args: dict[str, Any], *, job_id: str, config: Config) -> st
                     bullets.append(block["text"])
             elif block["type"] == "paragraph":
                 bullets.append(block["text"])
+            elif block["type"] == "table":
+                bullets.extend(" · ".join(strip_inline_markdown(c) for c in row) for row in block["rows"][1:])
         if not bullets:
             bullets = [strip_inline_markdown(body)] if body else ["…"]
         if len(s.shapes.placeholders) > 1:

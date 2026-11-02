@@ -20,6 +20,7 @@ from src.servers.server_ops import run_server_diagnose, run_server_operate
 from src.servers.host_check import run_host_check
 from src.llm.assistant import decide, speaker
 from src.llm.specialists import resolve as resolve_specialist
+from src.tools.answer_export import run_answer_export
 from src.tools.weather import run_weather
 from src.jobs import live
 from src.images.image_gen import run_image_gen
@@ -207,6 +208,13 @@ def process_job(job_id: str, config: Config | None = None) -> None:
                 return
             on_progress({"type": "tool_chosen", "tool": decision.tool, "args": tool_args})
             if intent == "doc_gen":
+                # "this as a PDF": convert the earlier answer as it is (no model, nothing cut) — BACKLOG L10
+                if tool_args.get("source") == "previous_answer":
+                    errors = run_answer_export(query, job_id=job_id, config=config, user_id=user_id,
+                                               on_progress=on_progress, format=tool_args.get("format"))
+                    if errors is not None:
+                        _finish(config, job_id, errors)
+                        return
                 mode = "agentic"
 
         runner = DIRECT_TOOLS.get(intent)

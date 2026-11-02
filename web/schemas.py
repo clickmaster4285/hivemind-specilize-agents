@@ -157,3 +157,9 @@ class JobCreatePayload(BaseModel):
 class ConfirmPayload(BaseModel):
     command_id: str
     approved: bool
+
+
+class ExportPayload(BaseModel):
+    """"Download as": the answer exactly as shown (markdown) and the format to convert it to."""
+    format: Literal["md", "txt", "docx", "pdf", "pptx", "html"]
+    text: str = Field(min_length=1, max_length=400_000)

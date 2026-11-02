@@ -20,6 +20,8 @@ _MD_HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _MD_BULLET = re.compile(r"^\s*[-*+]\s+(.*)$")
 _MD_NUMBER = re.compile(r"^\s*\d+[.)]\s+(.*)$")
 _MD_RULE = re.compile(r"^\s*(?:-{3,}|\*{3,}|_{3,})\s*$")
+_MD_FENCE = re.compile(r"^(```|~~~)(.*)$")
+_MD_TABLE_SEP = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?$")
 _MOJIBAKE = {
     "â€”": "—",
     "â€“": "–",
@@ -105,8 +107,20 @@ def strip_inline_markdown(text: str) -> str:
     return text.strip()
 
 
+def _table_cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def _starts_table(lines: list[str], i: int) -> bool:
+    """A pipe row followed by a |---|---| separator row."""
+    return (i + 1 < len(lines) and lines[i].strip().startswith("|")
+            and bool(_MD_TABLE_SEP.match(lines[i + 1].strip())))
+
+
 def iter_markdown_blocks(body: str) -> Iterator[dict[str, Any]]:
-    """Yield heading/bullet/number/rule/paragraph blocks from light markdown text."""
+    """Yield heading/bullet/number/rule/code/table/paragraph blocks from light markdown text.
+    code → {"text", "lang"}; table → {"rows": [[cell, …], …]} with the header row first (cells keep inline
+    markdown)."""
     text = fix_mojibake(body or "")
     lines = text.splitlines()
     i = 0
@@ -115,6 +129,24 @@ def iter_markdown_blocks(body: str) -> Iterator[dict[str, Any]]:
         line = lines[i].strip()
         if not line:
             i += 1
+            continue
+        fence = _MD_FENCE.match(line)
+        if fence:
+            code: list[str] = []
+            i += 1
+            while i < n and not lines[i].strip().startswith(fence.group(1)):
+                code.append(lines[i].rstrip())
+                i += 1
+            i += 1                                   # the closing fence (or the end)
+            yield {"type": "code", "text": "\n".join(code), "lang": fence.group(2).strip()}
+            continue
+        if _starts_table(lines, i):
+            rows = [_table_cells(lines[i])]
+            i += 2                                   # header + separator
+            while i < n and lines[i].strip().startswith("|"):
+                rows.append(_table_cells(lines[i]))
+                i += 1
+            yield {"type": "table", "rows": rows}
             continue
         if _MD_RULE.match(line):
             yield {"type": "rule"}
@@ -168,6 +200,8 @@ def iter_markdown_blocks(body: str) -> Iterator[dict[str, Any]]:
                 or _MD_HEADING.match(nxt)
                 or _MD_BULLET.match(nxt)
                 or _MD_NUMBER.match(nxt)
+                or _MD_FENCE.match(nxt)
+                or _starts_table(lines, i)
             ):
                 break
             para_lines.append(nxt)
@@ -242,6 +276,10 @@ def markdown_to_plain(body: str) -> str:
             parts.append(f"• {block['text']}")
         elif kind == "rule":
             parts.append("")
+        elif kind == "code":
+            parts.append(block["text"])
+        elif kind == "table":
+            parts.extend(" | ".join(strip_inline_markdown(c) for c in row) for row in block["rows"])
         elif kind == "paragraph":
             parts.append(block["text"])
     return "\n".join(parts).strip()
@@ -314,6 +352,32 @@ def append_markdown_to_docx(
         if kind == "number":
             p = doc.add_paragraph(style="List Number")
             _add_runs(p, block["inline"])
+            continue
+        if kind == "code":
+            p = doc.add_paragraph()
+            for idx, code_line in enumerate(block["text"].split("\n")):
+                if idx:
+                    p.add_run().add_break(WD_BREAK.LINE)
+                run = p.add_run(code_line)
+                run.font.name = "Consolas"
+                run.font.size = Pt(9.5)
+            continue
+        if kind == "table":
+            rows = block["rows"]
+            width = max(len(r) for r in rows)
+            table = doc.add_table(rows=len(rows), cols=width)
+            try:
+                table.style = "Table Grid"
+            except (KeyError, ValueError):
+                pass
+            for r, row in enumerate(rows):
+                for c, cell in enumerate(row):
+                    para = table.cell(r, c).paragraphs[0]
+                    _add_runs(para, cell)
+                    if r == 0:
+                        for run in para.runs:
+                            run.bold = True
+            doc.add_paragraph()
             continue
         # paragraph — soft line breaks inside one block
         p = doc.add_paragraph()

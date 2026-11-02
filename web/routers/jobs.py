@@ -27,9 +27,11 @@ from src.jobs.jobs import (
     soft_delete_job,
     soft_delete_jobs,
 )
+from src.agentic.tools import ToolError
+from src.tools.answer_export import answer_in_events, export_answer
 from src.tools.artifacts import resolve_job_file
 from src.tools.attachments import image_path
-from web.schemas import ConfirmPayload, JobCreatePayload, SoftDeleteJobsPayload
+from web.schemas import ConfirmPayload, ExportPayload, JobCreatePayload, SoftDeleteJobsPayload
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -186,6 +188,27 @@ def job_events_history(
         except json.JSONDecodeError:
             events.append({"type": "raw", "body": row.event_json})
     return {"job": job_to_dict(job), "events": events}
+
+
+@router.post("/{job_id}/export")
+def export_answer_endpoint(
+    job_id: str,
+    payload: ExportPayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> FileResponse:
+    """"Download as": convert the answer to a file (no model call) and return it. The answer's sources come
+    from the job's own record when the text matches it."""
+    job = _owned_job(db, job_id, user)
+    config = Config.from_env()
+    found = answer_in_events([json.loads(r.event_json) for r in list_events_after(db, job_id, 0)], payload.text)
+    try:
+        meta = export_answer(payload.text, payload.format, title=job.query, job_id=job_id, config=config,
+                             sources=found[1] if found else None)
+        path = resolve_job_file(config, job_id, meta["filename"])
+    except (ValueError, FileNotFoundError, ToolError) as exc:
+        raise HTTPException(status_code=422, detail=f"Could not create the file: {exc}") from exc
+    return FileResponse(path, media_type=meta["mime"], filename=meta["filename"])
 
 
 @router.get("/{job_id}/attachments/{filename}")

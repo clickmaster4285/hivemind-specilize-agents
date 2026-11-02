@@ -378,6 +378,25 @@ export async function fetchJobAttachment(jobId: string, filename: string): Promi
   return URL.createObjectURL(blob);
 }
 
+export type ExportFormat = "md" | "txt" | "docx" | "pdf" | "pptx" | "html";
+
+/** "Download as": the server converts the answer (as shown) to a file → object URL + file name. */
+export async function exportAnswer(
+  jobId: string,
+  format: ExportFormat,
+  text: string,
+): Promise<{ url: string; filename: string }> {
+  const response = await fetch(apiUrl(`/api/jobs/${encodeURIComponent(jobId)}/export`), {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ format, text }),
+  });
+  if (!response.ok) throw new Error(await readError(response));
+  const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(response.headers.get("Content-Disposition") || "");
+  const filename = named ? decodeURIComponent(named[1]) : `answer.${format}`;
+  return { url: URL.createObjectURL(await response.blob()), filename };
+}
+
 export async function getJobHistory(jobId: string): Promise<{
   job: Job;
   events: JobEvent[];
