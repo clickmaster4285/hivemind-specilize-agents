@@ -254,6 +254,27 @@ content are and say what to fix, AND improve our own written content over severa
 - Measured on example.com (no model): 1 page, 37/100 Beginner — no robots.txt, sitemap, description, H1,
   canonical, Open Graph or structured data; title 14 chars
 
+### L15. SEO suite — Screaming Frog / Semrush capabilities — in progress (fixes O12)
+
+Research + capability matrix: [SEO_TOOLS.md](SEO_TOOLS.md). Order (user, 2026-11-02): SEO capabilities first,
+then skills (L14) and sub-agents.
+
+- [x] **P1 Crawler depth** — done 2026-11-02: the fetcher now keeps redirect hops, response time, size and headers
+      (`WebResponse`); the audit builds a link graph → click depth, inlinks, orphan pages (in the sitemap, linked
+      from nowhere), links to redirects / broken pages, redirect chains, link text reused for ≥3 different pages,
+      near-duplicates (5-word shingles ≥ 90%, SF's default); canonical to a redirect/broken URL, mixed content,
+      clean URLs (lowercase, no _, ≤ 115 chars), security headers, images without width/height, server response
+      ≤ 0.8 s. 27 page + 6 site checks in 6 areas (+ Links, Performance). Every page and redirect in
+      `seo-crawl-<host>.xlsx`. Real run python.org (10 pages): 79/100 Established — one description for all
+      pages, several H1s, no canonical, a menu link through a redirect, no width/height on images
+- [ ] **P2 Performance**: PageSpeed Insights API (Core Web Vitals lab + real-user) for key pages
+- [ ] **P3 Keywords & SERP** via SearXNG: SERP overview, approximate rank check, keyword ideas, difficulty estimate
+      (no search volume — needs a paid data source)
+- [ ] **P4 Competitors & writing**: side-by-side audit, content gap, SERP-informed `write_content` briefs
+- [ ] **P5 Projects**: saved audits per site, scheduled re-crawl, trend, new/fixed issues
+- Not possible locally: search volume, traffic estimates, backlinks (paid API — user's choice); Search Console
+  (OAuth) and JS rendering later
+
 ### L14. Skills — reusable instruction packs — planned
 
 - [ ] **MulteAgent skills:** saved, named instruction packs a specialist follows (e.g. "SEO audit", "Blog brief",
@@ -267,6 +288,7 @@ content are and say what to fix, AND improve our own written content over severa
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-02 | **L15 P1 SEO crawler depth** | Research of Semrush / Screaming Frog / PageSpeed / Search Console → SEO_TOOLS.md matrix + phases. Audit gains redirects + chains, response time, click depth, orphans, inlinks, reused link text, near-duplicates, canonical/mixed content/URL/security-header checks, Links + Performance areas, a spreadsheet of every page. 681 tests |
 | 2026-11-02 | **L13 marketing tools** | `site_audit`: polite crawl of a public site → 20 checks → maturity score per area + level → model writes the fix plan and judges the content. `write_content`: brief → draft → checks + editor → revisions, best draft wins with a score table; can start from an existing page's copy. 679 tests |
 | 2026-11-02 | **L12 chat memory** | Memory rebuilt from the chat's own jobs, budgeted in tokens (35% of LLM_NUM_CTX), oldest turns folded into a saved running summary; memory meter + 80% banner → "Summarize & continue in a new chat" / "Save summary". 662 tests |
 | 2026-11-02 | **L10 documents + L11 token usage** | Answers export to md/txt/docx/pdf/pptx/html with no model call ("Download as", "make this a PDF" reads the full earlier answer); new documents written section by section with checks; file names follow the topic. Every model call recorded in `llm_usage` → usage per answer, per chat (under the message bar) and per user (Settings → Usage). 655 tests |

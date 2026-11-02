@@ -14,7 +14,7 @@ import fnmatch
 import re
 import time
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from urllib.parse import urldefrag, urljoin, urlsplit
 from urllib.robotparser import RobotFileParser
 
@@ -43,6 +43,10 @@ class WebResponse:
     content_type: str
     etag: str | None
     last_modified: str | None
+    redirects: tuple[str, ...] = ()       # same-host URLs passed through before `url` (the requested one first)
+    seconds: float = 0.0                  # server response time: request sent → headers received
+    size: int = 0                         # body bytes
+    headers: dict[str, str] = field(default_factory=dict)     # response headers, names lower-cased
 
     @property
     def not_modified(self) -> bool:
@@ -112,6 +116,7 @@ class WebClient:
             headers["If-Modified-Since"] = last_modified
 
         current = url
+        hops: list[str] = []
         for _ in range(MAX_REDIRECTS + 1):
             self._wait_turn(start_host)
             try:
@@ -126,6 +131,7 @@ class WebClient:
                     raise WebError(f"redirect to another host refused: {current} -> {target}")
                 if not self.allowed(target):
                     raise WebError(f"blocked by robots.txt: {target}")
+                hops.append(current)
                 current = target
                 continue
             break
@@ -152,6 +158,10 @@ class WebClient:
                 content_type=content_type,
                 etag=resp.headers.get("ETag"),
                 last_modified=resp.headers.get("Last-Modified"),
+                redirects=tuple(hops),
+                seconds=resp.elapsed.total_seconds(),
+                size=len(body),
+                headers={k.lower(): v for k, v in resp.headers.items()},
             )
 
 
