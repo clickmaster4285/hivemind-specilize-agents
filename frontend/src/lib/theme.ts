@@ -4,9 +4,10 @@ import { useSyncExternalStore } from "react";
 
 import { LIGHT_QUERY, THEME_KEY } from "@/lib/themeBoot";
 
-/** Colour theme: "system" follows the OS setting (live); "light" / "dark" pin it. The choice is per device,
- *  so it lives in localStorage; the resolved theme is <html data-theme>, which globals.css keys off. The
- *  before-paint script that sets it on load lives in themeBoot.ts (the server layout can't import hooks). */
+/** Colour theme: light by default; "dark" pins dark; "system" follows the OS setting (live). The choice is
+ *  per device, so it lives in localStorage; the resolved theme is <html data-theme>, which globals.css keys
+ *  off. The before-paint script that sets it on load lives in themeBoot.ts (the server layout can't import
+ *  hooks). */
 export type ThemePref = "system" | "light" | "dark";
 
 const CHANGE_EVENT = "multeagent:theme";
@@ -14,9 +15,9 @@ const CHANGE_EVENT = "multeagent:theme";
 function readPref(): ThemePref {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    return v === "light" || v === "dark" ? v : "system";
+    return v === "dark" || v === "system" ? v : "light";
   } catch {
-    return "system";
+    return "light";
   }
 }
 
@@ -27,7 +28,7 @@ function applyTheme(pref: ThemePref): void {
 
 export function setThemePref(pref: ThemePref): void {
   try {
-    if (pref === "system") localStorage.removeItem(THEME_KEY);
+    if (pref === "light") localStorage.removeItem(THEME_KEY);   // the default needs no entry
     else localStorage.setItem(THEME_KEY, pref);
   } catch {
     // storage blocked: the theme still applies for this page view
@@ -56,7 +57,7 @@ function subscribe(onChange: () => void): () => void {
   };
 }
 
-/** The saved theme choice ("system" during server render). */
+/** The saved theme choice (the light default during server render). */
 export function useThemePref(): ThemePref {
-  return useSyncExternalStore(subscribe, readPref, () => "system");
+  return useSyncExternalStore(subscribe, readPref, () => "light");
 }

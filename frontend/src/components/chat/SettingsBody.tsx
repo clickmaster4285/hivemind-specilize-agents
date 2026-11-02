@@ -110,7 +110,7 @@ export default function SettingsBody({
             ))}
             {liveModels.length === 0 ? <li className={hint}>No models available yet.</li> : null}
           </ul>
-          <p className={hint}>The model route is chosen automatically; override it from the top bar in a chat.</p>
+          <p className={hint}>The model route is chosen automatically for each message.</p>
         </section>
       ) : null}
 

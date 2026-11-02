@@ -2,10 +2,10 @@
 
 import { setThemePref, useThemePref, type ThemePref } from "@/lib/theme";
 
-const NEXT: Record<ThemePref, ThemePref> = { system: "light", light: "dark", dark: "system" };
+const NEXT: Record<ThemePref, ThemePref> = { light: "dark", dark: "system", system: "light" };
 const LABEL: Record<ThemePref, string> = { system: "System theme", light: "Light theme", dark: "Dark theme" };
 
-/** Navbar button: cycles System → Light → Dark. The icon shows the current choice. */
+/** Navbar button: cycles Light (default) → Dark → System. The icon shows the current choice. */
 export default function ThemeToggle() {
   const pref = useThemePref();
   return (

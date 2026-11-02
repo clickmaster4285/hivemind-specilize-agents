@@ -42,7 +42,6 @@ function useAppState() {
       mode: runMode,
       specialist: specialists.choice,
       specialistLabel: specialists.label,
-      model: models.override,
       allowOverflow,
       imageProfile,
       editStrength,

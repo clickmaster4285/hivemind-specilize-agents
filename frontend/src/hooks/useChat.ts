@@ -30,7 +30,6 @@ export type JobOptions = {
   mode: RunMode;
   specialist: string;
   specialistLabel: string;
-  model: string;
   allowOverflow: boolean;
   imageProfile: ImageProfile;
   editStrength: EditStrength;
@@ -199,7 +198,6 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
         query: trimmed || (force === "describe" ? IMAGE_QUESTION : ""),
         mode: force === "doc_gen" ? "agentic" : force ? "chat" : options.mode,
         specialist: options.specialist,
-        model: options.model || undefined,
         allow_overflow: options.allowOverflow,
         images: payloadImages,
         conversation: conversationFromFeed(baseFeed),

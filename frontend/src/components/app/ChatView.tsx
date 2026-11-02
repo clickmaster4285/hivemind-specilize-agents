@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useApp } from "@/components/app/AppProvider";
 import Composer from "@/components/chat/Composer";
 import MessageFeed from "@/components/chat/MessageFeed";
-import type { RunMode } from "@/lib/types";
 
 /** The chat page content (below the persistent navbar): the run/specialist/model controls, the message
  *  feed, and the composer. All state comes from the shared provider. */
@@ -44,6 +43,7 @@ export default function ChatView() {
         deep={app.deep}
         onToggleDeep={app.toggleDeep}
         runMode={app.runMode}
+        onRunMode={app.setRunMode}
         specialistLabel={app.specialists.label}
         onOpenSettings={() => router.push("/settings")}
         imageProfile={app.imageProfile}

@@ -33,6 +33,7 @@ type Props = {
   deep: boolean;
   onToggleDeep: () => void;
   runMode: RunMode;
+  onRunMode: (mode: RunMode) => void;
   specialistLabel: string;
   onOpenSettings: () => void;
   imageProfile: ImageProfile;
@@ -48,6 +49,12 @@ const sendBtn = `${iconBtn} bg-[linear-gradient(180deg,var(--copper)_0%,var(--co
 const stopBtn = `${iconBtn} bg-[var(--danger)] text-white`;
 const menuSelect =
   "w-auto min-w-0 m-0 px-[0.35rem] py-[0.2rem] text-[0.72rem] rounded-[0.4rem] border border-[var(--line)] bg-[var(--panel-2)] text-[var(--text)]";
+
+const RUN_MODES: { value: RunMode; label: string; title: string }[] = [
+  { value: "auto", label: "Auto", title: "The assistant picks how to answer each message" },
+  { value: "chat", label: "Chat", title: "A direct answer" },
+  { value: "agentic", label: "Agentic", title: "A multi-step agent loop toward a goal" },
+];
 
 const imageFiles = (files: FileList | null | undefined) => [...(files || [])].filter((f) => f.type.startsWith("image/"));
 
@@ -143,7 +150,7 @@ export default function Composer(props: Props) {
 
   return (
     <form
-      className="mx-auto w-full max-w-[820px] shrink-0 border-t border-[var(--line)] bg-[var(--glass)] px-4 pt-[0.55rem] pb-[0.7rem]"
+      className="mx-auto w-full max-w-[820px] shrink-0 bg-transparent px-4 pt-[0.55rem] pb-[0.7rem]"
       onSubmit={onSubmit}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
@@ -210,6 +217,27 @@ export default function Composer(props: Props) {
                 onClick={() => setMenuOpen(false)}
               />
               <div className="absolute bottom-full left-0 z-50 mb-2 w-[16rem] rounded-xl border border-[var(--line)] bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]">
+                <div className="px-2.5 pb-1 pt-1 text-[0.7rem] font-medium uppercase tracking-[0.05em] text-[var(--muted)]">Mode</div>
+                <div className="mx-1.5 mb-1 grid grid-cols-3 gap-[0.2rem] rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-[0.2rem]" role="radiogroup" aria-label="Mode">
+                  {RUN_MODES.map((m) => (
+                    <button
+                      key={m.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={props.runMode === m.value}
+                      title={m.title}
+                      onClick={() => props.onRunMode(m.value)}
+                      className={`rounded-md px-1 py-[0.3rem] text-[0.78rem] ${
+                        props.runMode === m.value
+                          ? "bg-[var(--panel)] font-semibold text-[var(--text-strong)] shadow-[0_1px_2px_rgba(0,0,0,0.15)]"
+                          : "text-[var(--muted)] hover:text-[var(--text)]"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="my-1 border-t border-[var(--line)]" />
                 <MenuItem
                   icon="📎"
                   label="Attach image"
