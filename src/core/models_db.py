@@ -191,6 +191,31 @@ class SeoAudit(Base):
     scheduled: Mapped[bool] = mapped_column(Boolean, default=False)      # run by the tracker, not asked in chat
 
 
+class SkillRow(Base):
+    """A skill in someone's "Yours" list (BACKLOG L14): owner_id = the user it belongs to, or None = a team skill every
+    user sees (admins manage those). tools_json / inputs_json = JSON lists of strings. Catalog skills are files
+    (skills/<name>/SKILL.md); adding one copies it here, `origin` = its catalog name."""
+
+    __tablename__ = "skills"
+    __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_skill_owner_name"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str] = mapped_column(String(120), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    category: Mapped[str] = mapped_column(String(60), default="")
+    specialist: Mapped[str] = mapped_column(String(40), default="")
+    tools_json: Mapped[str] = mapped_column(Text, default="[]")
+    inputs_json: Mapped[str] = mapped_column(Text, default="[]")
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    origin: Mapped[str] = mapped_column(String(64), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ChatThreadRow(Base):
     """A chat's metadata (title, pin, project, deletion), per user, so history syncs across devices.
     The chat's messages are its jobs, grouped by the job payload's thread_id — not stored here."""

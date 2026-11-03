@@ -299,18 +299,30 @@ then skills (L14) and sub-agents.
 ### L14. Skills — reusable instruction packs — in progress 2026-11-03 (fixes ISSUES_LOG O13)
 
 A **specialist** is the domain (who answers: IT, Development, Marketing). A **skill** is a repeatable task
-(how to do one job: "Incident report", "Blog brief", "Monthly SEO check"). Skills are DATA, like specialists.
+(how to do one job: "Incident report", "Campaign plan", "Monthly SEO check"). Modelled on claude.ai → Customize →
+Skills (Yours / Discover, categories, "+" to add, create, upload). Skills are for MulteAgent's users — general
+skills like those, not developer skills for this repo (S4 dropped, user's decision 2026-11-03).
 
-- [ ] **S1 model + store:** `Skill` = id, name, `when` (one line the picker reads), instructions (the steps
-      and the output format), optional specialist, optional tools it may use, optional inputs it must ask for
-      (e.g. "site URL", "audience"), enabled; stored next to the specialists; built-in starter skills
-- [ ] **S2 use in chat:** pick a skill in the chat bar (or type `/name`); its instructions join the specialist's
-      prompt for that answer, its specialist is pinned, only its tools are offered; missing inputs → one
-      clarify question first. Optional auto-pick from the `when` lines (measured with an eval like specialists)
-- [ ] **S3 manage:** Settings → Skills (create, edit, enable, delete; "save this answer's request as a skill")
-- [ ] **S4 Claude Code skills for this repo** (`.claude/skills/<name>/SKILL.md`): run-checks (pytest + tsc/eslint),
-      commit-message handoff
+Decisions (user, 2026-11-03): **both** team skills (admin-managed, everyone sees them) and personal skills (only
+the owner sees them); **no automatic picking** for now — a skill runs only when picked or typed as `/name`.
+
+- [x] **S1 model + store + catalog — done 2026-11-03:** skills use the open **Agent Skills format** (`SKILL.md`: YAML front matter
+      `name` + `description`, optional `allowed-tools`, `metadata` with title / category / specialist / inputs,
+      then the instructions), so skills from elsewhere can be uploaded and ours exported. **Discover** = the built-in
+      catalog, files in `skills/<name>/SKILL.md`; **Yours** = table `skills` (owner = a user, or none = team).
+      "+" copies a catalog skill into Yours (admin may add it for the team). Categories come from the skills
+      themselves. API `/api/skills` (list, catalog, create, upload, update, delete, add, download). Starter
+      catalog: 17 skills (IT & security 5, Engineering 4, Marketing 5, Writing 2, Operations 1), our own text.
+      `src/llm/skills.py`, `web/routers/skills.py`, table `skills`. A skill's instructions may use
+      SKILL_CONTEXT_SHARE (20 %) of LLM_NUM_CTX; tools/specialists MulteAgent lacks are dropped on upload
+- [ ] **S2 use in chat:** pick a skill in the chat bar or type `/name`; its instructions join the specialist's
+      prompt for that answer, its specialist is pinned, its tools are offered; missing inputs → one clarify
+      question first
+- [ ] **S3 Customize page:** Settings → Skills like claude.ai: Yours (Team / Created by you) and Discover (search,
+      categories, "+"), create / edit / upload `SKILL.md` / download, enable/disable
 - [ ] Tests (offline) + assistant eval cases
+- Later: automatic picking from the descriptions (measured with an eval first); skill files beyond SKILL.md
+  (scripts, references) are not run — MulteAgent never executes uploaded code
 
 ---
 
@@ -318,6 +330,7 @@ A **specialist** is the domain (who answers: IT, Development, Marketing). A **sk
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-03 | **L14 S1 skills store + catalog** | Skills in the open SKILL.md format; Discover = 17 built-in skills in `skills/<name>/SKILL.md`; Yours = team skills (admins) + personal skills (owner only) in table `skills`; `/api/skills` list / catalog / add / create / upload / edit / delete / download. 720 tests |
 | 2026-11-03 | **L15 P6 search market** | SEO searches run in one market: the user's words, else the site's own locale/country domain, else asked once (own country first). Live: "best laptop price" UK → currys/argos, Pakistan → paklap/priceoye; paklap.pk, priceoye.pk → en-PK, currys.co.uk → en-GB, python.org → ask. Menus/header/footer out of page text. 4 eval cases check the `market` argument (`expect:`). 705 tests |
 | 2026-11-02 | **L15 P3-P5 keywords, competitors, projects** | `keyword_research` (SearXNG: ranks ≈, ideas, difficulty estimate, what top pages cover), `compare_sites` (side-by-side audit, what they do better, content gap), `write_content` briefed by the top pages, saved audits with change reports, tracked sites re-audited on a schedule, `seo_projects`. P2 page speed on hold for discussion. 695 tests |
 | 2026-11-02 | **L15 P1 SEO crawler depth** | Research of Semrush / Screaming Frog / PageSpeed / Search Console → SEO_TOOLS.md matrix + phases. Audit gains redirects + chains, response time, click depth, orphans, inlinks, reused link text, near-duplicates, canonical/mixed content/URL/security-header checks, Links + Performance areas, a spreadsheet of every page. 681 tests |

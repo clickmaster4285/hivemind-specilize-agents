@@ -58,6 +58,41 @@ class SpecialistUpdatePayload(BaseModel):
     accent: str | None = None
 
 
+# ── skills (src/llm/skills.py) ─────────────────────────────────────────────
+class SkillPayload(BaseModel):
+    name: str
+    description: str
+    instructions: str
+    title: str = ""
+    category: str = ""
+    specialist: str = ""
+    tools: list[str] = Field(default_factory=list)
+    inputs: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    team: bool = False             # for everyone (admins only) instead of only for me
+
+
+class SkillUpdatePayload(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    instructions: str | None = None
+    title: str | None = None
+    category: str | None = None
+    specialist: str | None = None
+    tools: list[str] | None = None
+    inputs: list[str] | None = None
+    enabled: bool | None = None
+
+
+class SkillUploadPayload(BaseModel):
+    text: str                      # a SKILL.md file's content
+    team: bool = False
+
+
+class SkillAddPayload(BaseModel):
+    team: bool = False
+
+
 # ── servers (SSH vault) ─────────────────────────────────────────────────────
 class ServerLoginPayload(BaseModel):
     label: str = ""
