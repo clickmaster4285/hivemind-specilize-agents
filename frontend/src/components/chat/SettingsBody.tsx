@@ -3,12 +3,14 @@
 import { useState } from "react";
 
 import ServersSection from "@/components/chat/ServersSection";
+import SkillsSection from "@/components/chat/SkillsSection";
 import SpecialistModal from "@/components/chat/SpecialistModal";
 import UsageSection from "@/components/chat/UsageSection";
 import UsersSection from "@/components/chat/UsersSection";
 import { useServers } from "@/hooks/useServers";
 import { useUsers } from "@/hooks/useUsers";
 import type { ModelsApi } from "@/hooks/useModels";
+import type { SkillsApi } from "@/hooks/useSkills";
 import type { SpecialistsApi } from "@/hooks/useSpecialists";
 import type { AuthUser, Specialist } from "@/lib/types";
 
@@ -18,18 +20,20 @@ const heading = "text-base font-semibold [font-family:var(--font-display)]";
 const hint = "text-xs leading-relaxed text-[var(--muted)]";
 const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5";
 
-type TabId = "users" | "servers" | "usage" | "models" | "agents";
+type TabId = "users" | "servers" | "usage" | "models" | "agents" | "skills";
 
-/** The Settings content, organised into tabs: Users and Servers (admins only), Models, Agents. One
- *  section shows at a time; the shell provides the navbar + sidebar. */
+/** The Settings content, organised into tabs: Users and Servers (admins only), Usage, Models, Agents, Skills.
+ *  One section shows at a time; the shell provides the navbar + sidebar. */
 export default function SettingsBody({
   user,
   specialists,
   models,
+  skills,
 }: {
   user: AuthUser;
   specialists: SpecialistsApi;
   models: ModelsApi;
+  skills: SkillsApi;
 }) {
   const isAdmin = user.role === "admin";
   const servers = useServers(isAdmin);
@@ -48,6 +52,7 @@ export default function SettingsBody({
     { id: "usage", label: "Usage" },
     { id: "models", label: "Models" },
     { id: "agents", label: "Agents" },
+    { id: "skills", label: "Skills" },
   ];
   const [tab, setTab] = useState<TabId>(tabs[0].id);
 
@@ -168,6 +173,13 @@ export default function SettingsBody({
               Restore defaults
             </button>
           ) : null}
+        </section>
+      ) : null}
+
+      {/* Skills (BACKLOG L14) */}
+      {tab === "skills" ? (
+        <section className={panel}>
+          <SkillsSection skills={skills} specialists={specialists} />
         </section>
       ) : null}
 

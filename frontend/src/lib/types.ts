@@ -32,6 +32,14 @@ export type Skill = {
   enabled: boolean;
 };
 
+/** What a skill form edits (the server keeps id, team and origin). */
+export type SkillInput = Omit<Skill, "id" | "team" | "origin">;
+
+/** A built-in skill in Discover; added = already in Yours. */
+export type CatalogSkill = Skill & { added: boolean };
+
+export type SkillCategory = { name: string; count: number };
+
 /** What the agent may change on a server (src/server_vault.py MODES). */
 export type ServerMode = "audit" | "confirm" | "trusted";
 

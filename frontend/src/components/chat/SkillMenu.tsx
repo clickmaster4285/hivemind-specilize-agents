@@ -79,7 +79,7 @@ export default function SkillMenu({ menu }: { menu: ReturnType<typeof useSkillMe
           }`}
         >
           <span className="text-[0.85rem] text-[var(--text)]">
-            {skill.title} <span className="text-[var(--muted)]">/{skill.name}</span>
+            <span className="font-semibold">{skill.title}</span> <span className="text-[var(--muted)]">/{skill.name}</span>
             <span className="ml-1.5 text-[0.68rem] text-[var(--muted)]">
               {skill.id === null ? "· built-in" : skill.team ? "· team" : "· yours"}
             </span>

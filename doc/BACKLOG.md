@@ -327,8 +327,12 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
       run straight away (yours first, then the team's, then the built-in one; a copy in Yours, even switched
       off, replaces the built-in); the menu matches names starting with what is typed, then names/titles
       containing it; the message feed no longer re-renders on every keystroke
-- [ ] **S3 Customize page:** Settings → Skills like claude.ai: Yours (Team / Created by you) and Discover (search,
-      categories, "+"), create / edit / upload `SKILL.md` / download, enable/disable
+- [x] **S3 Customize page — done 2026-11-03:** Settings → Skills (everyone): **Yours** = Team and Created by you,
+      each with On, Edit (View for a member on a team skill), Download (SKILL.md), Delete; **Discover** = search,
+      category pills with counts, View (read-only preview) and "+ Add" ("Added ✓" once in Yours). New skill
+      (form: title → /name, description, category, who answers, inputs one per line, tools, instructions) and
+      Upload SKILL.md. Admins tick "Add for the whole team" to add/upload for the team. Every change reloads
+      the `/` menu. `SkillsSection.tsx`, `SkillModal.tsx`, `useSkills` (save / setEnabled / remove / upload / add)
 - [ ] Tests (offline) + assistant eval cases
 - Later: automatic picking from the descriptions (measured with an eval first); skill files beyond SKILL.md
   (scripts, references) are not run — MulteAgent never executes uploaded code
@@ -339,6 +343,7 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-03 | **L14 S3 Settings → Skills** | Yours (Team / Created by you: on/off, edit, download, delete) and Discover (search, categories, view, + Add); create and upload SKILL.md; admins add for the team. Frontend only |
 | 2026-11-03 | **L14 S2 fix: `/` menu + typing lag** | Built-in skills run without adding them (`skills.usable`; `GET /api/skills` → `usable`); `/s` lists names starting with s, then names/titles containing it; the message feed is memoised so typing does not re-render the conversation. 724 tests |
 | 2026-11-03 | **L14 S2 skills in chat** | `/name` in the message box runs a skill: its specialist, instructions and tools; missing inputs asked first; `/` menu in the composer + "Use a skill" in "+". 4 eval cases (`skill:` key). 723 tests |
 | 2026-11-03 | **L14 S1 skills store + catalog** | Skills in the open SKILL.md format; Discover = 17 built-in skills in `skills/<name>/SKILL.md`; Yours = team skills (admins) + personal skills (owner only) in table `skills`; `/api/skills` list / catalog / add / create / upload / edit / delete / download. 720 tests |

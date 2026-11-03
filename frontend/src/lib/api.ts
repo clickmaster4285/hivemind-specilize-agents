@@ -1,5 +1,6 @@
 import type {
   AuthUser,
+  CatalogSkill,
   JobEvent,
   Health,
   Job,
@@ -10,6 +11,8 @@ import type {
   ServerLoginInput,
   ServerMode,
   Skill,
+  SkillCategory,
+  SkillInput,
   Specialist,
   SpecialistInput,
   SpecialistOptions,
@@ -197,10 +200,44 @@ export async function resetSpecialists(): Promise<Specialist[]> {
   return request("/api/specialists/reset", { method: "POST", body: "{}" });
 }
 
-/** The team's skills and the user's own (src/llm/skills.py). */
 /** Yours (team + personal) and what /name can run (usable: one per name, built-in skills included). */
 export async function listSkills(): Promise<{ skills: Skill[]; usable: Skill[]; can_manage_team: boolean }> {
   return request("/api/skills");
+}
+
+/** Discover: the built-in skills (added = already in Yours) and their categories with counts. */
+export async function listSkillCatalog(): Promise<{ skills: CatalogSkill[]; categories: SkillCategory[] }> {
+  return request("/api/skills/catalog");
+}
+
+/** A new skill in Yours: for the team (admins) or only for me. */
+export async function createSkill(skill: SkillInput, team: boolean): Promise<Skill> {
+  return request("/api/skills", { method: "POST", body: JSON.stringify({ ...skill, team }) });
+}
+
+export async function updateSkill(id: number, changes: Partial<SkillInput>): Promise<Skill> {
+  return request(`/api/skills/${id}`, { method: "PUT", body: JSON.stringify(changes) });
+}
+
+export async function deleteSkill(id: number): Promise<void> {
+  await request(`/api/skills/${id}`, { method: "DELETE" });
+}
+
+/** A SKILL.md file's text (written for MulteAgent or another assistant). */
+export async function uploadSkill(text: string, team: boolean): Promise<Skill> {
+  return request("/api/skills/upload", { method: "POST", body: JSON.stringify({ text, team }) });
+}
+
+/** Discover's "+": copy a built-in skill into Yours. */
+export async function addCatalogSkill(name: string, team: boolean): Promise<Skill> {
+  return request(`/api/skills/catalog/${encodeURIComponent(name)}/add`, { method: "POST", body: JSON.stringify({ team }) });
+}
+
+/** The skill as a SKILL.md file → object URL + file name. */
+export async function downloadSkill(id: number): Promise<{ url: string; filename: string }> {
+  const response = await fetch(apiUrl(`/api/skills/${id}/download`), { headers: authHeaders(false) });
+  if (!response.ok) throw new Error(await readError(response));
+  return { url: URL.createObjectURL(await response.blob()), filename: attachmentName(response, "SKILL.md") };
 }
 
 /** Server logins live in the API's memory for this session only (admins). */
@@ -436,9 +473,13 @@ export async function exportAnswer(
     body: JSON.stringify({ format, text }),
   });
   if (!response.ok) throw new Error(await readError(response));
+  return { url: URL.createObjectURL(await response.blob()), filename: attachmentName(response, `answer.${format}`) };
+}
+
+/** The file name a download's Content-Disposition gives, else the fallback. */
+function attachmentName(response: Response, fallback: string): string {
   const named = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(response.headers.get("Content-Disposition") || "");
-  const filename = named ? decodeURIComponent(named[1]) : `answer.${format}`;
-  return { url: URL.createObjectURL(await response.blob()), filename };
+  return named ? decodeURIComponent(named[1]) : fallback;
 }
 
 export async function getJobHistory(jobId: string): Promise<{

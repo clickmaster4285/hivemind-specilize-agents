@@ -7,5 +7,5 @@ import SettingsBody from "@/components/chat/SettingsBody";
 export default function SettingsPage() {
   const app = useApp();
   if (!app.auth.user) return null; // the shell shows the login when signed out
-  return <SettingsBody user={app.auth.user} specialists={app.specialists} models={app.models} />;
+  return <SettingsBody user={app.auth.user} specialists={app.specialists} models={app.models} skills={app.skills} />;
 }
