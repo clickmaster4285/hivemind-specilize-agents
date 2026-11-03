@@ -53,6 +53,10 @@ class Tool:
         }}
 
 
+# the SEO tools' search market (src/tools/market.py): only what the user said — the site decides otherwise
+MARKET_ARG = ("two-letter country code of the market the user named (PK for Pakistan, GB for the UK, US, …), "
+              "'worldwide' if they said global or worldwide; empty if they named none")
+
 TOOLS: tuple[Tool, ...] = (
     Tool("search_knowledge_base", "kb",
          "Search MulteAgent's own trusted documents ({sources}) and answer with citations. Use when the question "
@@ -134,14 +138,16 @@ TOOLS: tuple[Tool, ...] = (
          "write. Competitors can be named, or found from the sites ranking for a keyword. Use for 'compare mysite.com "
          "with rival.com', 'what are my competitors doing better', 'content gap vs the sites ranking for X'.",
          {"url": "the user's own website", "competitors": "comma-separated competitor websites; empty if none named",
-          "keyword": "a keyword to find competitors by when none are named; empty otherwise"}, ("url",)),
+          "keyword": "a keyword to find competitors by when none are named; empty otherwise",
+          "market": MARKET_ARG}, ("url",)),
     Tool("keyword_research", "keyword_research",
          "Keyword research from live search results (approximate, no search volume): who ranks for a keyword, where "
          "a given website ranks for it, keyword ideas people search, an estimated difficulty and what the top pages "
          "cover. Use for 'keyword ideas for X', 'where does mysite.com rank for Y', 'how hard is it to rank for Z', "
          "'who ranks for Z'.",
          {"keywords": "comma-separated keywords exactly as the user wrote them (at most 5)",
-          "domain": "the user's website if they named one, e.g. mysite.com; empty if none"}, ("keywords",),
+          "domain": "the user's website if they named one, e.g. mysite.com; empty if none",
+          "market": MARKET_ARG}, ("keywords",),
          lambda c: bool(c.web_search_url)),
     Tool("write_content", "content_write",
          "Write a full piece of marketing or web copy — blog post, article, landing page, product or service page, "
@@ -151,7 +157,8 @@ TOOLS: tuple[Tool, ...] = (
          "or a quick slogan (answer those directly).",
          {"request": "what to write: topic, audience, goal, length if said",
           "keywords": "comma-separated search keywords the user wants targeted; empty if none",
-          "url": "address of an existing page to improve; empty for new content"}, ("request",)),
+          "url": "address of an existing page to improve; empty for new content",
+          "market": MARKET_ARG}, ("request",)),
     Tool("create_document", "doc_gen",
          "Create a downloadable Word, PDF, PowerPoint or Excel file for the user to save on their own computer. "
          "This is NOT for creating files on a server — to create or write a file on a Linux server, use "
@@ -508,6 +515,9 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
     for r in rows:
         allowed = r.get("tool")
         r["ok"] = r["got"] in allowed if isinstance(allowed, list) else r["got"] == allowed
+        # expect: arguments the call must carry ("" = left empty), compared without case
+        r["ok"] = r["ok"] and all(str(r["args"].get(k) or "").strip().lower() == str(v).lower()
+                                  for k, v in (r.get("expect") or {}).items())
     return {"total": len(rows), "right": sum(r["ok"] for r in rows), "rows": rows}
 
 
@@ -523,7 +533,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"right {result['right']}/{result['total']}, median {times[len(times) // 2]} s")
     for r in result["rows"]:
         if not r["ok"]:
-            print(f"  want {r.get('tool')!s:22} got {r['got']!s:22} | {r['text'][:70]}")
+            print(f"  want {r.get('tool')!s:22} got {r['got']!s:22} | {r['text'][:70]}"
+                  + (f" | want {r['expect']} got {r['args']}" if r.get("expect") else ""))
     return 0
 
 

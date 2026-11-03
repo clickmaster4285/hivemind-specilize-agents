@@ -28,6 +28,7 @@ from src.core.config import Config
 from src.core.conversation import format_conversation_block
 from src.jobs import live
 from src.llm.llm_client import LLMClient, LLMError, LLMStopped
+from src.tools.market import Market, for_site, requested
 from src.tools.serp import Benchmark, benchmark
 from src.tools.site_audit import (AUDIT_AGENT, DESCRIPTION_CHARS, TITLE_CHARS, AuditError, analyze_page,
                                   resolve_start, site_url)
@@ -109,9 +110,9 @@ class Brief:
             ("Title", self.title), ("Kind", self.kind), ("Audience", self.audience), ("Goal", self.goal),
             ("Tone", self.tone), ("Keywords (main first)", ", ".join(self.keywords) or "none"),
             ("Length", f"about {self.words} words"), ("Call to action", self.cta), ("Language", self.language),
-            ("Top-ranking pages", f"{top.pages} read for “{top.keyword}”: median {top.words} words; phrases most of "
-                                  f"them use: {', '.join(top.phrases) or 'none'} — cover these topics in your own "
-                                  "words, never copy" if top else ""),
+            ("Top-ranking pages", f"{top.pages} read for “{top.keyword}” ({top.market}): median {top.words} "
+                                  f"words; phrases most of them use: {', '.join(top.phrases) or 'none'} — cover these "
+                                  "topics in your own words, never copy" if top else ""),
         ) if v)
 
 
@@ -318,7 +319,7 @@ def _page_draft(url: str) -> tuple[str, str]:
 
 def run_content_writer(query: str, *, job_id: str, config: Config, on_progress: Callable[[dict], None] | None = None,
                        conversation: list[dict[str, str]] | None = None, request: str | None = None,
-                       keywords: str | None = None, url: str | None = None,
+                       keywords: str | None = None, url: str | None = None, market: str | None = None,
                        **_: object) -> tuple[str, list[str], float]:
     client = LLMClient(config)
     emit = on_progress or (lambda event: None)
@@ -362,8 +363,12 @@ def run_content_writer(query: str, *, job_id: str, config: Config, on_progress: 
                            keywords=[k.strip() for k in (keywords or "").split(",") if k.strip()])
         status(f"Brief: {brief.kind} · about {brief.words} words · keywords: {', '.join(brief.keywords) or 'none'}")
         if brief.web and brief.keywords:
-            status(f"Reading the pages that rank for “{brief.keywords[0]}”…")
-            brief.benchmark = benchmark(brief.keywords[0], config)
+            # the market the user named, else the page's own; writing is not held up to ask — worldwide, said so
+            main = brief.keywords[0]
+            where = (requested(market, main) or (for_site(page_url, main) if page_url else None)
+                     or Market("", "", "no market named — say a country for local results"))
+            status(f"Reading the pages that rank for “{main}” in: {where.label} ({where.how})…")
+            brief.benchmark = benchmark(main, config, market=where)
         meta = META_RULE.format(t0=TITLE_CHARS[0], t1=TITLE_CHARS[1], d0=DESCRIPTION_CHARS[0],
                                 d1=DESCRIPTION_CHARS[1]) if brief.web else ""
         if page_text:

@@ -1,7 +1,8 @@
 """Search results as SEO data (BACKLOG L15 P3/P4): who ranks for a keyword, keyword ideas, what top pages cover.
 
 Everything comes from our own SearXNG, so it is an APPROXIMATION (user's choice, doc/SEO_TOOLS.md): SearXNG merges
-several engines and searches from its own region, positions are its merged order, and there is no search volume.
+several engines, positions are its merged order, and there is no search volume. Searches run in one market (a country
+or worldwide, src/tools/market.py) — without one SearXNG would search from its own region.
 Top pages are read with the audit's polite client (robots.txt, public addresses only) and are treated as data.
 """
 
@@ -18,6 +19,7 @@ import requests
 
 from src.brain.web import WebClient, WebError
 from src.core.config import Config
+from src.tools.market import Market
 from src.tools.site_audit import AUDIT_AGENT, AuditError, Page, analyze_page, check_public
 from src.tools.web_search import SEARCH_TIMEOUT, WebSearchError
 
@@ -63,13 +65,20 @@ def _get(config: Config, path: str, params: dict) -> object:
         raise WebSearchError(f"web search failed: {exc}") from exc
 
 
-def serp(keyword: str, config: Config, *, pages: int = SERP_PAGES) -> tuple[list[Ranked], list[str]]:
+def _in(market: Market | None) -> dict:
+    """SearXNG's language-region parameter for the market (none: SearXNG's own default)."""
+    return {"language": market.search_language} if market else {}
+
+
+def serp(keyword: str, config: Config, *, pages: int = SERP_PAGES,
+         market: Market | None = None) -> tuple[list[Ranked], list[str]]:
     """(results in SearXNG's merged order, related searches the engines suggested)."""
     results: list[Ranked] = []
     related: list[str] = []
     seen: set[str] = set()
     for pageno in range(1, pages + 1):
-        data = _get(config, "/search", {"q": keyword, "format": "json", "pageno": pageno, "safesearch": 1})
+        data = _get(config, "/search", {"q": keyword, "format": "json", "pageno": pageno, "safesearch": 1,
+                                             **_in(market)})
         related += [str(s) for s in (data.get("suggestions") or []) if str(s).strip()]
         for r in data.get("results") or []:
             url = str(r.get("url") or "")
@@ -81,20 +90,21 @@ def serp(keyword: str, config: Config, *, pages: int = SERP_PAGES) -> tuple[list
     return results, list(dict.fromkeys(related))
 
 
-def autocomplete(text: str, config: Config) -> list[str]:
+def autocomplete(text: str, config: Config, market: Market | None = None) -> list[str]:
     """What people type after `text` (the engines' suggestions via SearXNG's autocompleter)."""
-    data = _get(config, "/autocompleter", {"q": text})
+    data = _get(config, "/autocompleter", {"q": text, **_in(market)})
     items = data[1] if isinstance(data, list) and len(data) > 1 and isinstance(data[1], list) else data
     return [str(s).strip() for s in items or [] if isinstance(s, str) and s.strip()]
 
 
-def keyword_ideas(keyword: str, config: Config, *, related: list[str] = ()) -> list[str]:
+def keyword_ideas(keyword: str, config: Config, *, related: list[str] = (),
+                  market: Market | None = None) -> list[str]:
     """Suggestions for the keyword, then for its first few suggestions, plus related searches."""
-    first = autocomplete(keyword, config)
+    first = autocomplete(keyword, config, market)
     ideas = list(first) + list(related)
     for idea in first[:IDEA_EXPAND]:
         try:
-            ideas += autocomplete(idea, config)
+            ideas += autocomplete(idea, config, market)
         except WebSearchError:
             break
     own = keyword.strip().lower()
@@ -164,19 +174,22 @@ class Benchmark:
     words: int                      # their median length
     phrases: list[str]              # phrases most of them use
     titles: list[str]
+    market: str = "Worldwide"      # where they rank (Market.label)
 
 
-def benchmark(keyword: str, config: Config, *, count: int = BENCHMARK_PAGES) -> Benchmark | None:
+def benchmark(keyword: str, config: Config, *, count: int = BENCHMARK_PAGES,
+              market: Market | None = None) -> Benchmark | None:
     """Read the top pages for a keyword; None when search is not set up or nothing could be read."""
     try:
-        results, _ = serp(keyword, config, pages=1)
+        results, _ = serp(keyword, config, pages=1, market=market)
     except WebSearchError:
         return None
     pages = read_top(results, count)
     if not pages:
         return None
     return Benchmark(keyword, len(pages), round(statistics.median(p.words for p in pages)),
-                     common_phrases([p.text for p in pages]), [r.title for r in results[:count]])
+                     common_phrases([p.text for p in pages]), [r.title for r in results[:count]],
+                     market.label if market else Benchmark.market)
 
 
 def rank_of(domain: str, results: list[Ranked]) -> Ranked | None:

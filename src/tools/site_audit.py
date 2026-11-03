@@ -53,6 +53,8 @@ MAX_CLICK_DEPTH = 3                # pages deeper than this from the home page a
 REUSED_ANCHOR_TARGETS = 3          # link text pointing to this many different pages says nothing ("Read more")
 URL_MAX_CHARS = 115                # Screaming Frog's "over 115 characters" URL filter
 GOOD_RESPONSE_SECONDS = 0.8        # web.dev: a good time to first byte is 0.8 s or less
+# ARIA landmark roles of page furniture (menus, site header, footer, sidebars) on sites that use <div role="…">
+FURNITURE_ROLES = re.compile(r"^(navigation|banner|contentinfo|complementary)$", re.I)
 # links that turn out not to be web pages (PDFs, images) are skipped; this bounds how many requests that costs
 MAX_ATTEMPTS_PER_PAGE = 2
 LEVELS = ((80, "Advanced"), (60, "Established"), (40, "Developing"), (0, "Beginner"))
@@ -137,6 +139,7 @@ class Page:
     images_no_size: int = 0         # <img> without width and height: the layout jumps while it loads
     canonical: str = ""             # the canonical URL the page declares
     lang: bool = False
+    locale: str = ""                # the locale it declares ("en-PK"), for the search market (src/tools/market.py)
     viewport: bool = False
     open_graph: bool = False
     structured: bool = False
@@ -171,6 +174,27 @@ def _loads_http(soup: BeautifulSoup) -> bool:
     return any(str(tag.get(attr) or "").startswith("http://") for tag, attr in resources)
 
 
+def _locale(soup: BeautifulSoup, url: str) -> str:
+    """The locale the page declares — <html lang>, og:locale or the hreflang of its own alternate link: the first that
+    names a country ("en-PK"), else the bare language ("en")."""
+    og = soup.find("meta", attrs={"property": "og:locale"})
+    declared = [str(soup.html.get("lang") or "") if soup.html else "", str(og.get("content") or "") if og else ""]
+    declared += [str(link.get("hreflang") or "") for link in soup.find_all("link", hreflang=True)
+                 if normalize_url(urljoin(url, str(link.get("href") or ""))) == normalize_url(url)]
+    declared = [d.strip() for d in declared if d.strip() and d.strip().lower() != "x-default"]
+    return next((d for d in declared if re.search(r"[-_]", d)), declared[0] if declared else "")
+
+
+def _drop_furniture(soup: BeautifulSoup) -> None:
+    """Remove what repeats on every page — menus, sidebars, the site's header and footer — so the text is the page's
+    own content (a header or footer inside an article belongs to the article and stays)."""
+    for tag in soup.find_all(["nav", "aside"]) + soup.find_all(attrs={"role": FURNITURE_ROLES}):
+        tag.decompose()
+    for tag in soup.find_all(["header", "footer"]):
+        if not tag.find_parent(["article", "main"]):
+            tag.decompose()
+
+
 def analyze_page(html: str, url: str) -> Page:
     soup = BeautifulSoup(html, "html.parser")
     levels = [int(h.name[1]) for h in soup.find_all(re.compile(r"^h[1-6]$"))]
@@ -187,6 +211,7 @@ def analyze_page(html: str, url: str) -> Page:
         images_no_size=sum(1 for img in images if not (img.get("width") and img.get("height"))),
         canonical=normalize_url(urljoin(url, str(canonical.get("href") or ""))) if canonical and canonical.get("href") else "",
         lang=bool(soup.html and soup.html.get("lang")),
+        locale=_locale(soup, url),
         viewport=bool(_meta(soup, "viewport")),
         open_graph=soup.find("meta", attrs={"property": re.compile(r"^og:")}) is not None,
         structured=bool(soup.find("script", attrs={"type": "application/ld+json"}) or soup.find(attrs={"itemtype": True})),
@@ -196,6 +221,7 @@ def analyze_page(html: str, url: str) -> Page:
     )
     for tag in soup(["script", "style", "noscript", "template"]):
         tag.decompose()
+    _drop_furniture(soup)
     body = soup.find("main") or soup.body or soup
     page.text = " ".join(body.get_text(" ", strip=True).split())
     page.words = len(page.text.split())

@@ -20,7 +20,7 @@ BRIEF = Brief(title="Solar panels", kind="blog post", keywords=["solar panels", 
 @pytest.fixture(autouse=True)
 def no_search(monkeypatch):
     """The loop reads the top-ranking pages for the main keyword; tests never search the real web."""
-    monkeypatch.setattr(content_writer, "benchmark", lambda keyword, config: None)
+    monkeypatch.setattr(content_writer, "benchmark", lambda keyword, config, **_: None)
 
 GOOD = """# Solar panels for your home
 

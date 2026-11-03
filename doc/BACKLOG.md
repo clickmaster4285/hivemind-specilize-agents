@@ -287,13 +287,30 @@ then skills (L14) and sub-agents.
 - [x] 6 more assistant eval cases; 27 tests (search faked on 127.0.0.1, in-memory database)
 - Not possible locally: search volume, traffic estimates, backlinks (paid API — user's choice); Search Console
   (OAuth) and JS rendering later
+- [x] **P6 search market + menu text (ISSUES_LOG O14) — done 2026-11-03:** `src/tools/market.py` decides the
+      market per request: the user's words (tool argument `market`: PK / GB / worldwide) → the website (declared
+      locale `<html lang>` / `og:locale` / own `hreflang`, else its country domain; `.com`/`.io` say nothing) →
+      ask once (the user's own country, from the browser time zone, offered first). Sent to SearXNG as
+      `language=en-PK` (`all` = worldwide); search language follows the keyword's script (Urdu keyword → `ur-PK`);
+      the report says which market and why. `write_content` does not stop to ask: worldwide, said so. Page text
+      now leaves out `nav`, `aside`, the site header/footer and ARIA navigation landmarks (content gap, word counts).
+      Country data from Babel's CLDR (no lists of ours). Phone numbers / currency not used (would need lists)
 
-### L14. Skills — reusable instruction packs — planned
+### L14. Skills — reusable instruction packs — in progress 2026-11-03 (fixes ISSUES_LOG O13)
 
-- [ ] **MulteAgent skills:** saved, named instruction packs a specialist follows (e.g. "SEO audit", "Blog brief",
-      "Incident report"), selectable in chat; specialists stay the domain, skills are the repeatable task
-- [ ] **Claude Code skills for this repo** (`.claude/skills/<name>/SKILL.md`): e.g. run-checks (pytest + tsc/eslint),
+A **specialist** is the domain (who answers: IT, Development, Marketing). A **skill** is a repeatable task
+(how to do one job: "Incident report", "Blog brief", "Monthly SEO check"). Skills are DATA, like specialists.
+
+- [ ] **S1 model + store:** `Skill` = id, name, `when` (one line the picker reads), instructions (the steps
+      and the output format), optional specialist, optional tools it may use, optional inputs it must ask for
+      (e.g. "site URL", "audience"), enabled; stored next to the specialists; built-in starter skills
+- [ ] **S2 use in chat:** pick a skill in the chat bar (or type `/name`); its instructions join the specialist's
+      prompt for that answer, its specialist is pinned, only its tools are offered; missing inputs → one
+      clarify question first. Optional auto-pick from the `when` lines (measured with an eval like specialists)
+- [ ] **S3 manage:** Settings → Skills (create, edit, enable, delete; "save this answer's request as a skill")
+- [ ] **S4 Claude Code skills for this repo** (`.claude/skills/<name>/SKILL.md`): run-checks (pytest + tsc/eslint),
       commit-message handoff
+- [ ] Tests (offline) + assistant eval cases
 
 ---
 
@@ -301,6 +318,7 @@ then skills (L14) and sub-agents.
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-03 | **L15 P6 search market** | SEO searches run in one market: the user's words, else the site's own locale/country domain, else asked once (own country first). Live: "best laptop price" UK → currys/argos, Pakistan → paklap/priceoye; paklap.pk, priceoye.pk → en-PK, currys.co.uk → en-GB, python.org → ask. Menus/header/footer out of page text. 4 eval cases check the `market` argument (`expect:`). 705 tests |
 | 2026-11-02 | **L15 P3-P5 keywords, competitors, projects** | `keyword_research` (SearXNG: ranks ≈, ideas, difficulty estimate, what top pages cover), `compare_sites` (side-by-side audit, what they do better, content gap), `write_content` briefed by the top pages, saved audits with change reports, tracked sites re-audited on a schedule, `seo_projects`. P2 page speed on hold for discussion. 695 tests |
 | 2026-11-02 | **L15 P1 SEO crawler depth** | Research of Semrush / Screaming Frog / PageSpeed / Search Console → SEO_TOOLS.md matrix + phases. Audit gains redirects + chains, response time, click depth, orphans, inlinks, reused link text, near-duplicates, canonical/mixed content/URL/security-header checks, Links + Performance areas, a spreadsheet of every page. 681 tests |
 | 2026-11-02 | **L13 marketing tools** | `site_audit`: polite crawl of a public site → 20 checks → maturity score per area + level → model writes the fix plan and judges the content. `write_content`: brief → draft → checks + editor → revisions, best draft wins with a score table; can start from an existing page's copy. 679 tests |

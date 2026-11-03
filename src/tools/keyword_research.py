@@ -1,7 +1,7 @@
 """keyword_research tool — who ranks, where a site ranks, keyword ideas, difficulty (BACKLOG L15 P3).
 
 From our SearXNG (src/tools/serp.py), so APPROXIMATE and said so in the answer: positions are SearXNG's merged order
-from its own region, difficulty is estimated from the results (no backlink data), and there is no search volume.
+in one market (the user's words, else the site's own country, else asked — src/tools/market.py), difficulty is estimated from the results (no backlink data), and there is no search volume.
 Per keyword: the top ~20 results, the site's position when one is given, a difficulty estimate. For the main
 keyword also: the top pages read (length, phrases they share) and keyword ideas. The model then says what it means.
 """
@@ -16,6 +16,7 @@ from collections.abc import Callable
 from src.core.config import Config
 from src.jobs import live
 from src.llm.llm_client import LLMClient, LLMError, LLMStopped
+from src.tools.market import MarketUnknown, ask_market, for_site, requested
 from src.tools.serp import (BENCHMARK_PAGES, TOP, Difficulty, Ranked, bare_host, common_phrases, difficulty,
                             keyword_ideas, rank_of, read_top, serp)
 from src.tools.site_audit import site_url
@@ -55,7 +56,8 @@ def research_table(rows: list[tuple[str, list[Ranked], Difficulty, Ranked | None
 
 def run_keyword_research(query: str, *, job_id: str, config: Config,
                          on_progress: Callable[[dict], None] | None = None, keywords: str | None = None,
-                         domain: str | None = None, **_: object) -> tuple[str, list[str], float]:
+                         domain: str | None = None, market: str | None = None,
+                         **_: object) -> tuple[str, list[str], float]:
     emit = on_progress or (lambda event: None)
     model = config.model_fast or config.llm_model
     agent = {"agent_id": "assistant", "name": "Assistant", "role": ROLE, "stage": "chat", "accent": "#c45c8a",
@@ -68,11 +70,16 @@ def run_keyword_research(query: str, *, job_id: str, config: Config,
     asked = [k.strip() for k in (keywords or "").split(",") if k.strip()][:MAX_KEYWORDS] or [query.strip()]
     site = bare_host(site_url(domain or "") or "") or None
     main = asked[0]
+    clarify: dict = {}
     try:
+        where = requested(market, main) or (for_site(site_url(domain or ""), main) if site else None)
+        if where is None:
+            raise MarketUnknown
+        status(f"Searching in: {where.label} ({where.how})")
         rows, related = [], []
         for keyword in asked:
             status(f"Searching “{keyword}”…")
-            results, suggested = serp(keyword, config)
+            results, suggested = serp(keyword, config, market=where)
             related = related or suggested
             rows.append((keyword, results, difficulty(keyword, results), rank_of(site, results) if site else None))
         _, main_results, _, main_found = rows[0]
@@ -80,13 +87,14 @@ def run_keyword_research(query: str, *, job_id: str, config: Config,
         top_pages = read_top(main_results, BENCHMARK_PAGES)
         status("Collecting keyword ideas…")
         try:
-            ideas = keyword_ideas(main, config, related=related)
+            ideas = keyword_ideas(main, config, related=related, market=where)
         except WebSearchError as exc:
             errors.append(f"keyword ideas: {exc}")
             ideas = []
         engines = Counter(e for _, results, _, _ in rows for r in results for e in r.engines)
         covers = common_phrases([p.text for p in top_pages])
-        lines = [f"## Keyword research — {', '.join(asked)}" + (f" · {site}" if site else ""), "",
+        title = " · ".join([", ".join(asked), *([site] if site else []), where.label])
+        lines = [f"## Keyword research — {title}", "",
                  research_table(rows, site), "", f"### Who ranks for “{main}”", "", "| # | Site | Title |",
                  "|---|---|---|"]
         lines += [f"| {r.position} | {r.host}{' ⭐' if r is main_found else ''} | [{r.title.replace('|', '/')}]({r.url}) |"
@@ -116,13 +124,16 @@ def run_keyword_research(query: str, *, job_id: str, config: Config,
         output += f"\n\n{advice.strip()}" if advice.strip() else ""
         output += ("\n\n_Approximate: positions are our search service's merged results ("
                    + ", ".join(e for e, _ in engines.most_common(3))
-                   + ") from its own region; difficulty is estimated from the results (no backlink data); "
-                     "there is no search volume._")
+                   + f") in the {where.label} market ({where.how}); difficulty is estimated from the results "
+                     "(no backlink data); there is no search volume._")
+    except MarketUnknown:
+        clarify = {"clarify": ask_market("the search results"), "clarify_query": query}
+        output = "Search results differ by country — which market is this for?"
     except WebSearchError as exc:
         errors.append(str(exc))
         output = f"I could not research the keywords: {exc}."
     elapsed = time.monotonic() - started
     live.finish_agent(job_id, "assistant")
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
+    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output, **clarify})
     emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
     return output, errors, elapsed

@@ -20,6 +20,7 @@ from src.brain.web import WebClient
 from src.core.config import Config
 from src.jobs import live
 from src.llm.llm_client import LLMClient, LLMError, LLMStopped
+from src.tools.market import MarketUnknown, ask_market, for_site, requested
 from src.tools.serp import bare_host, phrases, serp
 from src.tools.site_audit import (AUDIT_AGENT, AuditError, Score, Site, crawl_site, resolve_start, score_site,
                                   site_url)
@@ -99,7 +100,7 @@ def comparison_table(audits: list[tuple[Site, Score]]) -> str:
 
 def run_compare_sites(query: str, *, job_id: str, config: Config, on_progress: Callable[[dict], None] | None = None,
                       url: str | None = None, competitors: str | None = None, keyword: str | None = None,
-                      **_: object) -> tuple[str, list[str], float]:
+                      market: str | None = None, **_: object) -> tuple[str, list[str], float]:
     emit = on_progress or (lambda event: None)
     model = config.model_fast or config.llm_model
     agent = {"agent_id": "assistant", "name": "Assistant", "role": ROLE, "stage": "chat", "accent": "#c45c8a",
@@ -108,6 +109,7 @@ def run_compare_sites(query: str, *, job_id: str, config: Config, on_progress: C
     going = lambda: not live.is_stopped(job_id)  # noqa: E731
     started = time.monotonic()
     errors: list[str] = []
+    clarify: dict = {}
     emit({"type": "session_start", "mode": "chat", "query": query})
     emit({"type": "agent_start", **agent, "model": model})
     try:
@@ -116,8 +118,11 @@ def run_compare_sites(query: str, *, job_id: str, config: Config, on_progress: C
             raise AuditError("name your website, e.g. mysite.com")
         rivals = [u for u in (site_url(c) for c in (competitors or "").split(",")) if u][:MAX_COMPETITORS]
         if not rivals and keyword:
-            status(f"Finding who ranks for “{keyword}”…")
-            results, _ = serp(keyword, config, pages=1)
+            where = requested(market, keyword) or for_site(mine, keyword)
+            if where is None:
+                raise MarketUnknown
+            status(f"Finding who ranks for “{keyword}” in: {where.label} ({where.how})…")
+            results, _ = serp(keyword, config, pages=1, market=where)
             hosts = [h for h in dict.fromkeys(r.host for r in results) if h != bare_host(mine)]
             rivals = [f"https://{h}" for h in hosts[:MAX_COMPETITORS]]
         if not rivals:
@@ -169,11 +174,14 @@ def run_compare_sites(query: str, *, job_id: str, config: Config, on_progress: C
         output += f"\n\n{plan.strip()}" if plan.strip() else ""
         output += ("\n\n_Each site read politely (robots.txt, one request per second per site). Topics are two-word "
                    "phrases a competitor uses across its pages and your pages never use._")
+    except MarketUnknown:
+        clarify = {"clarify": ask_market("who ranks"), "clarify_query": query}
+        output = "Who ranks differs by country — which market are you competing in?"
     except (AuditError, WebSearchError) as exc:
         errors.append(str(exc))
         output = f"I could not compare the sites: {exc}."
     elapsed = time.monotonic() - started
     live.finish_agent(job_id, "assistant")
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
+    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output, **clarify})
     emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
     return output, errors, elapsed

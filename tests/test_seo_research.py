@@ -20,6 +20,7 @@ from src.core.config import Config
 from src.core.db import Base
 from src.core.models_db import SeoAudit, SeoProject, User
 from src.tools import compare_sites, keyword_research, seo_projects
+from src.tools.market import Market
 from src.tools.serp import (Ranked, autocomplete, bare_host, common_phrases, difficulty, keyword_ideas, phrases,
                             rank_of, serp)
 from src.tools.site_audit import Page, Site, score_site
@@ -33,6 +34,7 @@ RESULTS = [
 SUGGEST = {"solar panels price": ["solar panels price uk", "solar panels price per watt"],
            "solar panels price uk": ["solar panels price uk 2026"],
            "solar panels price per watt": ["solar panels price per watt uk"]}
+LANGUAGES: list[str] = []           # the market SearXNG was asked for, per request
 
 
 class FakeSearx(BaseHTTPRequestHandler):
@@ -42,6 +44,7 @@ class FakeSearx(BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802 — http.server API
         parts = urlsplit(self.path)
         q = parse_qs(parts.query)
+        LANGUAGES.append(q.get("language", [""])[0])
         if parts.path == "/search":
             page = int(q["pageno"][0])
             rows = RESULTS[:2] if page == 1 else RESULTS[2:]
@@ -114,9 +117,13 @@ def test_keyword_research_report(config, monkeypatch):
     monkeypatch.setattr(keyword_research, "LLMClient", QuietLLM)
     monkeypatch.setattr(keyword_research, "read_top", lambda results, count: [
         Page(r.url, text="solar panels cost less with battery storage", words=600) for r in results[:count]])
+    monkeypatch.setattr(keyword_research, "for_site", lambda url, keyword: Market("PK", "en", "the site declares en-PK"))
+    LANGUAGES.clear()
     output, errors, _ = keyword_research.run_keyword_research(
         "research", job_id="t-kw", config=config, keywords="solar panels price", domain="mysite.com")
     assert not errors
+    assert set(LANGUAGES) == {"en-PK"}                        # searched in the site's own market
+    assert "· Pakistan" in output and "in the Pakistan market (the site declares en-PK)" in output
     assert "| solar panels price | ≈ #3 | Medium" in output
     assert "| 3 | blog.mysite.com ⭐ |" in output
     assert "**600 words** (median)" in output and "*battery storage*" in output
@@ -126,8 +133,31 @@ def test_keyword_research_report(config, monkeypatch):
 
 def test_keyword_research_without_search():
     config = dataclasses.replace(Config.from_env(), web_search_url="")
-    output, errors, _ = keyword_research.run_keyword_research("x", job_id="t-kw-2", config=config, keywords="a")
+    output, errors, _ = keyword_research.run_keyword_research("x", job_id="t-kw-2", config=config, keywords="a",
+                                                              market="worldwide")
     assert errors and "not set up" in output
+
+
+def test_keyword_research_asks_for_the_market_when_nothing_decides(config, monkeypatch):
+    events: list[dict] = []
+    monkeypatch.setattr("src.tools.market.current_time_zone", lambda: "Asia/Karachi")
+    LANGUAGES.clear()
+    output, errors, _ = keyword_research.run_keyword_research("keyword ideas for solar", job_id="t-kw-3",
+                                                              config=config, keywords="solar", on_progress=events.append)
+    done = next(e for e in events if e["type"] == "agent_done")
+    assert not errors and not LANGUAGES                       # nothing searched before the user answers
+    assert done["clarify"][0]["options"] == ["Pakistan", "Worldwide"]       # their own country first
+    assert done["clarify_query"] == "keyword ideas for solar" and "which market" in output
+
+
+def test_the_users_words_beat_the_site(config, monkeypatch):
+    monkeypatch.setattr(keyword_research, "LLMClient", QuietLLM)
+    monkeypatch.setattr(keyword_research, "read_top", lambda results, count: [])
+    monkeypatch.setattr(keyword_research, "for_site", lambda url, keyword: pytest.fail("the user already named the market"))
+    LANGUAGES.clear()
+    output, _, _ = keyword_research.run_keyword_research("x", job_id="t-kw-4", config=config, keywords="solar",
+                                                         domain="mysite.com", market="worldwide")
+    assert set(LANGUAGES) == {"all"} and "Worldwide market (you asked)" in output
 
 
 # ── competitor comparison ──────────────────────────────────────────────
