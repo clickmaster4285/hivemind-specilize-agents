@@ -468,7 +468,9 @@ def decide(
 
 def speaker(specialist: Specialist | None) -> dict[str, str]:
     """Name and colour of the chat bubble: the specialist's, or the plain assistant's."""
-    if specialist is None:
+    from src.llm.specialists import GENERAL
+
+    if specialist is None or specialist.id == GENERAL:
         return {"name": "Assistant", "accent": "#c4a35a"}
     return {"name": f"{specialist.name} specialist", "accent": specialist.accent}
 
@@ -494,10 +496,12 @@ def _finish_direct(emit, agent, job_id, query, opened, started, output, errors, 
 def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict:
     """specialists=True: each case first goes through the specialist picker, and the model then sees
     that specialist's instructions and tools — the path real chats take (src/worker.py)."""
+    from src.llm import skills
     from src.llm.llm_client import LLMClient
     from src.llm.specialists import default_specialists, pick
 
     config = config or Config.from_env()
+    built_in = {s.name: s for s in skills.catalog(config)}
     cases = yaml.safe_load(EVAL_FILE.read_text(encoding="utf-8"))["cases"]
     model = config.model_fast or config.llm_model
     client = LLMClient(config)
@@ -506,6 +510,10 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
     for case in cases:
         t = time.perf_counter()
         sp = pick(case["text"], config=config, specialists=choices) if specialists else None
+        # skill: a built-in skill applied as /name would (its specialist answers, its instructions and tools)
+        skill = built_in.get(case.get("skill", ""))
+        if skill is not None:
+            sp = skills.apply(skill, next((c for c in choices if c.id == skill.specialist), sp))
         _, calls = client.chat_tools(messages=messages_for(case["text"], config, None, model, sp),
                                      tools=tool_schemas(config, sp.tools if sp else None), model=model,
                                      temperature=0.0)

@@ -9,6 +9,7 @@ import type {
   ServerInfo,
   ServerLoginInput,
   ServerMode,
+  Skill,
   Specialist,
   SpecialistInput,
   SpecialistOptions,
@@ -194,6 +195,11 @@ export async function deleteSpecialist(id: string): Promise<void> {
 
 export async function resetSpecialists(): Promise<Specialist[]> {
   return request("/api/specialists/reset", { method: "POST", body: "{}" });
+}
+
+/** The team's skills and the user's own (src/llm/skills.py). */
+export async function listSkills(): Promise<{ skills: Skill[]; can_manage_team: boolean }> {
+  return request("/api/skills");
 }
 
 /** Server logins live in the API's memory for this session only (admins). */

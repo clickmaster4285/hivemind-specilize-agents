@@ -20,8 +20,11 @@ from src.servers.linux_audit import run_server_audit
 from src.servers.server_ops import run_server_diagnose, run_server_operate
 from src.servers.host_check import run_host_check
 from src.llm.assistant import decide, speaker
-from src.llm.usage import job_totals, job_usage
+from src.llm.skills import Skill
+from src.llm.skills import apply as apply_skill
+from src.llm.skills import for_job as skill_for_job
 from src.llm.specialists import resolve as resolve_specialist
+from src.llm.usage import job_totals, job_usage
 from src.tools.answer_export import run_answer_export
 from src.tools.compare_sites import run_compare_sites
 from src.tools.content_writer import run_content_writer
@@ -87,6 +90,21 @@ def _clarify(config: Config, job_id: str, query: str, questions: list, on_progre
                  "clarify": questions, "clarify_query": query})
     on_progress({"type": "session_done", "total_seconds": 0, "errors": [], "mode": "chat"})
     _finish(config, job_id, [])
+
+
+def _answerer(payload: dict, query: str, skill: Skill | None, *, config: Config, conversation, on_progress):
+    """Who answers (src/llm/specialists.py): the skill's specialist when it names one, else the one pinned in the chat
+    bar or picked by the model — with the skill's instructions and tools applied (src/llm/skills.py)."""
+    pinned = skill is not None and bool(skill.specialist)
+    specialist, how = resolve_specialist(skill.specialist if pinned else payload.get("specialist"), query,
+                                         config=config, conversation=conversation)
+    if specialist is not None:
+        on_progress({"type": "specialist_chosen", "id": specialist.id, "name": specialist.name,
+                     "accent": specialist.accent, "how": "skill" if pinned else how})
+    if skill is None:
+        return specialist
+    on_progress({"type": "skill_chosen", "name": skill.name, "title": skill.title})
+    return apply_skill(skill, specialist)
 
 
 def _finish(config: Config, job_id: str, errors: list[str], *, failed: bool | None = None) -> None:
@@ -181,14 +199,19 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
         refine = (str(payload.get("refine") or "").strip() or None)
         # every prompt of this job tells the time in the user's own time zone (sent by the browser)
         set_time_zone(payload.get("client_time_zone"))
+        # "/incident-report the mail server is down": a skill of this user's picks how to answer (BACKLOG L14)
+        typed = query
+        skill, query = skill_for_job(config, user_id, query)
+        if skill is not None:
+            # a clarify question's follow-up repeats the message as typed — /name included — so the skill goes on
+            emit = on_progress
+            on_progress = lambda event: emit({**event, "clarify_query": typed} if event.get("clarify_query")  # noqa: E731
+                                             else event)
 
         # Deep research toggle: skip tool routing and research the topic across many sources (text-only).
         if str(payload.get("depth") or "").strip().lower() == "deep" and not (has_images or images):
-            specialist, how = resolve_specialist(payload.get("specialist"), query, config=config,
-                                                 conversation=conversation)
-            if specialist is not None:
-                on_progress({"type": "specialist_chosen", "id": specialist.id, "name": specialist.name,
-                             "accent": specialist.accent, "how": how})
+            specialist = _answerer(payload, query, skill, config=config, conversation=conversation,
+                                   on_progress=on_progress)
             result = run_chat(
                 query, config=config, model_plan=model_plan, on_progress=on_progress, images=[],
                 conversation=conversation, account_id=str(user_id) if user_id is not None else None,
@@ -199,11 +222,8 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
 
         # Options toggle: offer a few candidate approaches to pick from, instead of one answer (text-only).
         if bool(payload.get("options")) and not (has_images or images):
-            specialist, how = resolve_specialist(payload.get("specialist"), query, config=config,
-                                                 conversation=conversation)
-            if specialist is not None:
-                on_progress({"type": "specialist_chosen", "id": specialist.id, "name": specialist.name,
-                             "accent": specialist.accent, "how": how})
+            specialist = _answerer(payload, query, skill, config=config, conversation=conversation,
+                                   on_progress=on_progress)
             result = run_chat(
                 query, config=config, model_plan=model_plan, on_progress=on_progress, images=[],
                 conversation=conversation, account_id=str(user_id) if user_id is not None else None,
@@ -215,12 +235,8 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
         tool_args: dict[str, Any] = {}
         specialist = None
         if intent == "auto":
-            # which specialist answers (src/specialists.py): pinned in the chat bar, or picked by the model
-            specialist, how = resolve_specialist(payload.get("specialist"), query, config=config,
-                                                 conversation=conversation)
-            if specialist is not None:
-                on_progress({"type": "specialist_chosen", "id": specialist.id, "name": specialist.name,
-                             "accent": specialist.accent, "how": how})
+            specialist = _answerer(payload, query, skill, config=config, conversation=conversation,
+                                   on_progress=on_progress)
             # the model answers directly (streamed, done) or picks a tool with its arguments
             # a follow-up (picked an approach card, or answered a clarify form) routes normally — web
             # search included — but must not ask to clarify again (no loop).

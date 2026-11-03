@@ -212,8 +212,11 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
     );
   }
   if (type === "specialist_chosen") {
-    const how = event.how === "chosen" ? "chosen by you" : "picked automatically";
+    const how = { chosen: "chosen by you", skill: "set by the skill" }[String(event.how)] ?? "picked automatically";
     return upsertStatus(prev, "Specialist", `${String(event.name || event.id)} specialist · ${how}`);
+  }
+  if (type === "skill_chosen") {
+    return upsertStatus(prev, "Skill", `${String(event.title || event.name)} · /${String(event.name)}`);
   }
   if (type === "tool_chosen") {
     return upsertStatus(prev, "Tool", `${String(event.tool || "tool").replace(/_/g, " ")} …`);

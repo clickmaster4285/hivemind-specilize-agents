@@ -13,6 +13,7 @@ import { useHealth } from "@/hooks/useHealth";
 import { useHistory } from "@/hooks/useHistory";
 import { useModels } from "@/hooks/useModels";
 import { usePendingImages } from "@/hooks/usePendingImages";
+import { useSkills } from "@/hooks/useSkills";
 import { useSpecialists } from "@/hooks/useSpecialists";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
 import type { MemoryBusy } from "@/components/chat/ChatMemory";
@@ -28,6 +29,7 @@ function useAppState() {
   const health = useHealth();
   const models = useModels();
   const specialists = useSpecialists();
+  const skills = useSkills();
   const history = useHistory();
   const images = usePendingImages();
 
@@ -55,19 +57,21 @@ function useAppState() {
   );
 
   const { load: loadSpecialists, clear: clearSpecialists } = specialists;
+  const { load: loadSkills, clear: clearSkills } = skills;
   const { refresh: refreshModels } = models;
   const { refreshJobs, loadHistory, clear: clearJobs } = history;
   const { setFeed } = chat;
   const onSignedIn = useCallback(
     async (fresh: boolean, user: AuthUser) => {
       await loadSpecialists();
+      await loadSkills();
       await refreshModels(fresh);
       // load the chat/project metadata first so refreshed jobs group under their saved titles/pins;
       // the user id scopes the per-device open-chat pointer and the one-time history migration
       await loadHistory(user.id);
       await refreshJobs();
     },
-    [loadSpecialists, refreshModels, loadHistory, refreshJobs],
+    [loadSpecialists, loadSkills, refreshModels, loadHistory, refreshJobs],
   );
   const onSignedOut = useCallback(
     (reason: "logout" | "expired") => {
@@ -75,10 +79,11 @@ function useAppState() {
         void forgetServers().catch(() => undefined);
       }
       clearSpecialists();
+      clearSkills();
       clearJobs();          // resets jobs + metadata + the open-chat/project selection and forgets the user
       setFeed([]);
     },
-    [clearSpecialists, clearJobs, setFeed],
+    [clearSpecialists, clearSkills, clearJobs, setFeed],
   );
   const auth = useAuth({ onSignedIn, onSignedOut });
 
@@ -181,7 +186,7 @@ function useAppState() {
   }
 
   return {
-    auth, health, models, specialists, history, images, chat,
+    auth, health, models, specialists, skills, history, images, chat,
     query, setQuery, queryRef,
     runMode, setRunMode, imageProfile, setImageProfile, editStrength, setEditStrength,
     deep,

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
 import yaml
@@ -26,7 +26,9 @@ from sqlalchemy.orm import Session
 
 from src.core.config import ROOT, Config
 from src.core.conversation import estimate_tokens
+from src.core.db import session_scope
 from src.core.models_db import SkillRow, User, utcnow
+from src.llm.specialists import GENERAL, Specialist, SpecialistStore, tool_names
 
 CATALOG_DIR = ROOT / "skills"
 SKILL_FILE = "SKILL.md"
@@ -78,18 +80,6 @@ class Skill:
         return f"---\n{head}\n---\n\n{self.instructions.strip()}\n"
 
 
-def _known_tools() -> set[str]:
-    from src.llm.specialists import tool_names
-
-    return set(tool_names())
-
-
-def _known_specialists() -> set[str]:
-    from src.llm.specialists import SpecialistStore
-
-    return {s.id for s in SpecialistStore().load_all()}
-
-
 def _strings(value: Any, split: str) -> list[str]:
     """A list in YAML, or one string split on `split` (the format's metadata values are strings)."""
     items = value if isinstance(value, list) else str(value or "").split(split)
@@ -119,9 +109,9 @@ def check(skill: Skill, *, budget: int) -> Skill:
     if estimate_tokens(skill.instructions) > budget:
         raise SkillError(f"the instructions are about {estimate_tokens(skill.instructions)} tokens; the model's "
                          f"context leaves room for {budget} — shorten them")
-    known = _known_tools()
+    known = set(tool_names())
     skill.tools = [t for t in dict.fromkeys(skill.tools) if t in known]
-    skill.specialist = skill.specialist if skill.specialist in _known_specialists() else ""
+    skill.specialist = skill.specialist if skill.specialist in {s.id for s in SpecialistStore().load_all()} else ""
     skill.title, skill.category = skill.title.strip()[:120], skill.category.strip()[:60]
     return skill
 
@@ -245,3 +235,44 @@ def add_from_catalog(session: Session, user: User, name: str, *, team: bool, bud
     if skill is None:
         raise KeyError(f"no skill {name!r} in the catalog")
     return create(session, user, skill, team=team, budget=budget, origin=name)
+
+
+# ── in chat (S2): /name picks the skill, the skill shapes who answers and how ──────────
+
+# a message that starts with /name; a /path that is no skill of the user's stays a normal message
+_SLASH = re.compile(r"\A\s*/([a-z0-9]+(?:-[a-z0-9]+)*)(?=\s|\Z)\s*(.*)\Z", re.S | re.I)
+
+
+def from_message(session: Session, user: User, query: str) -> tuple[Skill | None, str]:
+    """(the skill the message starts with, the message without its /name) — or (None, the message)."""
+    match = _SLASH.match(query)
+    skill = find(session, user, match.group(1)) if match else None
+    if skill is None:
+        return None, query
+    rest = match.group(2).strip()
+    return skill, rest or f"(The user started the “{skill.title}” skill without details yet.)"
+
+
+def for_job(config: Config, user_id: int | None, query: str) -> tuple[Skill | None, str]:
+    """from_message for a job's user (the worker's entry point)."""
+    if user_id is None or not _SLASH.match(query):
+        return None, query
+    with session_scope(config) as session:
+        user = session.get(User, user_id)
+        return from_message(session, user, query) if user else (None, query)
+
+
+def prompt_block(skill: Skill) -> str:
+    """What the model reads while the skill runs."""
+    needs = ("\nIt needs: " + "; ".join(skill.inputs) + ". If the message and the chat do not give one of them, "
+             "call ask_clarification first and ask only for what is missing.") if skill.inputs else ""
+    return (f"## Skill: {skill.title} (/{skill.name})\nThe user picked this skill — follow its steps and its output "
+            f"format for this answer.{needs}\n\n{skill.instructions}")
+
+
+def apply(skill: Skill, specialist: Specialist | None) -> Specialist:
+    """The specialist that answers with the skill: its instructions plus the skill's, and the skill's tools (only
+    those the specialist may use — the IT-only tools stay IT-only). No specialist → the plain assistant with it."""
+    base = specialist or Specialist(id=GENERAL, name="Assistant", covers="", instructions="", tools=tool_names())
+    tools = [t for t in skill.tools if t in base.tools] or base.tools
+    return replace(base, instructions=f"{base.instructions}\n\n{prompt_block(skill)}".strip(), tools=tools)

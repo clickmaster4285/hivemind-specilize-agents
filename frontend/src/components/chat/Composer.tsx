@@ -13,13 +13,14 @@ import {
 
 import { MemoryBanner, MemoryMeter, type MemoryBusy } from "@/components/chat/ChatMemory";
 import { IconSend, IconStop } from "@/components/chat/Icons";
+import SkillMenu, { useSkillMenu } from "@/components/chat/SkillMenu";
 import { useAutoResize } from "@/hooks/useAutoResize";
 import type { SendOptions } from "@/hooks/useChat";
 import type { PendingImagesApi } from "@/hooks/usePendingImages";
 import type { ImageProfile } from "@/lib/api";
 import type { ChatMemory, EditStrength } from "@/lib/chat";
 import { usageLine } from "@/lib/format";
-import type { Health, RunMode, UsageTotals } from "@/lib/types";
+import type { Health, RunMode, Skill, UsageTotals } from "@/lib/types";
 
 type Props = {
   query: string;
@@ -37,6 +38,8 @@ type Props = {
   runMode: RunMode;
   onRunMode: (mode: RunMode) => void;
   specialistLabel: string;
+  /** Skills the user can run by typing /name (BACKLOG L14). */
+  skills: Skill[];
   onOpenSettings: () => void;
   imageProfile: ImageProfile;
   onImageProfile: (profile: ImageProfile) => void;
@@ -114,6 +117,10 @@ export default function Composer(props: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const resize = useAutoResize(inputRef, query);
   const [menuOpen, setMenuOpen] = useState(false);
+  const skillMenu = useSkillMenu(query, props.skills, (skill) => {
+    onQuery(`/${skill.name} `);
+    inputRef.current?.focus();
+  });
 
   const hasImages = images.images.length > 0;
   const hasText = Boolean(query.trim());
@@ -124,6 +131,7 @@ export default function Composer(props: Props) {
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (skillMenu.onKey(event)) return;
     if (event.key === "Escape" && editing) {
       event.preventDefault();
       onCancelEdit();
@@ -214,7 +222,8 @@ export default function Composer(props: Props) {
           e.target.value = "";
         }}
       />
-      <div className="flex items-end gap-[0.15rem] rounded-[1.15rem] border border-[var(--line)] bg-[var(--panel-2)] py-[0.2rem] pl-[0.15rem] pr-[0.25rem]">
+      <div className="relative flex items-end gap-[0.15rem] rounded-[1.15rem] border border-[var(--line)] bg-[var(--panel-2)] py-[0.2rem] pl-[0.15rem] pr-[0.25rem]">
+        <SkillMenu menu={skillMenu} />
         <div className="relative">
           <button
             type="button"
@@ -263,6 +272,16 @@ export default function Composer(props: Props) {
                   onClick={() => {
                     setMenuOpen(false);
                     fileInputRef.current?.click();
+                  }}
+                />
+                <MenuItem
+                  icon="⚡"
+                  label="Use a skill"
+                  disabled={!props.skills.length}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onQuery("/");
+                    inputRef.current?.focus();
                   }}
                 />
                 <div className="my-1 border-t border-[var(--line)]" />

@@ -15,8 +15,11 @@ from sqlalchemy.pool import StaticPool
 from src.core.auth import get_current_user, get_db
 from src.core.db import Base
 from src.core.models_db import User
+from src.jobs import worker
 from src.llm import skills
+from src.llm.assistant import speaker
 from src.llm.skills import Skill, SkillError, catalog, parse_skill
+from src.llm.specialists import Specialist, tool_names
 from web.routers import skills as skills_router
 
 BUDGET = 500
@@ -173,3 +176,45 @@ def test_the_api_refuses_what_a_member_may_not_do(api):
     team = api.post("/api/skills", json={"name": "team-one", "description": "x", "instructions": "y", "team": True})
     assert team.status_code == 403
     assert api.put("/api/skills/999", json={"enabled": False}).status_code == 404
+
+
+# ── in chat (S2) ───────────────────────────────────────────────────────
+
+def test_a_message_starting_with_slash_name_runs_that_skill(db):
+    ana = db.get(User, 2)
+    skills.create(db, ana, _skill("report", inputs=["the week"]), team=False, budget=BUDGET)
+    skill, rest = skills.from_message(db, ana, "  /report   the mail server move\nand backups")
+    assert skill.name == "report" and rest == "the mail server move\nand backups"
+    skill, rest = skills.from_message(db, ana, "/REPORT")
+    assert skill.name == "report" and "without details" in rest           # the skill asks for its inputs
+    for text in ("/etc/hosts is broken", "/reports please", "please /report", "report this"):
+        assert skills.from_message(db, ana, text) == (None, text)          # not a skill of hers: a normal message
+
+
+def test_the_skill_shapes_who_answers(monkeypatch):
+    it = Specialist(id="it", name="IT", covers="servers", instructions="Be exact.",
+                    tools=["diagnose_server", "server_audit", "web_search"])
+    skill = _skill(tools=["server_audit", "network_scan"], inputs=["which server"])
+    applied = skills.apply(skill, it)
+    assert applied.tools == ["server_audit"]               # only tools the specialist may use (network_scan is not)
+    block = applied.prompt_block()
+    assert block.startswith("You answer as MulteAgent's IT specialist") and "Be exact." in block
+    assert "## Skill: Weekly report (/weekly-report)" in block and "It needs: which server" in block
+    assert "ask_clarification" in block
+    plain = skills.apply(_skill(), None)                   # no specialist: the plain assistant, every tool
+    assert plain.prompt_block().startswith("## Skill:") and speaker(plain)["name"] == "Assistant"
+    assert set(plain.tools) == set(tool_names())
+
+
+def test_the_worker_lets_the_skill_pick_the_specialist(monkeypatch):
+    asked = []
+    monkeypatch.setattr(worker, "resolve_specialist", lambda choice, query, **_: (
+        asked.append(choice) or (Specialist(id="it", name="IT", covers="", instructions="", tools=[]), "chosen")))
+    events: list[dict] = []
+    common = {"config": None, "conversation": [], "on_progress": events.append}
+    worker._answerer({"specialist": "development"}, "q", _skill(specialist="it"), **common)
+    worker._answerer({"specialist": "development"}, "q", _skill(), **common)
+    worker._answerer({"specialist": "development"}, "q", None, **common)
+    assert asked == ["it", "development", "development"]   # the skill's specialist wins over the chat bar's
+    assert [e["how"] for e in events if e["type"] == "specialist_chosen"] == ["skill", "chosen", "chosen"]
+    assert [e["title"] for e in events if e["type"] == "skill_chosen"] == ["Weekly report", "Weekly report"]

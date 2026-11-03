@@ -315,9 +315,14 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
       catalog: 17 skills (IT & security 5, Engineering 4, Marketing 5, Writing 2, Operations 1), our own text.
       `src/llm/skills.py`, `web/routers/skills.py`, table `skills`. A skill's instructions may use
       SKILL_CONTEXT_SHARE (20 %) of LLM_NUM_CTX; tools/specialists MulteAgent lacks are dropped on upload
-- [ ] **S2 use in chat:** pick a skill in the chat bar or type `/name`; its instructions join the specialist's
-      prompt for that answer, its specialist is pinned, its tools are offered; missing inputs → one clarify
-      question first
+- [x] **S2 use in chat — done 2026-11-03:** type `/` in the message box (or "+" → Use a skill) → the user's
+      skills, filtered as typed (↑ ↓ Enter/Tab, Esc); the message starts with `/name`. The worker reads it
+      (`skills.for_job`; a `/path` that is no skill of the user's stays a normal message), the skill's specialist
+      answers (else the usual pick), the skill's instructions join its prompt and only the skill's tools that the
+      specialist may use are offered (`skills.apply` — one helper `_answerer` now resolves the specialist for
+      chat, deep and options). Missing inputs → the model calls ask_clarification; the follow-up repeats the
+      typed `/name …` so the skill goes on. Status lines "Skill · …" and "Specialist · set by the skill".
+      Eval cases with `skill:` (4)
 - [ ] **S3 Customize page:** Settings → Skills like claude.ai: Yours (Team / Created by you) and Discover (search,
       categories, "+"), create / edit / upload `SKILL.md` / download, enable/disable
 - [ ] Tests (offline) + assistant eval cases
@@ -330,6 +335,7 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-03 | **L14 S2 skills in chat** | `/name` in the message box runs a skill: its specialist, instructions and tools; missing inputs asked first; `/` menu in the composer + "Use a skill" in "+". 4 eval cases (`skill:` key). 723 tests |
 | 2026-11-03 | **L14 S1 skills store + catalog** | Skills in the open SKILL.md format; Discover = 17 built-in skills in `skills/<name>/SKILL.md`; Yours = team skills (admins) + personal skills (owner only) in table `skills`; `/api/skills` list / catalog / add / create / upload / edit / delete / download. 720 tests |
 | 2026-11-03 | **L15 P6 search market** | SEO searches run in one market: the user's words, else the site's own locale/country domain, else asked once (own country first). Live: "best laptop price" UK → currys/argos, Pakistan → paklap/priceoye; paklap.pk, priceoye.pk → en-PK, currys.co.uk → en-GB, python.org → ask. Menus/header/footer out of page text. 4 eval cases check the `market` argument (`expect:`). 705 tests |
 | 2026-11-02 | **L15 P3-P5 keywords, competitors, projects** | `keyword_research` (SearXNG: ranks ≈, ideas, difficulty estimate, what top pages cover), `compare_sites` (side-by-side audit, what they do better, content gap), `write_content` briefed by the top pages, saved audits with change reports, tracked sites re-audited on a schedule, `seo_projects`. P2 page speed on hold for discussion. 695 tests |

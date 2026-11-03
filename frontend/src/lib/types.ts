@@ -15,6 +15,23 @@ export type Specialist = {
 
 export type SpecialistInput = Omit<Specialist, "id" | "sort_order">;
 
+/** A skill (src/llm/skills.py): a saved instruction pack for one repeatable task, run by typing /name in the chat.
+ * team = everyone sees it (admins manage it); otherwise it is the user's own. */
+export type Skill = {
+  id: number | null;
+  name: string;
+  title: string;
+  description: string;
+  instructions: string;
+  category: string;
+  specialist: string;
+  tools: string[];
+  inputs: string[];
+  team: boolean;
+  origin: string;
+  enabled: boolean;
+};
+
 /** What the agent may change on a server (src/server_vault.py MODES). */
 export type ServerMode = "audit" | "confirm" | "trusted";
 

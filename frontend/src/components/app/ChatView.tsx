@@ -47,6 +47,7 @@ export default function ChatView() {
         runMode={app.runMode}
         onRunMode={app.setRunMode}
         specialistLabel={app.specialists.label}
+        skills={app.skills.usable}
         onOpenSettings={() => router.push("/settings")}
         imageProfile={app.imageProfile}
         onImageProfile={app.setImageProfile}

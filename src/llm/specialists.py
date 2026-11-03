@@ -93,7 +93,9 @@ class Specialist:
         )
 
     def prompt_block(self) -> str:
-        """What the model reads when this specialist answers."""
+        """What the model reads when this specialist answers (the plain assistant with a skill: only the skill)."""
+        if self.id == GENERAL:
+            return self.instructions
         return f"You answer as MulteAgent's {self.name} specialist ({self.covers}).\n{self.instructions}".strip()
 
 
