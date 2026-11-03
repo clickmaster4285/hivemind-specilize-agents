@@ -174,12 +174,21 @@ def yours(session: Session, user: User) -> list[Skill]:
     return sorted((_from_row(r) for r in rows), key=lambda s: (not s.team, s.category, s.title.casefold()))
 
 
+def usable(session: Session, user: User) -> list[Skill]:
+    """What /name can run, one skill per name: the user's own first (it may adapt a team skill), else the team's,
+    else the built-in one — which works without adding it, unless Yours holds a copy (even a switched-off one)."""
+    own = yours(session, user)
+    in_yours = {s.name for s in own}
+    picked: dict[str, Skill] = {}
+    for skill in [*sorted((s for s in own if s.enabled), key=lambda s: s.team),
+                  *(s for s in catalog() if s.name not in in_yours)]:
+        picked.setdefault(skill.name, skill)
+    return list(picked.values())
+
+
 def find(session: Session, user: User, name: str) -> Skill | None:
-    """The skill /name runs: the user's own first (it may adapt a team skill), else the team's; enabled only."""
-    rows = session.scalars(select(SkillRow).where(_visible(user), SkillRow.name == name.strip().lower(),
-                                                  SkillRow.enabled.is_(True))).all()
-    row = min(rows, key=lambda r: r.owner_id is None, default=None)
-    return _from_row(row) if row else None
+    """The skill /name runs (see usable)."""
+    return next((s for s in usable(session, user) if s.name == name.strip().lower()), None)
 
 
 def _row_for_change(session: Session, user: User, skill_id: int) -> SkillRow:

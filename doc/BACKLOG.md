@@ -323,6 +323,10 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
       chat, deep and options). Missing inputs → the model calls ask_clarification; the follow-up repeats the
       typed `/name …` so the skill goes on. Status lines "Skill · …" and "Specialist · set by the skill".
       Eval cases with `skill:` (4)
+- [x] **S2 fix (ISSUES_LOG O15) — done 2026-11-03:** `/` showed nothing until a skill was added to Yours — built-in skills now
+      run straight away (yours first, then the team's, then the built-in one; a copy in Yours, even switched
+      off, replaces the built-in); the menu matches names starting with what is typed, then names/titles
+      containing it; the message feed no longer re-renders on every keystroke
 - [ ] **S3 Customize page:** Settings → Skills like claude.ai: Yours (Team / Created by you) and Discover (search,
       categories, "+"), create / edit / upload `SKILL.md` / download, enable/disable
 - [ ] Tests (offline) + assistant eval cases
@@ -335,6 +339,7 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-03 | **L14 S2 fix: `/` menu + typing lag** | Built-in skills run without adding them (`skills.usable`; `GET /api/skills` → `usable`); `/s` lists names starting with s, then names/titles containing it; the message feed is memoised so typing does not re-render the conversation. 724 tests |
 | 2026-11-03 | **L14 S2 skills in chat** | `/name` in the message box runs a skill: its specialist, instructions and tools; missing inputs asked first; `/` menu in the composer + "Use a skill" in "+". 4 eval cases (`skill:` key). 723 tests |
 | 2026-11-03 | **L14 S1 skills store + catalog** | Skills in the open SKILL.md format; Discover = 17 built-in skills in `skills/<name>/SKILL.md`; Yours = team skills (admins) + personal skills (owner only) in table `skills`; `/api/skills` list / catalog / add / create / upload / edit / delete / download. 720 tests |
 | 2026-11-03 | **L15 P6 search market** | SEO searches run in one market: the user's words, else the site's own locale/country domain, else asked once (own country first). Live: "best laptop price" UK → currys/argos, Pakistan → paklap/priceoye; paklap.pk, priceoye.pk → en-PK, currys.co.uk → en-GB, python.org → ask. Menus/header/footer out of page text. 4 eval cases check the `market` argument (`expect:`). 705 tests |

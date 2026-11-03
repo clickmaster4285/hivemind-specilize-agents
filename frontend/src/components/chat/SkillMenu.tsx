@@ -15,12 +15,14 @@ export function useSkillMenu(query: string, skills: Skill[], onPick: (skill: Ski
   const [index, setIndex] = useState(0);
   const [closedFor, setClosedFor] = useState<string | null>(null);
   const typed = SLASH.exec(query)?.[1]?.toLowerCase();
+  // names starting with what is typed first, then any name or title containing it
+  const starts = (s: Skill) => s.name.startsWith(typed ?? "");
   const matches =
     typed === undefined
       ? []
       : [
-          ...skills.filter((s) => s.name.startsWith(typed)),
-          ...skills.filter((s) => !s.name.startsWith(typed) && s.title.toLowerCase().includes(typed)),
+          ...skills.filter(starts),
+          ...skills.filter((s) => !starts(s) && `${s.name} ${s.title.toLowerCase()}`.includes(typed)),
         ];
   const open = matches.length > 0 && closedFor !== query;
   const active = Math.min(index, matches.length - 1);
@@ -63,7 +65,7 @@ export default function SkillMenu({ menu }: { menu: ReturnType<typeof useSkillMe
       </div>
       {menu.matches.map((skill, i) => (
         <button
-          key={`${skill.team ? "team" : "mine"}-${skill.name}`}
+          key={skill.name}
           type="button"
           role="option"
           aria-selected={i === menu.active}
@@ -78,7 +80,9 @@ export default function SkillMenu({ menu }: { menu: ReturnType<typeof useSkillMe
         >
           <span className="text-[0.85rem] text-[var(--text)]">
             {skill.title} <span className="text-[var(--muted)]">/{skill.name}</span>
-            {skill.team ? <span className="ml-1.5 text-[0.68rem] text-[var(--muted)]">· team</span> : null}
+            <span className="ml-1.5 text-[0.68rem] text-[var(--muted)]">
+              {skill.id === null ? "· built-in" : skill.team ? "· team" : "· yours"}
+            </span>
           </span>
           <span className="line-clamp-1 text-[0.74rem] text-[var(--muted)]">{skill.description}</span>
         </button>

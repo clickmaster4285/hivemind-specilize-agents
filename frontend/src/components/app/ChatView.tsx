@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useLayoutEffect, useMemo, useRef } from "react";
 
-import { useApp } from "@/components/app/AppProvider";
+import { useApp, type AppValue } from "@/components/app/AppProvider";
 import Composer from "@/components/chat/Composer";
 import MessageFeed from "@/components/chat/MessageFeed";
 import { chatMemory } from "@/lib/chat";
@@ -14,22 +15,32 @@ export default function ChatView() {
   const app = useApp();
   const router = useRouter();
 
+  // Every keystroke re-renders the app (the message text lives in it). The feed's actions stay the same
+  // functions and call the latest app, so the memoised feed re-renders only when the conversation changes.
+  const latest = useRef(app);
+  useLayoutEffect(() => {
+    latest.current = app;
+  });
+  const feedActions = useMemo(
+    () => ({
+      onEditSend: (...a: Parameters<AppValue["editAndResend"]>) => latest.current.editAndResend(...a),
+      onRetry: () => void latest.current.retry(),
+      onRegenerate: (reason: string) => void latest.current.regenerate(reason),
+      onConfirm: (...a: Parameters<AppValue["onConfirm"]>) => latest.current.onConfirm(...a),
+      onPickOption: (...a: Parameters<AppValue["pickOption"]>) => latest.current.pickOption(...a),
+      onClarifySubmit: (...a: Parameters<AppValue["submitClarify"]>) => latest.current.submitClarify(...a),
+      onPickSuggestion: (...a: Parameters<AppValue["pickSuggestion"]>) => latest.current.pickSuggestion(...a),
+    }),
+    [],
+  );
+  const feed = app.chat.feed;
+  const historyBudget = app.health.health?.context?.history_budget;
+  const chatUsage = useMemo(() => sumUsage(feed), [feed]);
+  const memory = useMemo(() => chatMemory(feed, historyBudget), [feed, historyBudget]);
+
   return (
     <div className="chat-view">
-     
-
-      <MessageFeed
-        feed={app.chat.feed}
-        running={app.chat.running}
-        activeJobId={app.chat.activeJobId}
-        onEditSend={app.editAndResend}
-        onRetry={() => void app.retry()}
-        onRegenerate={(reason) => void app.regenerate(reason)}
-        onConfirm={app.onConfirm}
-        onPickOption={app.pickOption}
-        onClarifySubmit={app.submitClarify}
-        onPickSuggestion={app.pickSuggestion}
-      />
+      <MessageFeed feed={feed} running={app.chat.running} activeJobId={app.chat.activeJobId} {...feedActions} />
 
       <Composer
         query={app.query}
@@ -54,9 +65,9 @@ export default function ChatView() {
         editStrength={app.editStrength}
         onEditStrength={app.setEditStrength}
         imagePipeline={app.health.health?.image_pipeline}
-        chatUsage={sumUsage(app.chat.feed)}
+        chatUsage={chatUsage}
         chatId={app.history.activeThreadId}
-        memory={chatMemory(app.chat.feed, app.health.health?.context?.history_budget)}
+        memory={memory}
         memoryBusy={app.memoryBusy}
         onContinueChat={() => void app.continueInNewChat()}
         onSaveSummary={() => void app.saveSummary()}

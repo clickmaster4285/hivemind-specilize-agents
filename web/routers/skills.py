@@ -38,7 +38,9 @@ def _saved(db: Session, action) -> dict[str, Any]:
 
 @router.get("")
 def list_yours(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict[str, Any]:
-    return {"skills": [s.to_dict() for s in skills.yours(db, user)], "can_manage_team": user.role == "admin"}
+    """Yours (team + personal), and what the chat's "/" menu offers (usable: also the built-in skills)."""
+    return {"skills": [s.to_dict() for s in skills.yours(db, user)],
+            "usable": [s.to_dict() for s in skills.usable(db, user)], "can_manage_team": user.role == "admin"}
 
 
 @router.get("/catalog")

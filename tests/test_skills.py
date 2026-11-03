@@ -135,6 +135,17 @@ def test_slash_name_finds_my_own_version_first(db):
         skills.create(db, ana, _skill("report"), team=False, budget=BUDGET)
 
 
+def test_built_in_skills_run_without_adding_them(db):
+    admin, ana = db.get(User, 1), db.get(User, 2)
+    first = catalog()[0]
+    assert {s.name for s in skills.usable(db, ana)} == {s.name for s in catalog()}
+    assert skills.find(db, ana, first.name).id is None                    # the built-in one, straight from the file
+    team = skills.add_from_catalog(db, admin, first.name, team=True, budget=2000)
+    assert skills.find(db, ana, first.name).id == team.id                  # a copy in Yours replaces it
+    skills.update(db, admin, team.id, {"enabled": False}, budget=2000)
+    assert skills.find(db, ana, first.name) is None                        # switched off means off, not the built-in
+
+
 def test_adding_from_the_catalog_copies_it(db):
     ana = db.get(User, 2)
     first = catalog()[0]
@@ -167,7 +178,9 @@ def test_the_api_lists_adds_uploads_and_downloads(api):
     download = api.get(f"/api/skills/{uploaded['id']}/download")
     assert download.text.startswith("---\nname: weekly-report")
     assert "weekly-report-SKILL.md" in download.headers["content-disposition"]
-    assert {s["name"] for s in api.get("/api/skills").json()["skills"]} == {name, "weekly-report"}
+    listed = api.get("/api/skills").json()
+    assert {s["name"] for s in listed["skills"]} == {name, "weekly-report"}
+    assert {s["name"] for s in listed["usable"]} == {s.name for s in catalog()} | {"weekly-report"}
 
 
 def test_the_api_refuses_what_a_member_may_not_do(api):

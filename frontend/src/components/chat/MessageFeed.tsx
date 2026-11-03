@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, memo, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import LiveStatus from "@/components/LiveStatus";
 import MarkdownBody from "@/components/MarkdownBody";
@@ -73,7 +73,7 @@ function InlineEdit({ initial, onCancel, onSend }: { initial: string; onCancel: 
 }
 
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
-export default function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
+function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -447,3 +447,6 @@ function MessageRow({
     </article>
   );
 }
+
+/** Memoised: typing in the message box re-renders the page; the conversation re-renders only when it changes. */
+export default memo(MessageFeed);

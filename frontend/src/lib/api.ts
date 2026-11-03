@@ -198,7 +198,8 @@ export async function resetSpecialists(): Promise<Specialist[]> {
 }
 
 /** The team's skills and the user's own (src/llm/skills.py). */
-export async function listSkills(): Promise<{ skills: Skill[]; can_manage_team: boolean }> {
+/** Yours (team + personal) and what /name can run (usable: one per name, built-in skills included). */
+export async function listSkills(): Promise<{ skills: Skill[]; usable: Skill[]; can_manage_team: boolean }> {
   return request("/api/skills");
 }
 
