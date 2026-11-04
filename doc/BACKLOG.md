@@ -333,9 +333,42 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
       (form: title → /name, description, category, who answers, inputs one per line, tools, instructions) and
       Upload SKILL.md. Admins tick "Add for the whole team" to add/upload for the team. Every change reloads
       the `/` menu. `SkillsSection.tsx`, `SkillModal.tsx`, `useSkills` (save / setEnabled / remove / upload / add)
-- [ ] Tests (offline) + assistant eval cases
+- [ ] Tests (offline) + assistant eval cases — left: a unit test for the worker's `clarify_query` wrapper
+      (keeps `/name` in the clarify follow-up)
 - Later: automatic picking from the descriptions (measured with an eval first); skill files beyond SKILL.md
   (scripts, references) are not run — MulteAgent never executes uploaded code
+
+### L16. Security hardening — planned 2026-11-04 (fixes ISSUES_LOG O16)
+
+Threats: a stolen login token, password guessing, request floods, a malicious uploaded file, XSS, clickjacking.
+DDoS proper is stopped at the network (firewall / reverse proxy); the app limits what one client can do.
+
+Decisions (user, 2026-11-04): **HTTPS via a Caddy reverse proxy** in docker-compose (local certificate, trusted
+once per PC) so cookies are `Secure` on the LAN too; **ClamAV in Docker, fail closed** (scanner down → upload
+refused). AES: nothing secret is stored today (passwords bcrypt, refresh tokens hashed, SSH logins never saved),
+and encrypting a token JS cannot read adds nothing — S5 starts when the app first stores a secret.
+
+- [x] **S1 sessions — done 2026-11-04:** 15-minute access token (`JWT_EXPIRE_MINUTES`) + rotating refresh token
+      (`REFRESH_TOKEN_DAYS`, 7), both `HttpOnly` cookies (`ma_access` path `/api`, `ma_refresh` path `/api/auth`),
+      `SameSite=Strict`, `Secure` when the request came over https. Table `refresh_tokens` keeps only SHA-256
+      hashes; one family per sign-in — a spent token shown again (later than REFRESH_REUSE_GRACE, 10 s: two tabs
+      refreshing together) revokes the family. `/api/auth/refresh`, `/api/auth/logout` (revokes; access tokens of
+      a revoked family are refused at once). Disabled users refused on every request. No more CORS: the browser
+      calls `/api` on the page's own origin (Next.js rewrite, proxy timeout 300 s, SSE heartbeat 15 s); writes
+      whose Origin is another site → 403. Startup refuses the dev default or a <32-byte `JWT_SECRET`.
+      Frontend: no token in `localStorage`; `apiFetch` refreshes once on a 401 (one refresh for parallel calls)
+      and repeats the call. `src/core/auth.py`, `web/routers/auth.py`, `tests/test_sessions.py`
+- [ ] **S1b HTTPS:** Caddy reverse proxy (`/api` → API, rest → Next.js) with a local certificate; API and
+      Next.js listen on 127.0.0.1 only, so the LAN reaches them only over https
+- [ ] **S2 abuse limits:** login throttle per account and per IP (back-off, then a short lock), per-user API rate
+      limit, request body cap (CORS already gone — S1)
+- [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with
+      Pillow (drops hidden payloads and metadata, pixel limit against decompression bombs), virus scan (ClamAV)
+      on uploaded files; skill uploads size-capped
+- [ ] **S4 headers + XSS:** CSP, `X-Content-Type-Options: nosniff`, `frame-ancestors 'none'`, `Referrer-Policy`,
+      HSTS over HTTPS; links in answers limited to http(s)/mailto; downloads sent as attachments
+- [ ] **S5 encryption at rest (AES-256-GCM):** for secrets the app stores — decided per item (see questions)
+- [ ] **S6 security log:** failed logins, locks, refresh-token reuse, rejected uploads — visible to admins
 
 ---
 
@@ -343,6 +376,7 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-04 | **L16 S1 cookie sessions** | Login token out of `localStorage`: HttpOnly SameSite=Strict cookies, 15-min access + rotating 7-day refresh (hashed, reuse → sign-in revoked), logout revokes at once, disabled users locked out immediately (was: until the 12-h token ran out), same-origin `/api` (CORS removed, cross-site writes 403), weak `JWT_SECRET` refused. 733 tests |
 | 2026-11-03 | **L14 S3 Settings → Skills** | Yours (Team / Created by you: on/off, edit, download, delete) and Discover (search, categories, view, + Add); create and upload SKILL.md; admins add for the team. Frontend only |
 | 2026-11-03 | **L14 S2 fix: `/` menu + typing lag** | Built-in skills run without adding them (`skills.usable`; `GET /api/skills` → `usable`); `/s` lists names starting with s, then names/titles containing it; the message feed is memoised so typing does not re-render the conversation. 724 tests |
 | 2026-11-03 | **L14 S2 skills in chat** | `/name` in the message box runs a skill: its specialist, instructions and tools; missing inputs asked first; `/` menu in the composer + "Use a skill" in "+". 4 eval cases (`skill:` key). 723 tests |

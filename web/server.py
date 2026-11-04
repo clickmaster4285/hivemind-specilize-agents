@@ -1,8 +1,12 @@
 """FastAPI gateway: assembles the per-domain routers onto one app.
 
 Route handlers live in ``web/routers/*`` and request models in ``web/schemas.py``; this module only
-wires the app together — startup (DB, model sync, worker, schedulers, warm-ups), CORS, the routers,
-and the static frontend. Add a new area of the API as a new router module, not more code here.
+wires the app together — startup (DB, model sync, worker, schedulers, warm-ups), the cross-site write
+check, the routers, and the static frontend. Add a new area of the API as a new router module, not more
+code here.
+
+No CORS: the browser reaches the API through the page's own origin (the Next.js `/api` rewrite, or the
+HTTPS proxy), so other sites' pages cannot read it, and the session cookies stay first-party.
 """
 
 from __future__ import annotations
@@ -11,12 +15,11 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.core.auth import bootstrap_admin
+from src.core.auth import bootstrap_admin, check_secret, same_origin
 from src.core.config import Config
 from src.core.db import init_db
 from src.jobs.worker import start_inprocess_worker
@@ -32,6 +35,7 @@ async def lifespan(_app: FastAPI):
     from src.core.db import session_scope
 
     config = Config.from_env()
+    check_secret(config)
     config.log_dir.mkdir(parents=True, exist_ok=True)
     config.artifacts_dir.mkdir(parents=True, exist_ok=True)
     init_db(config)
@@ -65,13 +69,16 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="MulteAgent API", version="0.4.0", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# methods that change nothing (RFC 9110 §9.2.1); every other method is a write
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.middleware("http")
+async def refuse_cross_site_writes(request: Request, call_next):
+    """CSRF guard on top of SameSite cookies: a write sent by another site's page is refused."""
+    if request.method not in SAFE_METHODS and not same_origin(request):
+        return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
+    return await call_next(request)
 
 # One router per domain (web/routers/*). brain_router carries its own /api/brain prefix.
 for module in (system, auth, users, specialists, skills, servers, models, jobs, history, usage):

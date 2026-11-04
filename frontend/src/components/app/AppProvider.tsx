@@ -75,13 +75,12 @@ function useAppState() {
   );
   const onSignedOut = useCallback(
     (reason: "logout" | "expired") => {
-      if (reason === "logout") {
-        void forgetServers().catch(() => undefined);
-      }
+      const forgotten = reason === "logout" ? forgetServers().catch(() => undefined) : undefined;
       clearSpecialists();
       clearSkills();
       clearJobs();          // resets jobs + metadata + the open-chat/project selection and forgets the user
       setFeed([]);
+      return forgotten;
     },
     [clearSpecialists, clearSkills, clearJobs, setFeed],
   );

@@ -41,6 +41,23 @@ class User(Base):
     jobs: Mapped[list[Job]] = relationship(back_populates="user")
 
 
+class RefreshToken(Base):
+    """One refresh token of a sign-in (BACKLOG L16 S1); only its SHA-256 is kept. A sign-in is a family:
+    each refresh spends the token and issues the next one in the same family. A spent token shown again
+    means someone kept a copy, so the whole family is revoked — and with it every access token of it."""
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    family: Mapped[str] = mapped_column(String(36), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Job(Base):
     __tablename__ = "jobs"
 

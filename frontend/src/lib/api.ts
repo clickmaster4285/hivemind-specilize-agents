@@ -21,69 +21,39 @@ import type {
   UserUpdateInput,
 } from "./types";
 
-const API_PORT = process.env.NEXT_PUBLIC_API_PORT || "8787";
-
-function configuredOrigins(): string[] {
-  const raw =
-    process.env.NEXT_PUBLIC_API_ORIGINS ||
-    process.env.NEXT_PUBLIC_API_ORIGIN ||
-    `http://127.0.0.1:${API_PORT}`;
-  return raw
-    .split(",")
-    .map((s) => s.trim().replace(/\/$/, ""))
-    .filter(Boolean);
-}
-
-/** Resolve API base from env list using the current page hostname (LAN vs localhost). */
-export function getApiOrigin(): string {
-  const origins = configuredOrigins();
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    const match = origins.find((origin) => {
-      try {
-        return new URL(origin).hostname === host;
-      } catch {
-        return false;
-      }
-    });
-    if (match) return match;
-    if (host === "localhost" || host === "127.0.0.1" || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) {
-      const proto = window.location.protocol === "https:" ? "https:" : "http:";
-      return `${proto}//${host}:${API_PORT}`;
-    }
-  }
-  return origins[0] || `http://127.0.0.1:${API_PORT}`;
-}
-
-/** @deprecated use getApiOrigin() — kept for display fallbacks during SSR */
-export const API_ORIGIN = configuredOrigins()[0] || `http://127.0.0.1:${API_PORT}`;
-
-const TOKEN_KEY = "multeagent_token";
-
-export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-/** Sent on window when the API refused the saved login (401): the session is over. */
+/** Sent on window when the session is over (a 401 the refresh could not fix): useAuth shows the login. */
 export const SESSION_EXPIRED_EVENT = "multeagent:session-expired";
 
-export function setToken(token: string | null) {
-  if (typeof window === "undefined") return;
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+// auth calls that answer for themselves: a 401 from them is the answer, not a reason to refresh
+const NO_REFRESH = new Set(["/api/auth/login", "/api/auth/refresh", "/api/auth/logout"]);
+
+let refreshing: Promise<boolean> | null = null;
+
+/** Trade the refresh cookie for new session cookies — one request however many calls got a 401 together. */
+function refreshSession(): Promise<boolean> {
+  refreshing ??= fetch("/api/auth/refresh", { method: "POST" })
+    .then((response) => response.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshing = null;
+    });
+  return refreshing;
 }
 
-function apiUrl(path: string): string {
-  return `${getApiOrigin()}${path.startsWith("/") ? path : `/${path}`}`;
-}
-
-function authHeaders(json = true): HeadersInit {
-  const headers: Record<string, string> = {};
-  if (json) headers["Content-Type"] = "application/json";
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  return headers;
+/**
+ * fetch on the API. Calls go to the page's own origin (the Next.js rewrite or the HTTPS proxy passes /api
+ * on), so the HttpOnly session cookies go with them and page scripts never see a token. A 401 refreshes the
+ * session once and repeats the call; if it is still refused, the session is over.
+ */
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  if (typeof init?.body === "string" && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const send = () => fetch(path, { ...init, headers });
+  let response = await send();
+  if (response.status !== 401 || NO_REFRESH.has(path)) return response;
+  if (await refreshSession()) response = await send();
+  if (response.status === 401) window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+  return response;
 }
 
 async function readError(response: Response): Promise<string> {
@@ -99,7 +69,7 @@ async function readError(response: Response): Promise<string> {
 function networkHint(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   if (/failed to fetch|networkerror|network error|load failed/i.test(msg)) {
-    return `Cannot reach API at ${getApiOrigin()}. Start: python main.py --gui (${msg})`;
+    return `Cannot reach the API. Start: python main.py --gui (${msg})`;
   }
   return msg;
 }
@@ -110,19 +80,8 @@ async function request<T>(path: string, init?: RequestInit, opts?: { timeoutMs?:
   const controller = opts?.timeoutMs ? new AbortController() : null;
   const timer = controller ? window.setTimeout(() => controller.abort(), opts!.timeoutMs) : null;
   try {
-    const response = await fetch(apiUrl(path), {
-      ...init,
-      signal: controller?.signal,
-      headers: { ...authHeaders(!(init?.body instanceof FormData)), ...(init?.headers || {}) },
-    });
-    if (!response.ok) {
-      // Drop stale session so the login screen returns instead of a half-authed UI.
-      if (response.status === 401 && !path.includes("/api/auth/login")) {
-        setToken(null);
-        window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT)); // useAuth shows the login again
-      }
-      throw new Error(await readError(response));
-    }
+    const response = await apiFetch(path, { ...init, signal: controller?.signal });
+    if (!response.ok) throw new Error(await readError(response));
     if (response.status === 204) return undefined as T;
     return response.json();
   } catch (err) {
@@ -136,15 +95,16 @@ async function request<T>(path: string, init?: RequestInit, opts?: { timeoutMs?:
 }
 
 export async function login(username: string, password: string) {
-  const data = await request<{
-    access_token: string;
-    user: AuthUser;
-  }>("/api/auth/login", {
+  const data = await request<{ user: AuthUser }>("/api/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password }),
   });
-  setToken(data.access_token);
   return data.user;
+}
+
+/** Sign out: the server revokes the session and clears its cookies. */
+export async function logout(): Promise<void> {
+  await request("/api/auth/logout", { method: "POST" });
 }
 
 export async function me(): Promise<AuthUser> {
@@ -235,7 +195,7 @@ export async function addCatalogSkill(name: string, team: boolean): Promise<Skil
 
 /** The skill as a SKILL.md file → object URL + file name. */
 export async function downloadSkill(id: number): Promise<{ url: string; filename: string }> {
-  const response = await fetch(apiUrl(`/api/skills/${id}/download`), { headers: authHeaders(false) });
+  const response = await apiFetch(`/api/skills/${id}/download`);
   if (!response.ok) throw new Error(await readError(response));
   return { url: URL.createObjectURL(await response.blob()), filename: attachmentName(response, "SKILL.md") };
 }
@@ -445,10 +405,7 @@ export async function sendFeedback(jobId: string, rating: "up" | "down", note?: 
 }
 
 export async function fetchJobAttachment(jobId: string, filename: string): Promise<string> {
-  const response = await fetch(
-    apiUrl(`/api/jobs/${encodeURIComponent(jobId)}/attachments/${encodeURIComponent(filename)}`),
-    { headers: authHeaders(false) },
-  );
+  const response = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/attachments/${encodeURIComponent(filename)}`);
   if (!response.ok) throw new Error(await readError(response));
   const blob = await response.blob();
   return URL.createObjectURL(blob);
@@ -467,9 +424,8 @@ export async function exportAnswer(
   format: ExportFormat,
   text: string,
 ): Promise<{ url: string; filename: string }> {
-  const response = await fetch(apiUrl(`/api/jobs/${encodeURIComponent(jobId)}/export`), {
+  const response = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/export`, {
     method: "POST",
-    headers: authHeaders(),
     body: JSON.stringify({ format, text }),
   });
   if (!response.ok) throw new Error(await readError(response));
@@ -496,10 +452,7 @@ export async function streamJobEvents(
 ): Promise<void> {
   let response: Response;
   try {
-    response = await fetch(apiUrl(`/api/jobs/${encodeURIComponent(jobId)}/events`), {
-      headers: authHeaders(false),
-      signal,
-    });
+    response = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/events`, { signal });
   } catch (err) {
     throw new Error(networkHint(err));
   }

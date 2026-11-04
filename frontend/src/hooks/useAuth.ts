@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useWindowEvent } from "@/hooks/useWindowEvent";
-import { getToken, login, me, SESSION_EXPIRED_EVENT, setToken } from "@/lib/api";
+import { login, logout, me, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import { errorText } from "@/lib/chat";
 import type { AuthUser } from "@/lib/types";
 
@@ -9,33 +9,30 @@ type AuthEvents = {
   /** After sign-in or a restored session: load the user's data (fresh = just signed in). The user is
    *  passed so per-user state (history pointers, migration) is scoped to the right account. */
   onSignedIn: (fresh: boolean, user: AuthUser) => Promise<void> | void;
-  /** "logout" = the user signed out (the token is still valid during this call); "expired" = a 401 dropped it. */
-  onSignedOut: (reason: "logout" | "expired") => void;
+  /** "logout" = the user signed out (the session ends once the returned promise settles); "expired" = a
+   *  401 the refresh could not fix. */
+  onSignedOut: (reason: "logout" | "expired") => Promise<void> | void;
 };
 
 /**
- * The signed-in user. When any API call is refused with 401 (lib/api.ts sends SESSION_EXPIRED_EVENT),
- * the user is signed out and the login shows again. onSignedIn / onSignedOut must be stable (useCallback).
+ * The signed-in user. When the session is over (lib/api.ts sends SESSION_EXPIRED_EVENT), the user is
+ * signed out and the login shows again. onSignedIn / onSignedOut must be stable (useCallback).
  */
 export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // a saved token: restore the session
+  // the session cookies (unreadable to scripts) may still be valid: ask who is signed in
   useEffect(() => {
-    if (!getToken()) return;
     me()
       .then(async (u) => {
         setUser(u);
         await onSignedIn(false, u);
       })
-      .catch(() => {
-        setToken(null);
-        setUser(null);
-      });
+      .catch(() => setUser(null));
   }, [onSignedIn]);
 
-  // a request was refused (401) and the token is gone: leave the chat and show the login
+  // the session is over: leave the chat and show the login
   useWindowEvent(SESSION_EXPIRED_EVENT, () => {
     if (!user) return;
     setUser(null);
@@ -56,10 +53,11 @@ export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
     [onSignedIn],
   );
 
-  const signOut = useCallback(() => {
-    onSignedOut("logout");
-    setToken(null);
+  const signOut = useCallback(async () => {
+    const pending = onSignedOut("logout");
     setUser(null);
+    await pending;                      // its calls still need the session
+    await logout().catch(() => undefined);
   }, [onSignedOut]);
 
   return { user, error, signIn, signOut };

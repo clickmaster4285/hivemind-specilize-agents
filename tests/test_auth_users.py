@@ -10,7 +10,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request, Response
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
@@ -31,6 +31,13 @@ def session():
         yield s
     finally:
         s.close()
+
+
+def _login(session, username: str, password: str) -> dict:
+    """Call the login route directly (the cookies it sets are tested in test_sessions.py)."""
+    request = Request({"type": "http", "scheme": "http", "server": ("testserver", 80), "path": "/api/auth/login",
+                       "query_string": b"", "headers": []})
+    return login(LoginPayload(username=username, password=password), request, Response(), db=session)
 
 
 @pytest.fixture
@@ -164,9 +171,9 @@ def test_update_rejects_duplicate_email(session, admin_row):
 def test_password_reset_changes_login(session, admin_row):
     quinn = create_user(UserCreatePayload(username="quinn", password="origpass1"), _admin=admin_row, db=session)
     update_user(quinn["id"], UserUpdatePayload(password="newpass12"), admin=admin_row, db=session)
-    assert login(LoginPayload(username="quinn", password="newpass12"), db=session)["user"]["username"] == "quinn"
+    assert _login(session, "quinn", "newpass12")["user"]["username"] == "quinn"
     with pytest.raises(HTTPException):
-        login(LoginPayload(username="quinn", password="origpass1"), db=session)
+        _login(session, "quinn", "origpass1")
 
 
 def test_deactivate_blocks_login_but_keeps_account(session, admin_row):
@@ -174,11 +181,11 @@ def test_deactivate_blocks_login_but_keeps_account(session, admin_row):
     out = deactivate_user(rita["id"], admin=admin_row, db=session)
     assert out["status"] == "disabled"
     with pytest.raises(HTTPException) as exc:
-        login(LoginPayload(username="rita", password="longenough"), db=session)
+        _login(session, "rita", "longenough")
     assert exc.value.status_code == 403
     # re-enabling via update lets them back in
     update_user(rita["id"], UserUpdatePayload(status="active"), admin=admin_row, db=session)
-    assert login(LoginPayload(username="rita", password="longenough"), db=session)["access_token"]
+    assert _login(session, "rita", "longenough")["user"]["username"] == "rita"
 
 
 def test_admin_cannot_lock_themselves_out(session, admin_row):
@@ -201,7 +208,7 @@ def test_list_reports_query_count(session, admin_row):
 
 def test_login_stamps_last_login_at(session, admin_row):
     create_user(UserCreatePayload(username="tom", password="longenough"), _admin=admin_row, db=session)
-    assert login(LoginPayload(username="tom", password="longenough"), db=session)["access_token"]
+    _login(session, "tom", "longenough")
     assert session.scalar(select(User).where(User.username == "tom")).last_login_at is not None
 
 
@@ -212,15 +219,14 @@ def test_login_accepts_username_or_email(session, admin):
         UserCreatePayload(username="ivy", password="longenough", email="Ivy@Example.com"),
         _admin=admin, db=session,
     )
-    by_name = login(LoginPayload(username="ivy", password="longenough"), db=session)
+    by_name = _login(session, "ivy", "longenough")
     assert by_name["user"]["username"] == "ivy"
     # email is accepted too, case-insensitively
-    by_email = login(LoginPayload(username="ivy@example.com", password="longenough"), db=session)
+    by_email = _login(session, "ivy@example.com", "longenough")
     assert by_email["user"]["username"] == "ivy"
-    assert by_email["access_token"]
     # a wrong password is still refused
     with pytest.raises(HTTPException) as exc:
-        login(LoginPayload(username="ivy", password="wrongpass!"), db=session)
+        _login(session, "ivy", "wrongpass!")
     assert exc.value.status_code == 401
 
 

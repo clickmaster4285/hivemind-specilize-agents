@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,6 +35,10 @@ from src.tools.attachments import image_path
 from web.schemas import ConfirmPayload, ExportPayload, JobCreatePayload, SoftDeleteJobsPayload
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+
+# a quiet stream (the model is loading) still sends a comment line this often: proxies close a connection
+# that stays silent — the Next.js rewrite after 30 s
+SSE_HEARTBEAT_SECONDS = 15
 
 
 def _owned_job(db: Session, job_id: str, user: User, *, forbid_status: int = 403) -> Job:
@@ -261,6 +266,7 @@ async def job_events_stream(
         idle_rounds = 0
         sent_live: dict[str, str] = {}      # agent_id → text already streamed
         finished: set[str] = set()          # agents whose final answer was sent: no more live text
+        last_sent = time.monotonic()
         while True:
             # read the live text BEFORE the stored events: text cleared just before a final event
             # then cannot be sent after it
@@ -284,10 +290,15 @@ async def job_events_stream(
                     except json.JSONDecodeError:
                         pass
                 yield f"data: {event_json}\n\n"
-            for agent_id, text in live_now.items():
-                if agent_id not in finished and sent_live.get(agent_id) != text:
-                    sent_live[agent_id] = text
-                    yield f"data: {json.dumps({'type': 'agent_stream', 'agent_id': agent_id, 'text': text})}\n\n"
+            fresh_live = {a: t for a, t in live_now.items() if a not in finished and sent_live.get(a) != t}
+            for agent_id, text in fresh_live.items():
+                sent_live[agent_id] = text
+                yield f"data: {json.dumps({'type': 'agent_stream', 'agent_id': agent_id, 'text': text})}\n\n"
+            if payloads or fresh_live:
+                last_sent = time.monotonic()
+            elif time.monotonic() - last_sent >= SSE_HEARTBEAT_SECONDS:
+                last_sent = time.monotonic()
+                yield ": keep-alive\n\n"
             if status in terminal:
                 # Keep draining until events stop arriving (avoid cutting off last msgs).
                 idle_rounds = idle_rounds + 1 if not payloads else 0

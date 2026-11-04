@@ -2,7 +2,6 @@
 
 import { useState, useSyncExternalStore, type FormEvent } from "react";
 
-import { getApiOrigin } from "@/lib/api";
 import type { Health } from "@/lib/types";
 
 type Props = {
@@ -13,6 +12,8 @@ type Props = {
 };
 
 const noSubscribe = () => () => undefined;
+// the API is reached through the page's own origin (lib/api.ts)
+const apiAddress = () => `${window.location.origin}/api`;
 
 const field =
   "w-full rounded-[0.55rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.55rem] font-[inherit] text-[var(--text)] outline-none";
@@ -24,7 +25,7 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
   const [password, setPassword] = useState("");
   // the API address depends on how the browser reached the page: empty on the server, filled in the
   // browser (rendering it on the server gave a different address → React hydration error)
-  const apiOrigin = useSyncExternalStore(noSubscribe, getApiOrigin, () => "");
+  const apiOrigin = useSyncExternalStore(noSubscribe, apiAddress, () => "");
 
   function submit(event: FormEvent) {
     event.preventDefault();

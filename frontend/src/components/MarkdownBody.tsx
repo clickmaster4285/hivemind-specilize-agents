@@ -6,8 +6,6 @@ import ReactMarkdown from "react-markdown";
 // tables, strikethrough, task lists: without it a | table | shows as raw text
 import remarkGfm from "remark-gfm";
 
-import { getApiOrigin } from "@/lib/api";
-
 import MermaidDiagram from "./MermaidDiagram";
 import NetworkDiagram from "./NetworkDiagram";
 
@@ -16,8 +14,7 @@ import NetworkDiagram from "./NetworkDiagram";
 function isOwnImage(src: string): boolean {
   if (src.startsWith("/") && !src.startsWith("//")) return true;
   try {
-    const origin = new URL(src).origin;
-    return origin === window.location.origin || origin === new URL(getApiOrigin()).origin;
+    return new URL(src).origin === window.location.origin;     // the API is served from the page's origin
   } catch {
     return false;
   }
