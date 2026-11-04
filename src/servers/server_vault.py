@@ -1,6 +1,6 @@
 """Server logins for the session — kept in this process's memory only (doc/SECURITY_TOOLS_DECISION.md, option B).
 
-The user types a server's login in the app (Settings → Servers), never in the chat. It lives here:
+The user types a server's login in the app (Settings → Devices), never in the chat. It lives here:
   - never written to disk, the database, a log, or a job; never sent to the language model
   - one store per user: an admin sees and uses only the servers they added
   - gone on logout, when the API restarts, or SESSION_HOURS after it was added

@@ -280,7 +280,7 @@ def run_nvr_cameras(
     user_id: int | None = None,
     **_: object,
 ) -> tuple[str, list[str], float]:
-    """'list the cameras on the NVR' → the recorder's login from Settings → Servers → its camera table + .xlsx.
+    """'list the cameras on the NVR' → the recorder's login from Settings → Devices → its camera table + .xlsx.
     No model: the table is the recorder's own answer."""
     from src.servers import server_vault
     from src.tools.artifacts import artifact_event, write_bytes
@@ -297,7 +297,7 @@ def run_nvr_cameras(
         named = nvr or next((r.host for r in recorders if r.host in query), None)
         login = server_vault.find(user_id, named, kind="nvr") if user_id is not None else None
         if login is None and not recorders:
-            output = ("No recorder login for this session yet. Add the NVR in **Settings → Servers** (type: NVR, "
+            output = ("No recorder login for this session yet. Add the NVR in **Settings → Devices** (type: NVR, "
                       "its address, user and password) — it stays in memory for this session only, never in the chat.")
         elif login is None:
             names = ", ".join(f"{r.label} ({r.host})" for r in recorders)

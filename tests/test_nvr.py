@@ -174,4 +174,4 @@ def test_the_chat_job_answers_with_the_camera_table_and_an_xlsx(vault, monkeypat
 
 def test_without_a_recorder_login_the_chat_says_where_to_add_it(vault, monkeypatch, tmp_path):
     output, errors, _ = _job(monkeypatch, tmp_path)
-    assert "Settings → Servers" in output and not errors
+    assert "Settings → Devices" in output and not errors

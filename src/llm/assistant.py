@@ -88,21 +88,21 @@ TOOLS: tuple[Tool, ...] = (
          {"target": "an IP (192.168.1.10), a network (192.168.1.0/24), 'this pc', or empty = the whole local network"},
          (), lambda c: c.security_scan_enabled),
     Tool("server_audit", "server_audit",
-         "Log in to one of the user's Linux servers (added this session in Settings → Servers) and audit it "
+         "Log in to one of the user's Linux servers (added this session in Settings → Devices) and audit it "
          "read-only: ufw / iptables firewall, open ports with programs, SSH settings (root and password login), "
          "missing security updates, failed SSH logins and fail2ban. Use for 'audit my server', 'check ufw on "
          "web01', 'is my Linux server hardened'.",
          {"server": "the server's name or IP as the user added it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled),
     Tool("nvr_cameras", "nvr_cameras",
-         "Log in to a camera recorder (NVR/DVR, Hikvision or Dahua) added this session in Settings → Servers and "
+         "Log in to a camera recorder (NVR/DVR, Hikvision or Dahua) added this session in Settings → Devices and "
          "list ALL its cameras as a table: channel, camera name, IP address, model, online/offline. Read-only. "
          "Use for 'tell me all the cameras on the NVR', 'which cameras are offline', 'access the NVR at "
          "192.168.1.64 and list the cameras'. Never tell the user to open the NVR's web page — call this.",
          {"nvr": "the recorder's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled),
     Tool("diagnose_server", "server_diagnose",
-         "Log in to one of the user's Linux servers (Settings → Servers) and INVESTIGATE a problem read-only: "
+         "Log in to one of the user's Linux servers (Settings → Devices) and INVESTIGATE a problem read-only: "
          "the agent runs its own read-only commands (service status, logs, disk, config, processes), reads the "
          "output and keeps going until it can explain the issue, then reports the cause and the fix. Use for "
          "'log in to web01 and check why nginx is down', 'why is the server slow', 'is the disk full on db01'. "
@@ -110,7 +110,7 @@ TOOLS: tuple[Tool, ...] = (
          {"server": "the server's name or IP as the user added it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled),
     Tool("operate_server", "server_operate",
-         "Log in to one of the user's Linux servers (Settings → Servers) and DO WORK that may change it: "
+         "Log in to one of the user's Linux servers (Settings → Devices) and DO WORK that may change it: "
          "run a command or script, CREATE or edit files and folders, WRITE content into a file on the server, "
          "restart or install a service, edit config, apply a fix. Each changing command is gated by the server's "
          "mode (read-only, ask-first, or trusted) — truly destructive commands are always blocked, and every "

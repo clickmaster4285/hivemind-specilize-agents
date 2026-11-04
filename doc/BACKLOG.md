@@ -393,6 +393,23 @@ Read-only requests to the recorder's own API — never the web pages, never a se
       the user's Hikvision NVR (192.168.190.248)** and the assistant eval run
 - [ ] **N4 ONVIF:** profiles/video sources for other brands (WS-UsernameToken digest)
 
+### L19. Devices — routers, switches and more, read-only — in progress 2026-11-04 (fixes ISSUES_LOG O19)
+
+Settings → Servers becomes **Settings → Devices**: servers, camera recorders, routers / firewalls, switches.
+User's decisions (2026-11-04): **read-only first** (changes later, confirmed, like servers); brands **MikroTik,
+Cisco, TP-Link / D-Link / Netgear**.
+
+- [x] **D1 Devices section — done 2026-11-04:** the tab, heading and every "Settings → Servers" in replies, tool
+      descriptions and prompts (20 places) say Devices; internal names (`/api/servers`, `server_vault`) stay
+- [ ] **D2 network device reader:** read-only, a fixed command set per platform kept as data — MikroTik RouterOS
+      (SSH `/system resource print`, `/interface print`, `/ip dhcp-server lease print`, `/ip arp print`, `/log`),
+      Cisco IOS (`terminal length 0`, `show version`, `show ip interface brief`, `show interfaces status`,
+      `show mac address-table`, `show arp`, `show logging`); the platform found from the device's own answer.
+      TP-Link / D-Link / Netgear: their CLIs differ by model, so **SNMP read** (sysDescr, IF-MIB ports and status,
+      BRIDGE-MIB MAC table) is the common path
+- [ ] **D3 tool:** `network_device` in chat (status, ports, who is connected, logs) + .xlsx; eval cases
+- Later: config backup, then confirmed changes
+
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
 
 To decide with the user: (a) **remote desktop in the browser**, which a person operates — Apache Guacamole

@@ -22,7 +22,7 @@ const rowCard = "flex items-center justify-between gap-3 rounded-lg border borde
 
 type TabId = "users" | "servers" | "usage" | "models" | "agents" | "skills";
 
-/** The Settings content, organised into tabs: Users and Servers (admins only), Usage, Models, Agents, Skills.
+/** The Settings content, organised into tabs: Users and Devices (admins only), Usage, Models, Agents, Skills.
  *  One section shows at a time; the shell provides the navbar + sidebar. */
 export default function SettingsBody({
   user,
@@ -41,12 +41,12 @@ export default function SettingsBody({
   // undefined = modal closed, null = new specialist
   const [editing, setEditing] = useState<Specialist | null | undefined>(undefined);
 
-  // Admins get Users + Servers; everyone gets Models + Agents. The first visible tab is the default.
+  // Admins get Users + Devices; everyone gets Models + Agents. The first visible tab is the default.
   const tabs: { id: TabId; label: string }[] = [
     ...(isAdmin
       ? [
           { id: "users" as const, label: "Users" },
-          { id: "servers" as const, label: "Servers" },
+          { id: "servers" as const, label: "Devices" },
         ]
       : []),
     { id: "usage", label: "Usage" },

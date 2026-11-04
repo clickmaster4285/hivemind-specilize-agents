@@ -37,7 +37,7 @@ const modeAccent: Record<ServerMode, string> = {
   trusted: "border-l-[var(--danger)]",
 };
 
-/** Settings → Servers: Linux logins kept in the API's memory for this session only (admins). */
+/** Settings → Devices: Linux logins kept in the API's memory for this session only (admins). */
 export default function ServersSection({ servers }: { servers: ServersApi }) {
   const [form, setForm] = useState<ServerLoginInput>(emptyServer);
   const [auth, setAuth] = useState<"password" | "key">("password");
@@ -72,11 +72,12 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
 
   return (
     <>
-      <h4 className="text-base font-semibold [font-family:var(--font-display)]">Servers and recorders (this session)</h4>
+      <h4 className="text-base font-semibold [font-family:var(--font-display)]">Devices (this session)</h4>
       <p className="text-xs leading-relaxed text-[var(--muted)]">
-        Linux servers the IT specialist can work on, and camera recorders (NVR/DVR) whose cameras it can list. The
-        login stays in the API&rsquo;s memory only — never saved, never in the chat — and is forgotten at logout,
-        restart or after 8 hours. For a server, the mode sets what the agent may do: <strong>Read-only</strong>{" "}
+        Devices the IT specialist can log in to: servers it can work on, and camera recorders (NVR/DVR) whose
+        cameras it can list. Routers and switches come next. The login stays in the API&rsquo;s memory only — never
+        saved, never in the chat — and is forgotten at logout, restart or after 8 hours. For a server, the mode sets
+        what the agent may do: <strong>Read-only</strong>{" "}
         (investigate only), <strong>ask me first</strong> (each change needs your click), or{" "}
         <strong>trusted</strong> (changes run automatically; the worst are always blocked). Recorders are always
         read-only.
@@ -121,7 +122,7 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-[var(--muted)]">No servers added this session.</p>
+        <p className="text-xs text-[var(--muted)]">No devices added this session.</p>
       )}
 
       {/* Add a login */}

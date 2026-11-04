@@ -139,7 +139,7 @@ def test_wired_for_the_it_specialist_credential_gated_not_admin_only():
 def test_no_server_added_yet_points_to_settings():
     out, errors, _ = so.run_server_diagnose("log in to web01 and check disk", job_id="j",
                                             config=replace(Config.from_env(), security_scan_enabled=True), user_id=1)
-    assert "Settings → Servers" in out and errors == []
+    assert "Settings → Devices" in out and errors == []
 
 
 # ── operate: deny-list, trust gate, confirm, audit log ─────────────────────

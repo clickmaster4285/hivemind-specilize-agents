@@ -1,6 +1,6 @@
 """server_audit — read-only security audit of a Linux server over SSH (doc/SECURITY_TOOLS_DECISION.md, option B).
 
-The login comes from the session store (src/server_vault.py) — typed in Settings → Servers, never in
+The login comes from the session store (src/server_vault.py) — typed in Settings → Devices, never in
 the chat, never on disk. Close to the machine: the tool logs in and runs a FIXED list of read-only
 commands (below — no text from the user or the model ever becomes part of a command), then applies
 fixed rules to what they print:
@@ -214,7 +214,7 @@ def _test_login(login: ServerLogin) -> dict[str, Any]:
 
 
 def test_login(login: ServerLogin) -> dict[str, Any]:
-    """Settings → Servers → Add: log in once, learn the host key and what the account may read.
+    """Settings → Devices → Add: log in once, learn the host key and what the account may read.
 
     A hard wall-clock cap so the request can never hang: paramiko's own timeouts bound each phase, but
     a stuck key exchange or a server that stalls auth could still block — if that happens, fail cleanly
@@ -611,7 +611,7 @@ def run_server_audit(
         servers = server_vault.list_servers(user_id) if user_id is not None else []
         login = server_vault.find(user_id, server or _server_in(query, servers)) if user_id is not None else None
         if login is None and not servers:
-            output = ("No server login for this session yet. Add the server in **Settings → Servers** (address, user, "
+            output = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
                       "password or key) — it stays in memory for this session only, never in the chat.")
         elif login is None:
             names = ", ".join(f"{s.label} ({s.host})" for s in servers)

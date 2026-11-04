@@ -201,7 +201,7 @@ def test_a_hardened_server_has_no_findings():
 # ── the chat job ─────────────────────────────────────────────────────────
 def test_no_server_added_yet_says_where_to_add_it():
     out, errors, _ = la.run_server_audit("audit my server", job_id="j", config=CFG, user_id=1)
-    assert "Settings → Servers" in out and errors == []
+    assert "Settings → Devices" in out and errors == []
 
 
 def test_login_failure_message_never_contains_the_password(monkeypatch):

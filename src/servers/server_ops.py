@@ -447,7 +447,7 @@ def run_server_diagnose(
         servers = server_vault.list_servers(user_id) if user_id is not None else []
         login = server_vault.find(user_id, server or _server_in(query, servers)) if user_id is not None else None
         if login is None and not servers:
-            output = ("No server login for this session yet. Add the server in **Settings → Servers** (address, user, "
+            output = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
                       "password or key) — it stays in memory for this session only, never in the chat.")
         elif login is None:
             output = f"Which server? Added this session: {', '.join(f'{s.label} ({s.host})' for s in servers)}."
@@ -599,7 +599,7 @@ def _handle_change(session, command, login, confirm, audit, result) -> tuple[str
         return (f"REFUSED: this command {deny}; it is blocked for safety and will not run. Do not retry it.", None)
     if login.mode == "audit":
         return ("This server is read-only (audit mode). I cannot change it. Describe the change for the user "
-                "to run, or ask them to switch this server to 'confirm' in Settings → Servers.", None)
+                "to run, or ask them to switch this server to 'confirm' in Settings → Devices.", None)
     if login.mode == "trusted":
         run = session.execute(command)
         audit(command, "auto", run)
@@ -658,7 +658,7 @@ def run_server_operate(
         servers = server_vault.list_servers(user_id) if user_id is not None else []
         login = server_vault.find(user_id, server or _server_in(query, servers)) if user_id is not None else None
         if login is None and not servers:
-            output = ("No server login for this session yet. Add the server in **Settings → Servers** (address, user, "
+            output = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
                       "password or key, and its mode) — it stays in memory for this session only, never in the chat.")
         elif login is None:
             output = f"Which server? Added this session: {', '.join(f'{s.label} ({s.host})' for s in servers)}."
