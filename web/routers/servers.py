@@ -1,5 +1,6 @@
 """Server logins for the session (src/servers/server_vault.py): kept in this process's memory only —
-never on disk, in the database, a log or a job. Admins only; each admin sees only the servers they added."""
+never on disk, in the database, a log or a job. Every signed-in user may add devices; each user sees and
+uses only the ones they added. Only admins may let the agent change a server without asking (trusted)."""
 
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.core.auth import get_current_user, require_admin
+from src.core.auth import get_current_user
 from src.core.models_db import User
 from web.schemas import ServerLoginPayload, ServerModePayload
 
@@ -16,9 +17,17 @@ logger = logging.getLogger("multeagent.web")
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
 
+# changes run without the user's click: an admin's decision, not every user's
+ADMIN_ONLY_MODES = frozenset({"trusted"})
+
+
+def _check_mode(user: User, mode: str) -> None:
+    if mode in ADMIN_ONLY_MODES and user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an admin can let the agent change a server without asking")
+
 
 @router.get("")
-def list_servers(user: User = Depends(require_admin)) -> list[dict[str, Any]]:
+def list_servers(user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
     from src.servers import server_vault
 
     return [s.public() for s in server_vault.list_servers(user.id, kind=None)]
@@ -40,12 +49,13 @@ def _add_recorder(payload: ServerLoginPayload, user: User) -> dict[str, Any]:
 
 
 @router.post("")
-def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin)) -> dict[str, Any]:
+def add_server(payload: ServerLoginPayload, user: User = Depends(get_current_user)) -> dict[str, Any]:
     """Log in once (learn the server's host key and access level), then keep the login for the session."""
     from src.servers import linux_audit, server_vault
 
     if payload.kind == "nvr":
         return _add_recorder(payload, user)
+    _check_mode(user, payload.mode)
     try:
         server_vault.check_host(payload.host)
         trial = server_vault.ServerLogin(id="trial", label=payload.label or payload.host, host=payload.host.strip(),
@@ -66,8 +76,9 @@ def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin))
 
 
 @router.put("/{server_id}/mode")
-def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Depends(require_admin)) -> dict[str, Any]:
+def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Depends(get_current_user)) -> dict[str, Any]:
     """Change a server's trust mode (audit / confirm / trusted)."""
+    _check_mode(user, payload.mode)
     from src.servers import server_vault
 
     try:
@@ -77,7 +88,7 @@ def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Dep
 
 
 @router.delete("/{server_id}")
-def remove_server(server_id: str, user: User = Depends(require_admin)) -> dict[str, str]:
+def remove_server(server_id: str, user: User = Depends(get_current_user)) -> dict[str, str]:
     from src.servers import server_vault
 
     if not server_vault.remove(user.id, server_id):

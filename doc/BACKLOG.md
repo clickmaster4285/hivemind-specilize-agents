@@ -389,8 +389,9 @@ Read-only requests to the recorder's own API — never the web pages, never a se
       password; adding it reads the camera list once (the test login). `server_vault` logins have a `kind`
       (ssh | nvr) — the SSH tools only ever see ssh ones; recorders must be on a private address (`check_private`)
 - [x] **N3 tool — built 2026-11-04:** `nvr_cameras` (IT specialist, admins via the login), recorder summary +
-      table (channel, camera, IP, model, protocol, online/offline) + .xlsx; 3 eval cases. **Left: live check on
-      the user's Hikvision NVR (192.168.190.248)** and the assistant eval run
+      table (channel, camera, IP, model, protocol, online/offline) + .xlsx; 3 eval cases. **Live 2026-11-04:**
+      DS-7732NI-M4 (firmware V5.04.065) at 192.168.190.248 → 27 cameras with names, IPs, models, online, 0.7 s.
+      Left: the assistant eval run (user)
 - [ ] **N4 ONVIF:** profiles/video sources for other brands (WS-UsernameToken digest)
 
 ### L19. Devices — routers, switches and more, read-only — in progress 2026-11-04 (fixes ISSUES_LOG O19)
@@ -401,6 +402,9 @@ Cisco, TP-Link / D-Link / Netgear**.
 
 - [x] **D1 Devices section — done 2026-11-04:** the tab, heading and every "Settings → Servers" in replies, tool
       descriptions and prompts (20 places) say Devices; internal names (`/api/servers`, `server_vault`) stay
+- [x] **D1b everyone — done 2026-11-04:** the Devices tab for every user, not only admins (user's request) —
+      each user still sees and uses only the devices they added; **trusted** mode (changes without a click) stays
+      admin-only (`ADMIN_ONLY_MODES` in `web/routers/servers.py`: 403 for a member, option hidden in the form)
 - [ ] **D2 network device reader:** read-only, a fixed command set per platform kept as data — MikroTik RouterOS
       (SSH `/system resource print`, `/interface print`, `/ip dhcp-server lease print`, `/ip arp print`, `/log`),
       Cisco IOS (`terminal length 0`, `show version`, `show ip interface brief`, `show interfaces status`,

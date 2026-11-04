@@ -36,19 +36,15 @@ export default function SettingsBody({
   skills: SkillsApi;
 }) {
   const isAdmin = user.role === "admin";
-  const servers = useServers(isAdmin);
+  const servers = useServers(true);
   const users = useUsers(isAdmin);
   // undefined = modal closed, null = new specialist
   const [editing, setEditing] = useState<Specialist | null | undefined>(undefined);
 
-  // Admins get Users + Devices; everyone gets Models + Agents. The first visible tab is the default.
+  // Admins get Users; everyone gets Devices (their own), Models, Agents. The first visible tab is the default.
   const tabs: { id: TabId; label: string }[] = [
-    ...(isAdmin
-      ? [
-          { id: "users" as const, label: "Users" },
-          { id: "servers" as const, label: "Devices" },
-        ]
-      : []),
+    ...(isAdmin ? [{ id: "users" as const, label: "Users" }] : []),
+    { id: "servers", label: "Devices" },
     { id: "usage", label: "Usage" },
     { id: "models", label: "Models" },
     { id: "agents", label: "Agents" },
@@ -86,10 +82,10 @@ export default function SettingsBody({
         </section>
       ) : null}
 
-      {/* Servers (admin) */}
-      {tab === "servers" && isAdmin ? (
+      {/* Devices (everyone: the ones they added) */}
+      {tab === "servers" ? (
         <section className={panel}>
-          <ServersSection servers={servers} />
+          <ServersSection servers={servers} isAdmin={isAdmin} />
         </section>
       ) : null}
 

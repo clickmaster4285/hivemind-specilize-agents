@@ -4,9 +4,9 @@ import { addServer, forgetServers, listServers, removeServer, setServerMode } fr
 import type { ServerInfo, ServerLoginInput, ServerMode } from "@/lib/types";
 
 /**
- * Linux server logins kept in the API's memory for this session only (src/server_vault.py).
- * This hook never holds a password: the API returns only label, address, user and host key.
- * `active` = load the list (Settings is open and the user is an admin).
+ * The user's device logins (servers, recorders) kept in the API's memory for this session only
+ * (src/servers/server_vault.py). This hook never holds a password: the API returns only label, address, user
+ * and host key. `active` = load the list (Settings is open).
  */
 export function useServers(active: boolean) {
   const [servers, setServers] = useState<ServerInfo[]>([]);

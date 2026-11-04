@@ -38,7 +38,7 @@ const modeAccent: Record<ServerMode, string> = {
 };
 
 /** Settings → Devices: Linux logins kept in the API's memory for this session only (admins). */
-export default function ServersSection({ servers }: { servers: ServersApi }) {
+export default function ServersSection({ servers, isAdmin }: { servers: ServersApi; isAdmin: boolean }) {
   const [form, setForm] = useState<ServerLoginInput>(emptyServer);
   const [auth, setAuth] = useState<"password" | "key">("password");
   const [busy, setBusy] = useState(false);
@@ -79,8 +79,8 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
         saved, never in the chat — and is forgotten at logout, restart or after 8 hours. For a server, the mode sets
         what the agent may do: <strong>Read-only</strong>{" "}
         (investigate only), <strong>ask me first</strong> (each change needs your click), or{" "}
-        <strong>trusted</strong> (changes run automatically; the worst are always blocked). Recorders are always
-        read-only.
+        <strong>trusted</strong> (changes run automatically; the worst are always blocked — admins only). Each person
+        sees only the devices they added. Recorders are always read-only.
       </p>
 
       {/* Existing logins */}
@@ -114,7 +114,7 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
                 >
                   <option value="audit">{MODE_LABEL.audit}</option>
                   <option value="confirm">{MODE_LABEL.confirm}</option>
-                  <option value="trusted">{MODE_LABEL.trusted}</option>
+                  {isAdmin ? <option value="trusted">{MODE_LABEL.trusted}</option> : null}
                 </select>
               </label>
               )}
@@ -203,7 +203,7 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
             <select className={field} value={form.mode} onChange={(e) => set({ mode: e.target.value as ServerMode })}>
               <option value="audit">{MODE_LABEL.audit}</option>
               <option value="confirm">{MODE_LABEL.confirm}</option>
-              <option value="trusted">{MODE_LABEL.trusted}</option>
+              {isAdmin ? <option value="trusted">{MODE_LABEL.trusted}</option> : null}
             </select>
           </label>
         )}

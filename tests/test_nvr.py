@@ -175,3 +175,28 @@ def test_the_chat_job_answers_with_the_camera_table_and_an_xlsx(vault, monkeypat
 def test_without_a_recorder_login_the_chat_says_where_to_add_it(vault, monkeypatch, tmp_path):
     output, errors, _ = _job(monkeypatch, tmp_path)
     assert "Settings → Devices" in output and not errors
+
+
+# ── who may use Settings → Devices (L19 D1b) ───────────────────────────
+
+def _devices_api(role: str):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from src.core.auth import get_current_user
+    from src.core.models_db import User
+    from web.routers import servers
+
+    app = FastAPI()
+    app.include_router(servers.router)
+    app.dependency_overrides[get_current_user] = lambda: User(id=USER, username="ana", password_hash="x", role=role)
+    return TestClient(app)
+
+
+def test_every_user_has_devices_but_only_admins_may_trust_the_agent(vault):
+    member, admin = _devices_api("member"), _devices_api("admin")
+    assert member.get("/api/servers").status_code == 200
+    trusted = {"host": "192.168.1.20", "username": "root", "password": "x", "mode": "trusted"}
+    assert member.post("/api/servers", json=trusted).status_code == 403
+    assert member.put("/api/servers/abc/mode", json={"mode": "trusted"}).status_code == 403
+    assert admin.put("/api/servers/abc/mode", json={"mode": "trusted"}).status_code == 400    # allowed; no such server
