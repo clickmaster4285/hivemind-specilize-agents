@@ -103,6 +103,7 @@ class ServerLoginPayload(BaseModel):
     private_key: str | None = None
     key_passphrase: str | None = None
     mode: str = "audit"            # audit | confirm | trusted (server_vault.MODES)
+    kind: Literal["ssh", "nvr"] = "ssh"    # server_vault.KINDS: an SSH server, or a camera recorder (read-only)
 
 
 class ServerModePayload(BaseModel):

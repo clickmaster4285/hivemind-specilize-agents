@@ -385,10 +385,12 @@ Read-only requests to the recorder's own API — never the web pages, never a se
       + `/status`) and Dahua HTTP API (`magicBox`, `ChannelTitle`, `LogicDeviceManager`), HTTP Digest login;
       which API a device speaks is found by asking it (the one that answers with a login request), not by a
       brand list. Parsers tested offline on sample replies
-- [ ] **N2 login:** the NVR login added in Settings → Servers, kept in memory only like SSH logins
-      (`server_vault`: never on disk, in the database, a log, a job or the model); admins only, private addresses
-- [ ] **N3 tool:** `nvr_cameras` in the assistant (IT specialist), table + .xlsx, eval case; live check on the
-      user's Hikvision NVR (192.168.190.248)
+- [x] **N2 login — done 2026-11-04:** Settings → Servers → Type "Camera recorder": address, port 80, user,
+      password; adding it reads the camera list once (the test login). `server_vault` logins have a `kind`
+      (ssh | nvr) — the SSH tools only ever see ssh ones; recorders must be on a private address (`check_private`)
+- [x] **N3 tool — built 2026-11-04:** `nvr_cameras` (IT specialist, admins via the login), recorder summary +
+      table (channel, camera, IP, model, protocol, online/offline) + .xlsx; 3 eval cases. **Left: live check on
+      the user's Hikvision NVR (192.168.190.248)** and the assistant eval run
 - [ ] **N4 ONVIF:** profiles/video sources for other brands (WS-UsernameToken digest)
 
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
@@ -404,6 +406,7 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-04 | **L17 NVR camera list (N1–N3)** | "Tell me all the cameras on the NVR" → `nvr_cameras`: Hikvision ISAPI / Dahua HTTP API found by asking the device, read-only, one login attempt, defusedxml; login in Settings → Servers (type Camera recorder, memory only, private addresses); table + .xlsx. 744 tests. Live check on 192.168.190.248 pending |
 | 2026-11-04 | **L16 S1 cookie sessions** | Login token out of `localStorage`: HttpOnly SameSite=Strict cookies, 15-min access + rotating 7-day refresh (hashed, reuse → sign-in revoked), logout revokes at once, disabled users locked out immediately (was: until the 12-h token ran out), same-origin `/api` (CORS removed, cross-site writes 403), weak `JWT_SECRET` refused. 733 tests |
 | 2026-11-03 | **L14 S3 Settings → Skills** | Yours (Team / Created by you: on/off, edit, download, delete) and Discover (search, categories, view, + Add); create and upload SKILL.md; admins add for the team. Frontend only |
 | 2026-11-03 | **L14 S2 fix: `/` menu + typing lag** | Built-in skills run without adding them (`skills.usable`; `GET /api/skills` → `usable`); `/s` lists names starting with s, then names/titles containing it; the message feed is memoised so typing does not re-render the conversation. 724 tests |

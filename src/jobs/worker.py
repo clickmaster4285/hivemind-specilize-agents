@@ -19,6 +19,7 @@ from src.servers.security_scan import run_security_check
 from src.servers.linux_audit import run_server_audit
 from src.servers.server_ops import run_server_diagnose, run_server_operate
 from src.servers.host_check import run_host_check
+from src.servers.nvr import run_nvr_cameras
 from src.llm.assistant import decide, speaker
 from src.llm.skills import Skill
 from src.llm.skills import apply as apply_skill
@@ -48,6 +49,7 @@ _stop = threading.Event()
 DIRECT_TOOLS = {"network_scan": run_network_scan, "security_check": run_security_check,
                 "server_audit": run_server_audit, "server_diagnose": run_server_diagnose,
                 "server_operate": run_server_operate, "host_check": run_host_check,
+                "nvr_cameras": run_nvr_cameras,
                 "weather": run_weather, "diagram": run_diagram,
                 "site_audit": run_site_audit, "content_write": run_content_writer,
                 "keyword_research": run_keyword_research, "compare_sites": run_compare_sites,

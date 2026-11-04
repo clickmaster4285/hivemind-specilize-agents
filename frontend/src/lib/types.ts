@@ -56,10 +56,15 @@ export type ServerInfo = {
   expires_at: number;
   os?: string;
   os_family?: "linux" | "windows";
+  kind: ServerKind;
   access?: string;
 };
 
+/** ssh = a server the agent logs in to; nvr = a camera recorder, read-only (server_vault.KINDS) */
+export type ServerKind = "ssh" | "nvr";
+
 export type ServerLoginInput = {
+  kind: ServerKind;
   label: string;
   host: string;
   port: number;

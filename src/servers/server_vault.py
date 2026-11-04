@@ -30,6 +30,9 @@ MAX_SERVERS_PER_USER = 50
 #   confirm = changes allowed, but each one needs the user's click first
 #   trusted = changes run without a click (destructive ones still blocked) — for a lab server
 MODES = ("audit", "confirm", "trusted")
+# what a login is for: ssh = a server the agent logs in to; nvr = a camera recorder read over its own API
+# (src/servers/nvr.py, read-only). The SSH tools only ever see ssh logins.
+KINDS = ("ssh", "nvr")
 
 
 class VaultError(ValueError):
@@ -50,6 +53,7 @@ class ServerLogin:
     mode: str = "audit"                # audit | confirm | trusted — what the agent may change (MODES)
     os: str = ""                       # pretty OS name learned at login ("Ubuntu 24.04", "Windows Server 2022")
     os_family: str = "linux"           # linux | windows — picks the command classifier the agent uses
+    kind: str = "ssh"                  # KINDS
     added_at: float = field(default_factory=time.time)
 
     @property
@@ -61,7 +65,7 @@ class ServerLogin:
         return {"id": self.id, "label": self.label, "host": self.host, "port": self.port,
                 "username": self.username, "auth": "key" if self.private_key else "password",
                 "host_key": self.host_key, "mode": self.mode, "os": self.os, "os_family": self.os_family,
-                "expires_at": int(self.expires_at)}
+                "kind": self.kind, "expires_at": int(self.expires_at)}
 
 
 _store: dict[int, dict[str, ServerLogin]] = {}
@@ -87,6 +91,19 @@ def check_host(host: str) -> str:
     return host
 
 
+def check_private(host: str) -> str:
+    """A device on the local network only (camera recorders): their web logins are not meant for the internet,
+    so a public address is refused like the credential-free network tools do."""
+    host = check_host(host)
+    try:
+        ip = ipaddress.ip_address(socket.gethostbyname(host))
+    except OSError as exc:
+        raise VaultError(f"cannot find '{host}'") from exc
+    if not ip.is_private or ip.is_loopback:
+        raise VaultError(f"{host} is not on the local network (10.x, 172.16–31.x, 192.168.x)")
+    return host
+
+
 def _purge(user_id: int) -> dict[str, ServerLogin]:
     servers = _store.setdefault(user_id, {})
     now = time.time()
@@ -97,19 +114,21 @@ def _purge(user_id: int) -> dict[str, ServerLogin]:
 
 def add(user_id: int, *, label: str, host: str, port: int, username: str, password: str | None = None,
         private_key: str | None = None, key_passphrase: str | None = None, host_key: str = "",
-        mode: str = "audit", os: str = "", os_family: str = "linux") -> ServerLogin:
+        mode: str = "audit", os: str = "", os_family: str = "linux", kind: str = "ssh") -> ServerLogin:
+    if kind not in KINDS:
+        raise VaultError(f"kind must be one of {', '.join(KINDS)}")
     if not (username or "").strip():
         raise VaultError("enter the user name")
     if not (password or private_key):
         raise VaultError("enter a password or a private key")
     if not 1 <= int(port) <= 65535:
-        raise VaultError("the SSH port must be 1–65535")
+        raise VaultError("the port must be 1–65535")
     if mode not in MODES:
         raise VaultError(f"mode must be one of {', '.join(MODES)}")
     login = ServerLogin(id=uuid.uuid4().hex[:12], label=(label or host).strip()[:60], host=host.strip(),
                         port=int(port), username=username.strip(), password=password or None,
                         private_key=private_key or None, key_passphrase=key_passphrase or None,
-                        host_key=host_key, mode=mode, os=os, os_family=os_family)
+                        host_key=host_key, mode=mode, os=os, os_family=os_family, kind=kind)
     with _lock:
         servers = _purge(user_id)
         if len(servers) >= MAX_SERVERS_PER_USER:
@@ -118,15 +137,17 @@ def add(user_id: int, *, label: str, host: str, port: int, username: str, passwo
     return login
 
 
-def list_servers(user_id: int) -> list[ServerLogin]:
+def list_servers(user_id: int, kind: str | None = "ssh") -> list[ServerLogin]:
+    """The user's logins of one kind (None = all, for Settings)."""
     with _lock:
-        return sorted(_purge(user_id).values(), key=lambda s: s.label.lower())
+        logins = [s for s in _purge(user_id).values() if kind is None or s.kind == kind]
+    return sorted(logins, key=lambda s: s.label.lower())
 
 
-def find(user_id: int, name: str | None) -> ServerLogin | None:
-    """By id, label or address. With exactly one server in the session it is unambiguous, so that one is
-    returned whatever the name says (handles a typo like 'pk sever', or no name at all)."""
-    servers = list_servers(user_id)
+def find(user_id: int, name: str | None, kind: str = "ssh") -> ServerLogin | None:
+    """By id, label or address. With exactly one login of the kind in the session it is unambiguous, so that
+    one is returned whatever the name says (handles a typo like 'pk sever', or no name at all)."""
+    servers = list_servers(user_id, kind)
     if not servers:
         return None
     if len(servers) == 1:

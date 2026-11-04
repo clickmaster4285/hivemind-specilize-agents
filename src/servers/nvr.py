@@ -8,7 +8,9 @@ Replies are untrusted text from the network: XML is parsed with defusedxml.
 
 from __future__ import annotations
 
+import logging
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from xml.etree.ElementTree import Element
@@ -16,6 +18,10 @@ from xml.etree.ElementTree import Element
 import requests
 from defusedxml import DefusedXmlException, ElementTree
 from requests.auth import HTTPDigestAuth
+
+from src.core.config import Config
+
+logger = logging.getLogger("multeagent.nvr")
 
 # per request: a recorder on the LAN answers in well under a second; a dead or wrong address should fail fast
 REQUEST_TIMEOUT = 10
@@ -207,3 +213,110 @@ def read_recorder(host: str, username: str, password: str, port: int = 80, *,
         raise NvrError(f"{host} answers neither the Hikvision nor the Dahua API — "
                        "it may not be a recorder, or it speaks only ONVIF (not supported yet)")
     return dialect.read(connect(host, port, username, password), host)
+
+
+# ── as a chat job ──────────────────────────────────────────────────────
+
+COLUMNS = ("Channel", "Camera", "IP address", "Model", "Protocol", "Status")
+
+
+def _status(online: bool | None) -> str:
+    return {True: "online", False: "offline"}.get(online, "unknown")
+
+
+def rows(rec: Recorder) -> list[list[str]]:
+    return [list(COLUMNS)] + [[str(c.channel), c.name, c.ip, c.model, c.protocol, _status(c.online)]
+                              for c in rec.cameras]
+
+
+def summary(rec: Recorder) -> str:
+    about = " · ".join(p for p in (rec.name, rec.model, f"firmware {rec.firmware}" if rec.firmware else "") if p)
+    counts = {s: sum(_status(c.online) == s for c in rec.cameras) for s in ("online", "offline", "unknown")}
+    found = f"**{len(rec.cameras)} camera{'s' if len(rec.cameras) != 1 else ''}**"
+    states = ", ".join(f"{n} {s}" for s, n in counts.items() if n)
+    return f"Recorder **{rec.host}** ({about or rec.api}, read over the {rec.api}): {found}" + \
+        (f" — {states}." if states else ".")
+
+
+def markdown(rec: Recorder) -> str:
+    if not rec.cameras:
+        return summary(rec) + " No camera channels are set up on it."
+    table = rows(rec)
+    lines = ["| " + " | ".join(table[0]) + " |", "|" + "---|" * len(table[0])]
+    lines += ["| " + " | ".join(cell.replace("|", "/") for cell in row) + " |" for row in table[1:]]
+    return summary(rec) + "\n\n" + "\n".join(lines)
+
+
+def xlsx_bytes(rec: Recorder) -> bytes:
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Cameras"
+    for row in rows(rec):
+        ws.append(row)
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+    ws.freeze_panes = "A2"
+    info = wb.create_sheet("Recorder")
+    for key, value in (("Address", rec.host), ("Name", rec.name), ("Model", rec.model), ("Serial", rec.serial),
+                       ("Firmware", rec.firmware), ("Read over", rec.api)):
+        info.append([key, value])
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def run_nvr_cameras(
+    query: str,
+    *,
+    job_id: str,
+    config: Config,
+    on_progress: Callable[[dict], None] | None = None,
+    nvr: str | None = None,
+    user_id: int | None = None,
+    **_: object,
+) -> tuple[str, list[str], float]:
+    """'list the cameras on the NVR' → the recorder's login from Settings → Servers → its camera table + .xlsx.
+    No model: the table is the recorder's own answer."""
+    from src.servers import server_vault
+    from src.tools.artifacts import artifact_event, write_bytes
+
+    emit = on_progress or (lambda event: None)
+    agent = {"agent_id": "assistant", "name": "Assistant", "role": "NVR cameras", "stage": "chat",
+             "accent": "#3b82c4", "job_id": job_id}
+    started = time.monotonic()
+    errors: list[str] = []
+    emit({"type": "session_start", "mode": "chat", "query": query})
+    emit({"type": "agent_start", **agent, "model": "nvr_cameras"})
+    try:
+        recorders = server_vault.list_servers(user_id, "nvr") if user_id is not None else []
+        named = nvr or next((r.host for r in recorders if r.host in query), None)
+        login = server_vault.find(user_id, named, kind="nvr") if user_id is not None else None
+        if login is None and not recorders:
+            output = ("No recorder login for this session yet. Add the NVR in **Settings → Servers** (type: NVR, "
+                      "its address, user and password) — it stays in memory for this session only, never in the chat.")
+        elif login is None:
+            names = ", ".join(f"{r.label} ({r.host})" for r in recorders)
+            output = f"Which recorder? Added this session: {names}."
+        else:
+            emit({"type": "status", "agent_id": "assistant", "message": f"Reading the cameras on {login.host}…"})
+            rec = read_recorder(login.host, login.username, login.password or "", login.port)
+            output = markdown(rec)
+            if rec.cameras:
+                meta = write_bytes(config, job_id, f"nvr-cameras-{rec.host}.xlsx", xlsx_bytes(rec), kind="xlsx")
+                emit(artifact_event(meta, job_id=job_id))
+    except (NvrError, server_vault.VaultError) as exc:
+        output = f"The cameras could not be read: {exc}."
+        errors.append(str(exc))
+    except Exception as exc:  # noqa: BLE001 — report, never crash the worker; type only (no secrets in messages)
+        logger.error("nvr read failed: %s", type(exc).__name__)
+        output = f"The cameras could not be read ({type(exc).__name__})."
+        errors.append(type(exc).__name__)
+    elapsed = time.monotonic() - started
+    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
+    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
+    return output, errors, elapsed

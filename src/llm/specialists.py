@@ -39,9 +39,10 @@ COLLECTIONS = ("it", "development", "marketing", "general")      # brain.collect
 GENERAL = "general"                                                # the picker's "no specialist"
 # tools that probe or act on machines, not only read text — the IT specialist only
 ACTION_TOOLS = frozenset({"network_scan", "security_check", "server_audit", "diagnose_server",
-                          "operate_server", "ping_host"})
+                          "operate_server", "ping_host", "nvr_cameras"})
 # tools added after agents/specialists.json files already existed (files saved before "seen_tools")
-ADDED_LATER = frozenset({"security_check", "server_audit", "diagnose_server", "operate_server", "ping_host"})
+ADDED_LATER = frozenset({"security_check", "server_audit", "diagnose_server", "operate_server", "ping_host",
+                         "nvr_cameras"})
 PICK_MAX_TOKENS = 6
 
 PICK_SYSTEM = """Pick the specialist for the user's message. Specialists:
@@ -131,6 +132,9 @@ def default_specialists() -> list[Specialist]:
                 "Settings instead, then you can connect. On an added server you can diagnose problems "
                 "(diagnose_server) and make changes (operate_server) — changes follow the server's mode (ask-first "
                 "or trusted). On Linux there is also a read-only security audit (server_audit).\n"
+                "- You CAN read a camera recorder's (NVR/DVR) camera list — names, IPs, online/offline — with "
+                "nvr_cameras, once its login is added in Settings → Servers (type NVR). Do not send the user to the "
+                "NVR's web page for that.\n"
                 "- A Windows server must have the OpenSSH server enabled; there you work in PowerShell (use cmdlets "
                 "like New-Item, Set-Content, Restart-Service — not bash). You still cannot open an RDP / "
                 "remote-desktop session or control a Windows GUI; if the user asks for RDP or desktop control, say "

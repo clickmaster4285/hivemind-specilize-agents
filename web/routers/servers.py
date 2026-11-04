@@ -21,7 +21,22 @@ router = APIRouter(prefix="/api/servers", tags=["servers"])
 def list_servers(user: User = Depends(require_admin)) -> list[dict[str, Any]]:
     from src.servers import server_vault
 
-    return [s.public() for s in server_vault.list_servers(user.id)]
+    return [s.public() for s in server_vault.list_servers(user.id, kind=None)]
+
+
+def _add_recorder(payload: ServerLoginPayload, user: User) -> dict[str, Any]:
+    """A camera recorder: one read of its camera list is the test login (read-only, never retried)."""
+    from src.servers import nvr, server_vault
+
+    try:
+        host = server_vault.check_private(payload.host)
+        recorder = nvr.read_recorder(host, payload.username.strip(), payload.password or "", payload.port)
+        login = server_vault.add(user.id, label=payload.label or recorder.name or host, host=host, port=payload.port,
+                                 username=payload.username, password=payload.password, kind="nvr",
+                                 os=" · ".join(p for p in (recorder.api, recorder.model) if p))
+    except (server_vault.VaultError, nvr.NvrError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {**login.public(), "access": f"{len(recorder.cameras)} cameras"}
 
 
 @router.post("")
@@ -29,6 +44,8 @@ def add_server(payload: ServerLoginPayload, user: User = Depends(require_admin))
     """Log in once (learn the server's host key and access level), then keep the login for the session."""
     from src.servers import linux_audit, server_vault
 
+    if payload.kind == "nvr":
+        return _add_recorder(payload, user)
     try:
         server_vault.check_host(payload.host)
         trial = server_vault.ServerLogin(id="trial", label=payload.label or payload.host, host=payload.host.strip(),

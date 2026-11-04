@@ -4,12 +4,16 @@ import { useState, type FormEvent } from "react";
 
 import type { ServersApi } from "@/hooks/useServers";
 import { errorText } from "@/lib/chat";
-import type { ServerLoginInput, ServerMode } from "@/lib/types";
+import type { ServerKind, ServerLoginInput, ServerMode } from "@/lib/types";
+
+// the usual port of each kind: SSH, and the recorder's web API
+const DEFAULT_PORT: Record<ServerKind, number> = { ssh: 22, nvr: 80 };
 
 const emptyServer: ServerLoginInput = {
+  kind: "ssh",
   label: "",
   host: "",
-  port: 22,
+  port: DEFAULT_PORT.ssh,
   username: "",
   password: "",
   private_key: "",
@@ -40,6 +44,7 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<ServerLoginInput>) => setForm((f) => ({ ...f, ...patch }));
+  const recorder = form.kind === "nvr";          // a recorder: password only, always read-only
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -47,16 +52,17 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
     setError(null);
     try {
       await servers.add({
+        kind: form.kind,
         label: form.label,
         host: form.host,
-        port: Number(form.port) || 22,
+        port: Number(form.port) || DEFAULT_PORT[form.kind],
         username: form.username,
         mode: form.mode,
-        ...(auth === "password"
+        ...(auth === "password" || recorder
           ? { password: form.password }
           : { private_key: form.private_key, key_passphrase: form.key_passphrase }),
       });
-      setForm(emptyServer); // the password / key leaves the page's memory
+      setForm({ ...emptyServer, kind: form.kind, port: DEFAULT_PORT[form.kind] }); // the password / key leaves the page's memory
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -66,12 +72,14 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
 
   return (
     <>
-      <h4 className="text-base font-semibold [font-family:var(--font-display)]">Servers (this session)</h4>
+      <h4 className="text-base font-semibold [font-family:var(--font-display)]">Servers and recorders (this session)</h4>
       <p className="text-xs leading-relaxed text-[var(--muted)]">
-        Linux servers the IT specialist can work on. The login stays in the API&rsquo;s memory only — never saved,
-        never in the chat — and is forgotten at logout, restart or after 8 hours. The mode sets what the agent may do:{" "}
-        <strong>Read-only</strong> (investigate only), <strong>ask me first</strong> (each change needs your click), or{" "}
-        <strong>trusted</strong> (changes run automatically; the worst are always blocked).
+        Linux servers the IT specialist can work on, and camera recorders (NVR/DVR) whose cameras it can list. The
+        login stays in the API&rsquo;s memory only — never saved, never in the chat — and is forgotten at logout,
+        restart or after 8 hours. For a server, the mode sets what the agent may do: <strong>Read-only</strong>{" "}
+        (investigate only), <strong>ask me first</strong> (each change needs your click), or{" "}
+        <strong>trusted</strong> (changes run automatically; the worst are always blocked). Recorders are always
+        read-only.
       </p>
 
       {/* Existing logins */}
@@ -89,9 +97,12 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
                 </button>
               </div>
               <div className="truncate text-xs text-[var(--muted)]">
-                {s.username}@{s.host}:{s.port} · {s.auth}
+                {s.kind === "nvr" ? "NVR · " : ""}
+                {s.username}@{s.host}:{s.port}
+                {s.kind === "nvr" ? " · read-only" : ` · ${s.auth}`}
                 {s.os ? ` · ${s.os}` : ""}
               </div>
+              {s.kind === "nvr" ? null : (
               <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
                 <span className="shrink-0">Agent may</span>
                 <select
@@ -105,6 +116,7 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
                   <option value="trusted">{MODE_LABEL.trusted}</option>
                 </select>
               </label>
+              )}
             </li>
           ))}
         </ul>
@@ -114,6 +126,20 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
 
       {/* Add a login */}
       <form className="flex flex-col gap-3 border-t border-[var(--line)] pt-4" onSubmit={submit} autoComplete="off">
+        <label className={label}>
+          Type
+          <select
+            className={field}
+            value={form.kind}
+            onChange={(e) => {
+              const kind = e.target.value as ServerKind;
+              set({ kind, port: DEFAULT_PORT[kind] });
+            }}
+          >
+            <option value="ssh">Server (SSH)</option>
+            <option value="nvr">Camera recorder (NVR / DVR — Hikvision, Dahua)</option>
+          </select>
+        </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_5rem]">
           <label className={label}>
             Name
@@ -153,31 +179,35 @@ export default function ServersSection({ servers }: { servers: ServersApi }) {
             <input
               className={field}
               required
-              placeholder="root"
+              placeholder={recorder ? "admin" : "root"}
               autoComplete="off"
               value={form.username}
               onChange={(e) => set({ username: e.target.value })}
             />
           </label>
-          <label className={label}>
-            Authentication
-            <select className={field} value={auth} onChange={(e) => setAuth(e.target.value as "password" | "key")}>
-              <option value="password">Password</option>
-              <option value="key">Private key</option>
-            </select>
-          </label>
+          {recorder ? null : (
+            <label className={label}>
+              Authentication
+              <select className={field} value={auth} onChange={(e) => setAuth(e.target.value as "password" | "key")}>
+                <option value="password">Password</option>
+                <option value="key">Private key</option>
+              </select>
+            </label>
+          )}
         </div>
 
-        <label className={label}>
-          What the agent may do
-          <select className={field} value={form.mode} onChange={(e) => set({ mode: e.target.value as ServerMode })}>
-            <option value="audit">{MODE_LABEL.audit}</option>
-            <option value="confirm">{MODE_LABEL.confirm}</option>
-            <option value="trusted">{MODE_LABEL.trusted}</option>
-          </select>
-        </label>
+        {recorder ? null : (
+          <label className={label}>
+            What the agent may do
+            <select className={field} value={form.mode} onChange={(e) => set({ mode: e.target.value as ServerMode })}>
+              <option value="audit">{MODE_LABEL.audit}</option>
+              <option value="confirm">{MODE_LABEL.confirm}</option>
+              <option value="trusted">{MODE_LABEL.trusted}</option>
+            </select>
+          </label>
+        )}
 
-        {auth === "password" ? (
+        {auth === "password" || recorder ? (
           <label className={label}>
             Password
             <input

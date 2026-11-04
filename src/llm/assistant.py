@@ -94,6 +94,13 @@ TOOLS: tuple[Tool, ...] = (
          "web01', 'is my Linux server hardened'.",
          {"server": "the server's name or IP as the user added it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled),
+    Tool("nvr_cameras", "nvr_cameras",
+         "Log in to a camera recorder (NVR/DVR, Hikvision or Dahua) added this session in Settings → Servers and "
+         "list ALL its cameras as a table: channel, camera name, IP address, model, online/offline. Read-only. "
+         "Use for 'tell me all the cameras on the NVR', 'which cameras are offline', 'access the NVR at "
+         "192.168.1.64 and list the cameras'. Never tell the user to open the NVR's web page — call this.",
+         {"nvr": "the recorder's name or IP as the user wrote it; empty = the only one added"},
+         (), lambda c: c.security_scan_enabled),
     Tool("diagnose_server", "server_diagnose",
          "Log in to one of the user's Linux servers (Settings → Servers) and INVESTIGATE a problem read-only: "
          "the agent runs its own read-only commands (service status, logs, disk, config, processes), reads the "

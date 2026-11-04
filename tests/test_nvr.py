@@ -115,3 +115,63 @@ def test_entity_tricks_in_a_reply_are_refused():
             "<DeviceInfo><deviceName>&b;</deviceName></DeviceInfo>")
     with pytest.raises(nvr.NvrError, match="not valid XML"):
         nvr.parse_hikvision_info(bomb)
+
+
+# ── the login store and the chat job (N2, N3) ──────────────────────────
+
+from src.servers import server_vault  # noqa: E402
+
+USER = 4242
+
+
+@pytest.fixture
+def vault():
+    server_vault.clear(USER)
+    yield
+    server_vault.clear(USER)
+
+
+def test_ssh_tools_never_get_a_recorder_login(vault):
+    server_vault.add(USER, label="nvr", host="192.168.190.248", port=80, username="admin", password="s3cret-pw",
+                     kind="nvr")
+    assert server_vault.find(USER, None) is None                       # the only login is a recorder, not a server
+    assert server_vault.find(USER, None, kind="nvr").host == "192.168.190.248"
+    assert [s.kind for s in server_vault.list_servers(USER, kind=None)] == ["nvr"]
+    assert "s3cret-pw" not in repr(server_vault.find(USER, None, kind="nvr"))     # the password never shows
+
+
+def test_a_recorder_must_be_on_the_local_network():
+    assert server_vault.check_private("192.168.190.248") == "192.168.190.248"
+    for host in ("8.8.8.8", "127.0.0.1"):
+        with pytest.raises(server_vault.VaultError, match="local network"):
+            server_vault.check_private(host)
+
+
+def _job(monkeypatch, tmp_path, **kwargs):
+    from src.core.config import Config
+    from dataclasses import replace
+
+    connect, _ = _device(HIKVISION)
+    original = nvr.read_recorder
+    monkeypatch.setattr(nvr, "read_recorder",
+                        lambda host, user, pw, port: original(host, user, pw, port, connect=connect))
+    events: list[dict] = []
+    config = replace(Config.from_env(), artifacts_dir=tmp_path)
+    output, errors, _ = nvr.run_nvr_cameras("list the cameras", job_id="job1", config=config,
+                                            on_progress=events.append, user_id=USER, **kwargs)
+    return output, errors, events
+
+
+def test_the_chat_job_answers_with_the_camera_table_and_an_xlsx(vault, monkeypatch, tmp_path):
+    server_vault.add(USER, label="nvr", host="192.168.190.248", port=80, username="admin",
+                     password="right-password", kind="nvr")
+    output, errors, events = _job(monkeypatch, tmp_path)
+    assert not errors
+    assert "**2 cameras** — 1 online, 1 offline" in output
+    assert "| 1 | Gate | 192.168.190.64 |" in output
+    assert any(e["type"] == "artifact_ready" and e["filename"].endswith(".xlsx") for e in events)
+
+
+def test_without_a_recorder_login_the_chat_says_where_to_add_it(vault, monkeypatch, tmp_path):
+    output, errors, _ = _job(monkeypatch, tmp_path)
+    assert "Settings → Servers" in output and not errors
