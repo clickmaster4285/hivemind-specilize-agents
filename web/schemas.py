@@ -21,6 +21,7 @@ class UserCreatePayload(BaseModel):
     email: str | None = None
     phone: str | None = None
     daily_job_quota: int | None = None  # None keeps the model default
+    devices_access: bool = False       # may use Settings → Devices (admins always may)
 
 
 class UserUpdatePayload(BaseModel):
@@ -33,6 +34,7 @@ class UserUpdatePayload(BaseModel):
     daily_job_quota: int | None = None
     status: Literal["active", "disabled"] | None = None
     password: str | None = None
+    devices_access: bool | None = None
 
 
 # ── specialists ────────────────────────────────────────────────────────────
@@ -103,7 +105,7 @@ class ServerLoginPayload(BaseModel):
     private_key: str | None = None
     key_passphrase: str | None = None
     mode: str = "audit"            # audit | confirm | trusted (server_vault.MODES)
-    kind: Literal["ssh", "nvr"] = "ssh"    # server_vault.KINDS: an SSH server, or a camera recorder (read-only)
+    kind: Literal["ssh", "nvr", "network"] = "ssh"   # server_vault.KINDS: SSH server, camera recorder, router/switch
 
 
 class ServerModePayload(BaseModel):

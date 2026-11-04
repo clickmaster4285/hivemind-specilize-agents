@@ -1,6 +1,6 @@
 """Server logins for the session (src/servers/server_vault.py): kept in this process's memory only —
-never on disk, in the database, a log or a job. Every signed-in user may add devices; each user sees and
-uses only the ones they added. Only admins may let the agent change a server without asking (trusted)."""
+never on disk, in the database, a log or a job. Admins and the users an admin gave access may add devices;
+each user sees and uses only the ones they added. Only admins may let the agent change a server without asking (trusted)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.core.auth import get_current_user
+from src.core.auth import get_current_user, require_devices
 from src.core.models_db import User
 from web.schemas import ServerLoginPayload, ServerModePayload
 
@@ -27,7 +27,7 @@ def _check_mode(user: User, mode: str) -> None:
 
 
 @router.get("")
-def list_servers(user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
+def list_servers(user: User = Depends(require_devices)) -> list[dict[str, Any]]:
     from src.servers import server_vault
 
     return [s.public() for s in server_vault.list_servers(user.id, kind=None)]
@@ -48,13 +48,35 @@ def _add_recorder(payload: ServerLoginPayload, user: User) -> dict[str, Any]:
     return {**login.public(), "access": f"{len(recorder.cameras)} cameras"}
 
 
+def _add_network_device(payload: ServerLoginPayload, user: User) -> dict[str, Any]:
+    """A router or switch: one read-only read is the test login; its SSH host key is pinned like a server's."""
+    from src.servers import linux_audit, netdev, server_vault
+
+    try:
+        host = server_vault.check_private(payload.host)
+        trial = server_vault.ServerLogin(id="trial", label=payload.label or host, host=host, port=payload.port,
+                                         username=payload.username.strip(), password=payload.password or None,
+                                         private_key=payload.private_key or None,
+                                         key_passphrase=payload.key_passphrase or None, kind="network")
+        info = netdev.test_login(trial)
+        login = server_vault.add(user.id, label=trial.label, host=host, port=trial.port, username=trial.username,
+                                 password=trial.password, private_key=trial.private_key,
+                                 key_passphrase=trial.key_passphrase, host_key=info["host_key"], kind="network",
+                                 os=info["os"])
+    except (server_vault.VaultError, linux_audit.AuditError, netdev.DeviceError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {**login.public(), "access": info["access"]}
+
+
 @router.post("")
-def add_server(payload: ServerLoginPayload, user: User = Depends(get_current_user)) -> dict[str, Any]:
+def add_server(payload: ServerLoginPayload, user: User = Depends(require_devices)) -> dict[str, Any]:
     """Log in once (learn the server's host key and access level), then keep the login for the session."""
     from src.servers import linux_audit, server_vault
 
     if payload.kind == "nvr":
         return _add_recorder(payload, user)
+    if payload.kind == "network":
+        return _add_network_device(payload, user)
     _check_mode(user, payload.mode)
     try:
         server_vault.check_host(payload.host)
@@ -76,7 +98,7 @@ def add_server(payload: ServerLoginPayload, user: User = Depends(get_current_use
 
 
 @router.put("/{server_id}/mode")
-def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Depends(get_current_user)) -> dict[str, Any]:
+def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Depends(require_devices)) -> dict[str, Any]:
     """Change a server's trust mode (audit / confirm / trusted)."""
     _check_mode(user, payload.mode)
     from src.servers import server_vault
@@ -88,7 +110,7 @@ def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Dep
 
 
 @router.delete("/{server_id}")
-def remove_server(server_id: str, user: User = Depends(get_current_user)) -> dict[str, str]:
+def remove_server(server_id: str, user: User = Depends(require_devices)) -> dict[str, str]:
     from src.servers import server_vault
 
     if not server_vault.remove(user.id, server_id):

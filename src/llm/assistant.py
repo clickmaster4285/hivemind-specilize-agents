@@ -101,6 +101,13 @@ TOOLS: tuple[Tool, ...] = (
          "192.168.1.64 and list the cameras'. Never tell the user to open the NVR's web page — call this.",
          {"nvr": "the recorder's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled),
+    Tool("network_device", "network_device",
+         "Log in to a router or switch (MikroTik) added this session in Settings → Devices and read it, read-only: "
+         "model, firmware, uptime, CPU and memory, every interface/port and whether it is up, the devices connected "
+         "(DHCP leases with IP, MAC and host name), the ARP table and the recent log. Use for 'check the router', "
+         "'who is connected to the mikrotik', 'which ports are down on the switch', 'show the router log'.",
+         {"device": "the router's or switch's name or IP as the user wrote it; empty = the only one added"},
+         (), lambda c: c.security_scan_enabled),
     Tool("diagnose_server", "server_diagnose",
          "Log in to one of the user's Linux servers (Settings → Devices) and INVESTIGATE a problem read-only: "
          "the agent runs its own read-only commands (service status, logs, disk, config, processes), reads the "

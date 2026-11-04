@@ -34,6 +34,8 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     daily_job_quota: Mapped[int] = mapped_column(Integer, default=50)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | disabled (disabled can't sign in)
+    # may use Settings → Devices (servers, recorders…): given by an admin; admins always may (auth.may_use_devices)
+    devices_access: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

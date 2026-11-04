@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.core.auth import get_db, hash_password, require_admin
+from src.core.auth import get_db, hash_password, may_use_devices, require_admin
 from src.core.models_db import Job, User
 from web.schemas import UserCreatePayload, UserUpdatePayload
 
@@ -27,6 +27,7 @@ def _user_public(user: User, query_count: int | None = None) -> dict[str, Any]:
         "phone": user.phone,
         "status": user.status,
         "daily_job_quota": user.daily_job_quota,
+        "devices_access": bool(user.devices_access),
         "query_count": query_count,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "updated_at": user.updated_at.isoformat() if user.updated_at else None,
@@ -81,6 +82,7 @@ def create_user(
         team=(payload.team.strip() or None) if payload.team else None,
         email=email,
         phone=(payload.phone.strip() or None) if payload.phone else None,
+        devices_access=payload.devices_access,
     )
     if payload.daily_job_quota is not None:
         user.daily_job_quota = max(0, payload.daily_job_quota)
@@ -130,10 +132,16 @@ def update_user(
         if len(payload.password) < 8:
             raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
         user.password_hash = hash_password(payload.password)
+    if payload.devices_access is not None:
+        user.devices_access = payload.devices_access
 
     _ensure_an_admin_remains(db)  # catches demoting/disabling the last admin by any path
     db.commit()
     db.refresh(user)
+    if not may_use_devices(user):
+        from src.servers import server_vault
+
+        server_vault.clear(user.id)   # access taken away: the device logins they added go at once
     return _user_public(user)
 
 

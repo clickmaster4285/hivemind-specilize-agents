@@ -179,7 +179,7 @@ def test_without_a_recorder_login_the_chat_says_where_to_add_it(vault, monkeypat
 
 # ── who may use Settings → Devices (L19 D1b) ───────────────────────────
 
-def _devices_api(role: str):
+def _devices_api(role: str, access: bool = True):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -189,11 +189,39 @@ def _devices_api(role: str):
 
     app = FastAPI()
     app.include_router(servers.router)
-    app.dependency_overrides[get_current_user] = lambda: User(id=USER, username="ana", password_hash="x", role=role)
+    app.dependency_overrides[get_current_user] = lambda: User(id=USER, username="ana", password_hash="x", role=role,
+                                                              devices_access=access)
     return TestClient(app)
 
 
-def test_every_user_has_devices_but_only_admins_may_trust_the_agent(vault):
+def test_devices_need_an_admin_given_access(vault):
+    assert _devices_api("member", access=False).get("/api/servers").status_code == 403
+    assert _devices_api("member", access=True).get("/api/servers").status_code == 200
+    assert _devices_api("admin", access=False).get("/api/servers").status_code == 200       # admins always
+
+
+def test_taking_access_away_forgets_the_users_device_logins(vault):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from src.core.db import Base
+    from src.core.models_db import User
+    from web.routers.users import update_user
+    from web.schemas import UserUpdatePayload
+
+    engine = create_engine("sqlite://", poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    db = Session(bind=engine)
+    admin = User(id=1, username="root", password_hash="x", role="admin")
+    db.add_all([admin, User(id=USER, username="ana", password_hash="x", role="member", devices_access=True)])
+    db.commit()
+    server_vault.add(USER, label="nvr", host="192.168.190.248", port=80, username="admin", password="x", kind="nvr")
+    assert update_user(USER, UserUpdatePayload(devices_access=False), admin=admin, db=db)["devices_access"] is False
+    assert server_vault.list_servers(USER, kind=None) == []
+
+
+def test_only_admins_may_trust_the_agent(vault):
     member, admin = _devices_api("member"), _devices_api("admin")
     assert member.get("/api/servers").status_code == 200
     trusted = {"host": "192.168.1.20", "username": "root", "password": "x", "mode": "trusted"}

@@ -86,9 +86,23 @@ export default function UsersSection({ users }: { users: UsersApi }) {
                   </small>
                 ) : null}
               </span>
-              <button type="button" className="btn ghost sm shrink-0" onClick={() => setEditing(u)}>
-                Edit
-              </button>
+              <span className="flex shrink-0 items-center gap-3">
+                <label
+                  className="flex items-center gap-1.5 text-xs text-[var(--muted)]"
+                  title="May add and use devices in Settings → Devices (admins always may)"
+                >
+                  <input
+                    type="checkbox"
+                    checked={u.role === "admin" || u.devices_access}
+                    disabled={u.role === "admin"}
+                    onChange={(e) => void users.update(u.id, { devices_access: e.target.checked }).catch(() => undefined)}
+                  />
+                  Devices
+                </label>
+                <button type="button" className="btn ghost sm" onClick={() => setEditing(u)}>
+                  Edit
+                </button>
+              </span>
             </li>
           ))}
         </ul>

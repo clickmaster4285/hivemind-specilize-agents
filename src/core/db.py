@@ -95,6 +95,7 @@ def init_db(config: Config | None = None) -> None:
     _ensure_column(engine, "users", "status", "status VARCHAR(20) DEFAULT 'active'")
     _ensure_column(engine, "users", "updated_at", "updated_at DATETIME")
     _ensure_column(engine, "users", "last_login_at", "last_login_at DATETIME")
+    _ensure_column(engine, "users", "devices_access", "devices_access BOOLEAN DEFAULT 0")
     _ensure_column(engine, "model_registry", "vision", "vision BOOLEAN DEFAULT 0")
     _ensure_column(engine, "model_registry", "image_gen", "image_gen BOOLEAN DEFAULT 0")
     _ensure_column(engine, "model_registry", "available", "available BOOLEAN DEFAULT 1")

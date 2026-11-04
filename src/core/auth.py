@@ -210,3 +210,14 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin role required")
     return user
+
+
+def may_use_devices(user: User) -> bool:
+    """Settings → Devices: admins, and the users an admin gave access."""
+    return user.role == "admin" or bool(user.devices_access)
+
+
+def require_devices(user: User = Depends(get_current_user)) -> User:
+    if not may_use_devices(user):
+        raise HTTPException(status_code=403, detail="Ask an admin for access to Devices")
+    return user

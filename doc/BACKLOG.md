@@ -402,10 +402,17 @@ Cisco, TP-Link / D-Link / Netgear**.
 
 - [x] **D1 Devices section — done 2026-11-04:** the tab, heading and every "Settings → Servers" in replies, tool
       descriptions and prompts (20 places) say Devices; internal names (`/api/servers`, `server_vault`) stay
-- [x] **D1b everyone — done 2026-11-04:** the Devices tab for every user, not only admins (user's request) —
-      each user still sees and uses only the devices they added; **trusted** mode (changes without a click) stays
-      admin-only (`ADMIN_ONLY_MODES` in `web/routers/servers.py`: 403 for a member, option hidden in the form)
-- [ ] **D2 network device reader:** read-only, a fixed command set per platform kept as data — MikroTik RouterOS
+- [x] **D1b more users — done 2026-11-04:** the Devices tab for admins **and the users an admin gives access**
+      (user's correction: not every user) — `users.devices_access`, off by default, switched on in Settings → Users;
+      taking it away forgets that user's device logins at once. Each user sees and uses only the devices they
+      added; **trusted** mode (changes without a click) stays admin-only (`ADMIN_ONLY_MODES` in
+      `web/routers/servers.py`: 403 for a member, option hidden in the form)
+- [x] **D2a MikroTik — built 2026-11-04** (`src/servers/netdev.py`, `tests/test_netdev.py`): Settings → Devices →
+      "Router / switch"; adding it = one read (login, platform from the SSH banner `ROSSSH`, host key pinned);
+      `network_device` tool in chat (IT specialist): name, model, version, uptime, CPU, memory, interfaces
+      up/down/disabled, DHCP leases, ARP, last log lines + .xlsx; 3 eval cases. **Left: live check on the user's
+      MikroTik** (best with a read-only RouterOS user: `/user add name=multeagent group=read password=…`)
+- [ ] **D2 network device reader (rest):** read-only, a fixed command set per platform kept as data — MikroTik RouterOS
       (SSH `/system resource print`, `/interface print`, `/ip dhcp-server lease print`, `/ip arp print`, `/log`),
       Cisco IOS (`terminal length 0`, `show version`, `show ip interface brief`, `show interfaces status`,
       `show mac address-table`, `show arp`, `show logging`); the platform found from the device's own answer.

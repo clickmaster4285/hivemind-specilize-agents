@@ -6,8 +6,10 @@ import type { ServersApi } from "@/hooks/useServers";
 import { errorText } from "@/lib/chat";
 import type { ServerKind, ServerLoginInput, ServerMode } from "@/lib/types";
 
-// the usual port of each kind: SSH, and the recorder's web API
-const DEFAULT_PORT: Record<ServerKind, number> = { ssh: 22, nvr: 80 };
+// the usual port of each kind: SSH (servers, routers, switches), and the recorder's web API
+const DEFAULT_PORT: Record<ServerKind, number> = { ssh: 22, nvr: 80, network: 22 };
+// what the list shows before the login, for the kinds that are not servers
+const KIND_TAG: Record<ServerKind, string> = { ssh: "", nvr: "NVR · ", network: "Router / switch · " };
 
 const emptyServer: ServerLoginInput = {
   kind: "ssh",
@@ -44,7 +46,8 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<ServerLoginInput>) => setForm((f) => ({ ...f, ...patch }));
-  const recorder = form.kind === "nvr";          // a recorder: password only, always read-only
+  const recorder = form.kind === "nvr";          // a recorder: password only
+  const readOnly = form.kind !== "ssh";          // recorders, routers and switches: never changed by the agent
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -75,12 +78,12 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
       <h4 className="text-base font-semibold [font-family:var(--font-display)]">Devices (this session)</h4>
       <p className="text-xs leading-relaxed text-[var(--muted)]">
         Devices the IT specialist can log in to: servers it can work on, and camera recorders (NVR/DVR) whose
-        cameras it can list. Routers and switches come next. The login stays in the API&rsquo;s memory only — never
+        cameras it can list, and routers and switches (MikroTik) it can read. The login stays in the API&rsquo;s memory only — never
         saved, never in the chat — and is forgotten at logout, restart or after 8 hours. For a server, the mode sets
         what the agent may do: <strong>Read-only</strong>{" "}
         (investigate only), <strong>ask me first</strong> (each change needs your click), or{" "}
         <strong>trusted</strong> (changes run automatically; the worst are always blocked — admins only). Each person
-        sees only the devices they added. Recorders are always read-only.
+        sees only the devices they added. Recorders, routers and switches are always read-only.
       </p>
 
       {/* Existing logins */}
@@ -98,12 +101,12 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
                 </button>
               </div>
               <div className="truncate text-xs text-[var(--muted)]">
-                {s.kind === "nvr" ? "NVR · " : ""}
+                {KIND_TAG[s.kind]}
                 {s.username}@{s.host}:{s.port}
-                {s.kind === "nvr" ? " · read-only" : ` · ${s.auth}`}
+                {s.kind === "ssh" ? ` · ${s.auth}` : " · read-only"}
                 {s.os ? ` · ${s.os}` : ""}
               </div>
-              {s.kind === "nvr" ? null : (
+              {s.kind !== "ssh" ? null : (
               <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
                 <span className="shrink-0">Agent may</span>
                 <select
@@ -139,6 +142,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           >
             <option value="ssh">Server (SSH)</option>
             <option value="nvr">Camera recorder (NVR / DVR — Hikvision, Dahua)</option>
+            <option value="network">Router / switch (MikroTik)</option>
           </select>
         </label>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_5rem]">
@@ -197,7 +201,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           )}
         </div>
 
-        {recorder ? null : (
+        {readOnly ? null : (
           <label className={label}>
             What the agent may do
             <select className={field} value={form.mode} onChange={(e) => set({ mode: e.target.value as ServerMode })}>

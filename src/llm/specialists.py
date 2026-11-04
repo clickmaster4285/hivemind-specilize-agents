@@ -39,10 +39,10 @@ COLLECTIONS = ("it", "development", "marketing", "general")      # brain.collect
 GENERAL = "general"                                                # the picker's "no specialist"
 # tools that probe or act on machines, not only read text — the IT specialist only
 ACTION_TOOLS = frozenset({"network_scan", "security_check", "server_audit", "diagnose_server",
-                          "operate_server", "ping_host", "nvr_cameras"})
+                          "operate_server", "ping_host", "nvr_cameras", "network_device"})
 # tools added after agents/specialists.json files already existed (files saved before "seen_tools")
 ADDED_LATER = frozenset({"security_check", "server_audit", "diagnose_server", "operate_server", "ping_host",
-                         "nvr_cameras"})
+                         "nvr_cameras", "network_device"})
 PICK_MAX_TOKENS = 6
 
 PICK_SYSTEM = """Pick the specialist for the user's message. Specialists:
@@ -135,6 +135,9 @@ def default_specialists() -> list[Specialist]:
                 "- You CAN read a camera recorder's (NVR/DVR) camera list — names, IPs, online/offline — with "
                 "nvr_cameras, once its login is added in Settings → Devices (type NVR). Do not send the user to the "
                 "NVR's web page for that.\n"
+                "- You CAN read a router or switch (MikroTik) — interfaces up/down, connected devices (DHCP, ARP), "
+                "uptime, log — with network_device, once it is added in Settings → Devices (type Router / switch). "
+                "It is read-only: you cannot change router or switch settings.\n"
                 "- A Windows server must have the OpenSSH server enabled; there you work in PowerShell (use cmdlets "
                 "like New-Item, Set-Content, Restart-Service — not bash). You still cannot open an RDP / "
                 "remote-desktop session or control a Windows GUI; if the user asks for RDP or desktop control, say "

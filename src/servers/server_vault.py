@@ -31,8 +31,9 @@ MAX_SERVERS_PER_USER = 50
 #   trusted = changes run without a click (destructive ones still blocked) — for a lab server
 MODES = ("audit", "confirm", "trusted")
 # what a login is for: ssh = a server the agent logs in to; nvr = a camera recorder read over its own API
-# (src/servers/nvr.py, read-only). The SSH tools only ever see ssh logins.
-KINDS = ("ssh", "nvr")
+# (src/servers/nvr.py); network = a router or switch read over SSH (src/servers/netdev.py). nvr and network
+# are read-only. The SSH tools only ever see ssh logins.
+KINDS = ("ssh", "nvr", "network")
 
 
 class VaultError(ValueError):

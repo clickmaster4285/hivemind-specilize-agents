@@ -60,8 +60,9 @@ export type ServerInfo = {
   access?: string;
 };
 
-/** ssh = a server the agent logs in to; nvr = a camera recorder, read-only (server_vault.KINDS) */
-export type ServerKind = "ssh" | "nvr";
+/** ssh = a server the agent logs in to; nvr = a camera recorder; network = a router or switch.
+ *  nvr and network are read-only (server_vault.KINDS) */
+export type ServerKind = "ssh" | "nvr" | "network";
 
 export type ServerLoginInput = {
   kind: ServerKind;
@@ -112,6 +113,8 @@ export type AuthUser = {
   phone?: string | null;
   status?: UserStatus;
   daily_job_quota?: number;
+  /** may use Settings → Devices (admins always; others when an admin allows it) */
+  devices_access?: boolean;
 };
 
 /** An account as the admin Users panel sees it (never the password hash). */
@@ -124,6 +127,7 @@ export type ManagedUser = {
   phone: string | null;
   status: UserStatus;
   daily_job_quota: number;
+  devices_access: boolean;
   query_count: number | null;
   created_at: string | null;
   updated_at: string | null;
@@ -139,6 +143,7 @@ export type UserCreateInput = {
   email?: string | null;
   phone?: string | null;
   daily_job_quota?: number | null;
+  devices_access?: boolean;
 };
 
 /** Admin edit of an account: only the fields sent change. Empty string clears team/email/phone;
@@ -151,6 +156,7 @@ export type UserUpdateInput = {
   daily_job_quota?: number | null;
   status?: UserStatus;
   password?: string;
+  devices_access?: boolean;
 };
 
 export type ModelInfo = {
