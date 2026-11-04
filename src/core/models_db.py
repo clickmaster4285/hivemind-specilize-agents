@@ -44,6 +44,28 @@ class User(Base):
     jobs: Mapped[list[Job]] = relationship(back_populates="user")
 
 
+class DeviceRow(Base):
+    """A device login a user saved in Settings → Devices (server, recorder, router…). Only its owner sees or
+    uses it. The password / key is never stored readable: `secret_enc` is AES-256-GCM (src/core/crypto.py),
+    bound to this owner and row."""
+
+    __tablename__ = "devices"
+
+    id: Mapped[str] = mapped_column(String(12), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20), default="ssh")      # server_vault.KINDS
+    label: Mapped[str] = mapped_column(String(60))
+    host: Mapped[str] = mapped_column(String(255))
+    port: Mapped[int] = mapped_column(Integer)
+    username: Mapped[str] = mapped_column(String(120))
+    secret_enc: Mapped[str] = mapped_column(Text)
+    host_key: Mapped[str] = mapped_column(String(200), default="")
+    mode: Mapped[str] = mapped_column(String(20), default="audit")     # server_vault.MODES
+    os: Mapped[str] = mapped_column(String(200), default="")
+    os_family: Mapped[str] = mapped_column(String(20), default="linux")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class RefreshToken(Base):
     """One refresh token of a sign-in (BACKLOG L16 S1); only its SHA-256 is kept. A sign-in is a family:
     each refresh spends the token and issues the next one in the same family. A spent token shown again

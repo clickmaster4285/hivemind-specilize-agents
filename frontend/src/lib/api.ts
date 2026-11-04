@@ -227,10 +227,6 @@ export async function setServerMode(id: string, mode: ServerMode): Promise<Serve
   });
 }
 
-/** Logout: the API forgets every server login of this user. */
-export async function forgetServers(): Promise<void> {
-  await request("/api/servers", { method: "DELETE" });
-}
 
 /** The user clicked Run / Cancel on a command the agent asked to run (operate_server). */
 export async function confirmCommand(jobId: string, commandId: string, approved: boolean): Promise<void> {

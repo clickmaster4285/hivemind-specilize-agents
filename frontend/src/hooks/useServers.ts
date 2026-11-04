@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { addServer, forgetServers, listServers, removeServer, setServerMode } from "@/lib/api";
+import { addServer, listServers, removeServer, setServerMode } from "@/lib/api";
 import type { ServerInfo, ServerLoginInput, ServerMode } from "@/lib/types";
 
 /**
- * The user's device logins (servers, recorders) kept in the API's memory for this session only
- * (src/servers/server_vault.py). This hook never holds a password: the API returns only label, address, user
- * and host key. `active` = load the list (Settings is open).
+ * The user's saved device logins (servers, recorders, routers — src/servers/server_vault.py, encrypted).
+ * This hook never holds a password: the API returns only label, address, user and host key.
+ * `active` = load the list (Settings is open).
  */
 export function useServers(active: boolean) {
   const [servers, setServers] = useState<ServerInfo[]>([]);
@@ -55,13 +55,7 @@ export function useServers(active: boolean) {
     [load],
   );
 
-  /** Logout: the API forgets them; call before the login token is dropped. */
-  const forget = useCallback(() => {
-    void forgetServers().catch(() => undefined);
-    setServers([]);
-  }, []);
-
-  return { servers, add, remove, setMode, forget };
+  return { servers, add, remove, setMode };
 }
 
 export type ServersApi = ReturnType<typeof useServers>;

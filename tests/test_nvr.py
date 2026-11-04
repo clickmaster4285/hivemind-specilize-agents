@@ -125,10 +125,9 @@ USER = 4242
 
 
 @pytest.fixture
-def vault():
-    server_vault.clear(USER)
-    yield
-    server_vault.clear(USER)
+def vault(device_store):
+    """An empty encrypted store (conftest.device_store) — named for the tests that use it."""
+    return device_store
 
 
 def test_ssh_tools_never_get_a_recorder_login(vault):

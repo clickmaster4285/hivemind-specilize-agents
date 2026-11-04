@@ -1,5 +1,5 @@
-"""Server logins for the session (src/servers/server_vault.py): kept in this process's memory only —
-never on disk, in the database, a log or a job. Admins and the users an admin gave access may add devices;
+"""Device logins (src/servers/server_vault.py): saved per user, the password / key encrypted (AES-256-GCM) —
+never readable in the database, never in a log or a job. Admins and the users an admin gave access may add devices;
 each user sees and uses only the ones they added. Only admins may let the agent change a server without asking (trusted)."""
 
 from __future__ import annotations
@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.core.auth import get_current_user, require_module
+from src.core.auth import require_module
 from src.core.models_db import User
 from web.schemas import ServerLoginPayload, ServerModePayload
 
@@ -117,11 +117,3 @@ def remove_server(server_id: str, user: User = Depends(DEVICES)) -> dict[str, st
     if not server_vault.remove(user.id, server_id):
         raise HTTPException(status_code=404, detail="server not found (the session may have ended)")
     return {"status": "removed", "id": server_id}
-
-
-@router.delete("")
-def forget_servers(user: User = Depends(get_current_user)) -> dict[str, int]:
-    """Logout: forget every server login of this user."""
-    from src.servers import server_vault
-
-    return {"forgotten": server_vault.clear(user.id)}

@@ -17,7 +17,7 @@ import { useSkills } from "@/hooks/useSkills";
 import { useSpecialists } from "@/hooks/useSpecialists";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
 import type { MemoryBusy } from "@/components/chat/ChatMemory";
-import { confirmCommand, continueThread, forgetServers, summarizeThread, type ImageProfile } from "@/lib/api";
+import { confirmCommand, continueThread, summarizeThread, type ImageProfile } from "@/lib/api";
 import { chatImagesToPending, errorText, IMAGE_QUESTION, type EditStrength } from "@/lib/chat";
 import { saveText } from "@/lib/download";
 import { newId } from "@/lib/id";
@@ -74,13 +74,11 @@ function useAppState() {
     [loadSpecialists, loadSkills, refreshModels, loadHistory, refreshJobs],
   );
   const onSignedOut = useCallback(
-    (reason: "logout" | "expired") => {
-      const forgotten = reason === "logout" ? forgetServers().catch(() => undefined) : undefined;
+    () => {
       clearSpecialists();
       clearSkills();
       clearJobs();          // resets jobs + metadata + the open-chat/project selection and forgets the user
       setFeed([]);
-      return forgotten;
     },
     [clearSpecialists, clearSkills, clearJobs, setFeed],
   );

@@ -426,6 +426,23 @@ Cisco, TP-Link / D-Link / Netgear**.
 - [ ] **D3 tool:** `network_device` in chat (status, ports, who is connected, logs) + .xlsx; eval cases
 - Later: config backup, then confirmed changes
 
+### L19b. Saved devices, full report, full pages — planned 2026-11-04 (ISSUES_LOG O21–O23)
+
+User's decisions (2026-11-04): devices **saved, each user's own, encrypted** (AES-256-GCM, key only in `.env`
+as `DEVICE_KEY`; protects database copies and backups — whoever has both the database and `.env` can still
+decrypt); admins do not see others' devices; cameras may be read **directly with the NVR's login** (one try
+each) when the NVR cannot relay; order: encrypted devices → full NVR report → full pages.
+
+- [x] **D4 encrypted device store — done 2026-11-04** (`src/core/crypto.py`, table `devices`, `tests/conftest.py`
+      gives every test its own in-memory store and key; the API refuses to start without a valid `DEVICE_KEY`;
+      logout no longer forgets devices — the `DELETE /api/servers` route is gone): table `devices` (owner, kind, label, address, user, encrypted secret,
+      host key, mode, platform); `server_vault` keeps its functions but reads/writes the table, decrypting only
+      for the moment a tool logs in; logins stay until removed (no longer cleared at logout or after 8 hours);
+      ciphertext bound to its owner and row (AES-GCM associated data) so it cannot be moved to another user
+- [ ] **N5 full NVR report** (`nvr-report-…xlsx` shape): NVRs sheet (status, network, uptime, CPU, HDDs,
+      camera counts), Cameras (device, network, system, main/sub stream, image settings), Storage (per HDD)
+- [ ] **D5 full pages:** user form, agent editor and device form as full pages inside the app layout
+
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
 
 To decide with the user: (a) **remote desktop in the browser**, which a person operates — Apache Guacamole

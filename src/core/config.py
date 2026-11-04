@@ -58,6 +58,7 @@ class Config:
     jwt_secret: str
     jwt_expire_minutes: int
     refresh_token_days: int
+    device_key: str                # AES-256 key (base64) for saved device logins — src/core/crypto.py
     llm_slots: int
     image_slots: int
     max_active_jobs_per_user: int
@@ -193,6 +194,7 @@ class Config:
             # access token: short, so a copied one is useful briefly; the refresh token keeps you signed in
             jwt_expire_minutes=int(os.getenv("JWT_EXPIRE_MINUTES", "15")),
             refresh_token_days=int(os.getenv("REFRESH_TOKEN_DAYS", "7")),
+            device_key=os.getenv("DEVICE_KEY", ""),
             llm_slots=max(1, int(os.getenv("LLM_SLOTS", "1"))),
             image_slots=max(1, int(os.getenv("IMAGE_SLOTS", "1"))),
             max_active_jobs_per_user=max(1, int(os.getenv("MAX_ACTIVE_JOBS_PER_USER", "1"))),

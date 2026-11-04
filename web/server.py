@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.core.auth import bootstrap_admin, check_secret, same_origin
+from src.core.crypto import check_key
 from src.core.config import Config
 from src.core.db import init_db
 from src.jobs.worker import start_inprocess_worker
@@ -36,6 +37,7 @@ async def lifespan(_app: FastAPI):
 
     config = Config.from_env()
     check_secret(config)
+    check_key(config)          # saved device logins are encrypted with DEVICE_KEY
     config.log_dir.mkdir(parents=True, exist_ok=True)
     config.artifacts_dir.mkdir(parents=True, exist_ok=True)
     init_db(config)

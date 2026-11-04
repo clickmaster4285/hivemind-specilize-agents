@@ -1,29 +1,33 @@
-"""Server logins for the session — kept in this process's memory only (doc/SECURITY_TOOLS_DECISION.md, option B).
+"""Device logins (Settings → Devices): saved per user, the password / key encrypted (BACKLOG L19b D4).
 
-The user types a server's login in the app (Settings → Devices), never in the chat. It lives here:
-  - never written to disk, the database, a log, or a job; never sent to the language model
-  - one store per user: an admin sees and uses only the servers they added
-  - gone on logout, when the API restarts, or SESSION_HOURS after it was added
+The user types a device's login in the app, never in the chat. It is kept in the `devices` table:
+  - the password, private key and passphrase only as AES-256-GCM (src/core/crypto.py), bound to their owner
+    and row; decrypted only when a tool logs in, never written to a log or a job, never sent to the model
+  - each user sees and uses only the devices they added (admins too)
+  - kept until removed (or until an admin takes the user's Devices access away)
   - repr() and the public view never show the password or key
-The SSH host key seen when the server is added is remembered; a different key later is refused
-(someone may be impersonating the server).
-
-Only the in-process worker (python main.py --gui) can use these logins — a standalone worker process
-has its own memory and sees none.
+The SSH host key seen when a server is added is remembered; a different key later is refused (someone may be
+impersonating the server).
 """
 
 from __future__ import annotations
 
 import ipaddress
+import json
 import socket
-import threading
-import time
 import uuid
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from typing import Any
 
+from sqlalchemy import delete, func, select
+from sqlalchemy.orm import Session
 
-SESSION_HOURS = 8
+from src.core import crypto
+from src.core.db import session_scope
+from src.core.models_db import DeviceRow
+
 MAX_SERVERS_PER_USER = 50
 # what the agent may do on a server (SERVER_ACCESS_DECISION.md §8):
 #   audit   = read-only only (diagnose); any change is refused
@@ -34,6 +38,10 @@ MODES = ("audit", "confirm", "trusted")
 # (src/servers/nvr.py); network = a router or switch read over SSH (src/servers/netdev.py). nvr and network
 # are read-only. The SSH tools only ever see ssh logins.
 KINDS = ("ssh", "nvr", "network")
+SECRET_FIELDS = ("password", "private_key", "key_passphrase")
+
+# the database session; tests point this at their own database
+_scope: Callable[[], AbstractContextManager[Session]] = session_scope
 
 
 class VaultError(ValueError):
@@ -55,22 +63,13 @@ class ServerLogin:
     os: str = ""                       # pretty OS name learned at login ("Ubuntu 24.04", "Windows Server 2022")
     os_family: str = "linux"           # linux | windows — picks the command classifier the agent uses
     kind: str = "ssh"                  # KINDS
-    added_at: float = field(default_factory=time.time)
-
-    @property
-    def expires_at(self) -> float:
-        return self.added_at + SESSION_HOURS * 3600
 
     def public(self) -> dict[str, Any]:
         """What the app may show — never the secret."""
         return {"id": self.id, "label": self.label, "host": self.host, "port": self.port,
                 "username": self.username, "auth": "key" if self.private_key else "password",
                 "host_key": self.host_key, "mode": self.mode, "os": self.os, "os_family": self.os_family,
-                "kind": self.kind, "expires_at": int(self.expires_at)}
-
-
-_store: dict[int, dict[str, ServerLogin]] = {}
-_lock = threading.Lock()
+                "kind": self.kind}
 
 
 def check_host(host: str) -> str:
@@ -105,12 +104,16 @@ def check_private(host: str) -> str:
     return host
 
 
-def _purge(user_id: int) -> dict[str, ServerLogin]:
-    servers = _store.setdefault(user_id, {})
-    now = time.time()
-    for sid in [sid for sid, s in servers.items() if s.expires_at <= now]:
-        del servers[sid]
-    return servers
+def _aad(user_id: int, device_id: str) -> str:
+    """What the ciphertext is bound to: copied to another user's row or another device, it will not decrypt."""
+    return f"device:{user_id}:{device_id}"
+
+
+def _login(row: DeviceRow) -> ServerLogin:
+    secret = json.loads(crypto.decrypt(row.secret_enc, _aad(row.user_id, row.id)))
+    return ServerLogin(id=row.id, label=row.label, host=row.host, port=row.port, username=row.username,
+                       host_key=row.host_key, mode=row.mode, os=row.os, os_family=row.os_family, kind=row.kind,
+                       **{k: secret.get(k) for k in SECRET_FIELDS})
 
 
 def add(user_id: int, *, label: str, host: str, port: int, username: str, password: str | None = None,
@@ -126,28 +129,34 @@ def add(user_id: int, *, label: str, host: str, port: int, username: str, passwo
         raise VaultError("the port must be 1–65535")
     if mode not in MODES:
         raise VaultError(f"mode must be one of {', '.join(MODES)}")
-    login = ServerLogin(id=uuid.uuid4().hex[:12], label=(label or host).strip()[:60], host=host.strip(),
-                        port=int(port), username=username.strip(), password=password or None,
-                        private_key=private_key or None, key_passphrase=key_passphrase or None,
-                        host_key=host_key, mode=mode, os=os, os_family=os_family, kind=kind)
-    with _lock:
-        servers = _purge(user_id)
-        if len(servers) >= MAX_SERVERS_PER_USER:
-            raise VaultError(f"at most {MAX_SERVERS_PER_USER} servers per session")
-        servers[login.id] = login
-    return login
+    device_id = uuid.uuid4().hex[:12]
+    secret = json.dumps({"password": password or None, "private_key": private_key or None,
+                         "key_passphrase": key_passphrase or None})
+    row = DeviceRow(id=device_id, user_id=user_id, kind=kind, label=(label or host).strip()[:60], host=host.strip(),
+                    port=int(port), username=username.strip(), secret_enc=crypto.encrypt(secret, _aad(user_id, device_id)),
+                    host_key=host_key, mode=mode, os=os, os_family=os_family)
+    with _scope() as session:
+        count = session.scalar(select(func.count()).select_from(DeviceRow).where(DeviceRow.user_id == user_id))
+        if count >= MAX_SERVERS_PER_USER:
+            raise VaultError(f"at most {MAX_SERVERS_PER_USER} devices per user")
+        session.add(row)
+        session.flush()
+        return _login(row)
 
 
 def list_servers(user_id: int, kind: str | None = "ssh") -> list[ServerLogin]:
     """The user's logins of one kind (None = all, for Settings)."""
-    with _lock:
-        logins = [s for s in _purge(user_id).values() if kind is None or s.kind == kind]
+    with _scope() as session:
+        query = select(DeviceRow).where(DeviceRow.user_id == user_id)
+        if kind is not None:
+            query = query.where(DeviceRow.kind == kind)
+        logins = [_login(row) for row in session.scalars(query)]
     return sorted(logins, key=lambda s: s.label.lower())
 
 
 def find(user_id: int, name: str | None, kind: str = "ssh") -> ServerLogin | None:
-    """By id, label or address. With exactly one login of the kind in the session it is unambiguous, so that
-    one is returned whatever the name says (handles a typo like 'pk sever', or no name at all)."""
+    """By id, label or address. With exactly one login of the kind it is unambiguous, so that one is
+    returned whatever the name says (handles a typo like 'pk sever', or no name at all)."""
     servers = list_servers(user_id, kind)
     if not servers:
         return None
@@ -167,20 +176,21 @@ def find(user_id: int, name: str | None, kind: str = "ssh") -> ServerLogin | Non
 def set_mode(user_id: int, server_id: str, mode: str) -> ServerLogin:
     if mode not in MODES:
         raise VaultError(f"mode must be one of {', '.join(MODES)}")
-    with _lock:
-        login = _store.get(user_id, {}).get(server_id)
-        if login is None:
-            raise VaultError("server not found (the session may have ended)")
-        login.mode = mode
-    return login
+    with _scope() as session:
+        row = session.scalar(select(DeviceRow).where(DeviceRow.user_id == user_id, DeviceRow.id == server_id))
+        if row is None:
+            raise VaultError("device not found")
+        row.mode = mode
+        return _login(row)
 
 
 def remove(user_id: int, server_id: str) -> bool:
-    with _lock:
-        return _store.get(user_id, {}).pop(server_id, None) is not None
+    with _scope() as session:
+        return session.execute(delete(DeviceRow).where(DeviceRow.user_id == user_id,
+                                                       DeviceRow.id == server_id)).rowcount > 0
 
 
 def clear(user_id: int) -> int:
-    """Logout: forget every login of this user."""
-    with _lock:
-        return len(_store.pop(user_id, {}))
+    """Every device of this user (their Devices access was taken away)."""
+    with _scope() as session:
+        return session.execute(delete(DeviceRow).where(DeviceRow.user_id == user_id)).rowcount

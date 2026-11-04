@@ -15,33 +15,39 @@ SECRET = "S3cret-pa55!"
 CFG = replace(Config.from_env(), security_scan_enabled=True)
 
 
-@pytest.fixture(autouse=True)
-def empty_vault():
-    vault._store.clear()
-    yield
-    vault._store.clear()
-
-
-# ── the session store ────────────────────────────────────────────────────
+# ── the device store ─────────────────────────────────────────────────────
 def test_logins_are_per_user_and_never_shown():
     login = vault.add(1, label="web01", host="192.168.88.66", port=22, username="audit", password=SECRET)
     assert SECRET not in repr(login) and SECRET not in str(login.public())
     assert login.public()["auth"] == "password"
     assert [s.label for s in vault.list_servers(1)] == ["web01"]
     assert vault.list_servers(2) == []                                  # another admin sees nothing
-    assert vault.find(1, "web01") is login and vault.find(1, "192.168.88.66") is login
-    assert vault.find(1, None) is login                                 # the only one
+    assert vault.find(1, "web01") == login and vault.find(1, "192.168.88.66") == login
+    assert vault.find(1, None) == login                                 # the only one
     assert vault.find(2, "web01") is None
 
 
-def test_logins_expire_and_logout_forgets_them(monkeypatch):
+def test_logins_are_saved_encrypted_and_cleared_when_access_goes(device_store):
+    from sqlalchemy import text
+
     vault.add(1, label="a", host="10.0.0.5", port=22, username="u", password=SECRET)
-    later = vault.time.time() + vault.SESSION_HOURS * 3600 + 1
-    monkeypatch.setattr(vault.time, "time", lambda: later)
-    assert vault.list_servers(1) == []
-    monkeypatch.undo()
-    vault.add(1, label="b", host="10.0.0.6", port=22, username="u", password=SECRET)
+    with device_store.connect() as conn:
+        stored = conn.execute(text("SELECT secret_enc FROM devices")).scalar_one()
+    assert stored.startswith("v1:") and SECRET not in stored             # never readable in the database
+    assert vault.list_servers(1)[0].password == SECRET                  # decrypted for the tool that logs in
     assert vault.clear(1) == 1 and vault.list_servers(1) == []
+
+
+def test_a_saved_secret_moved_to_another_user_does_not_decrypt(device_store):
+    from sqlalchemy import text
+
+    from src.core.crypto import CryptoError
+
+    vault.add(1, label="a", host="10.0.0.5", port=22, username="u", password=SECRET)
+    with device_store.begin() as conn:
+        conn.execute(text("UPDATE devices SET user_id = 2"))
+    with pytest.raises(CryptoError):
+        vault.list_servers(2)
 
 
 @pytest.mark.parametrize("host", ["192.168.1.9", "8.8.8.8", "203.0.113.10"])
@@ -252,7 +258,7 @@ def api(monkeypatch):
     server.app.dependency_overrides.clear()
 
 
-def test_api_adds_lists_and_forgets_without_returning_secrets(api):
+def test_api_adds_lists_and_removes_without_returning_secrets(api):
     added = api.post("/api/servers", json={"label": "web01", "host": "192.168.88.66", "username": "audit",
                                             "password": SECRET})
     assert added.status_code == 200 and SECRET not in added.text
@@ -260,5 +266,5 @@ def test_api_adds_lists_and_forgets_without_returning_secrets(api):
     listed = api.get("/api/servers")
     assert [s["label"] for s in listed.json()] == ["web01"] and SECRET not in listed.text
     assert api.post("/api/servers", json={"host": "0.0.0.0", "username": "u", "password": "x"}).status_code == 400
-    assert api.delete("/api/servers").json() == {"forgotten": 1}
-    assert api.get("/api/servers").json() == []
+    assert api.delete(f"/api/servers/{added.json()['id']}").json()["status"] == "removed"
+    assert api.get("/api/servers").json() == []                         # saved until removed, not until logout
