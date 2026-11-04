@@ -24,6 +24,7 @@ import yaml
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from src.core.auth import may_use
 from src.core.config import ROOT, Config
 from src.core.conversation import estimate_tokens
 from src.core.db import session_scope
@@ -268,7 +269,7 @@ def for_job(config: Config, user_id: int | None, query: str) -> tuple[Skill | No
         return None, query
     with session_scope(config) as session:
         user = session.get(User, user_id)
-        return from_message(session, user, query) if user else (None, query)
+        return from_message(session, user, query) if user and may_use(user, "skills") else (None, query)
 
 
 def prompt_block(skill: Skill) -> str:

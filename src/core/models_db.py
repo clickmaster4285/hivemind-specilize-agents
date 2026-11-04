@@ -16,6 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.core.db import Base
+from src.core.modules import DEFAULT_MODULES_JSON
 
 
 def utcnow() -> datetime:
@@ -34,8 +35,8 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     daily_job_quota: Mapped[int] = mapped_column(Integer, default=50)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active | disabled (disabled can't sign in)
-    # may use Settings → Devices (servers, recorders…): given by an admin; admins always may (auth.may_use_devices)
-    devices_access: Mapped[bool] = mapped_column(Boolean, default=False)
+    # the modules (src/core/modules.py) a member may use, set by an admin; admins have all (auth.may_use)
+    modules_json: Mapped[str] = mapped_column(Text, default=DEFAULT_MODULES_JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

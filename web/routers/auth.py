@@ -15,7 +15,7 @@ from src.core.auth import (
     end_session,
     get_current_user,
     get_db,
-    may_use_devices,
+    user_modules,
     refresh_session,
     set_session_cookies,
     start_session,
@@ -37,7 +37,7 @@ def _user_view(user: User) -> dict[str, Any]:
         "email": user.email,
         "phone": user.phone,
         "status": user.status,
-        "devices_access": may_use_devices(user),
+        "modules": user_modules(user),
     }
 
 

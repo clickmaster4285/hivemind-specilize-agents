@@ -9,13 +9,14 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
-from src.core.auth import get_current_user, get_db
+from src.core.auth import get_db, require_module
 from src.core.config import Config
 from src.core.models_db import User
 from src.llm import skills
 from web.schemas import SkillAddPayload, SkillPayload, SkillUpdatePayload, SkillUploadPayload
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
+SKILLS = require_module("skills")      # the routes of the skills module (src/core/modules.py)
 
 
 def _budget() -> int:
@@ -37,14 +38,14 @@ def _saved(db: Session, action) -> dict[str, Any]:
 
 
 @router.get("")
-def list_yours(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict[str, Any]:
+def list_yours(db: Session = Depends(get_db), user: User = Depends(SKILLS)) -> dict[str, Any]:
     """Yours (team + personal), and what the chat's "/" menu offers (usable: also the built-in skills)."""
     return {"skills": [s.to_dict() for s in skills.yours(db, user)],
             "usable": [s.to_dict() for s in skills.usable(db, user)], "can_manage_team": user.role == "admin"}
 
 
 @router.get("/catalog")
-def list_catalog(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict[str, Any]:
+def list_catalog(db: Session = Depends(get_db), user: User = Depends(SKILLS)) -> dict[str, Any]:
     """Discover: every built-in skill (marked when already in Yours) and the categories with their counts."""
     added = {s.origin for s in skills.yours(db, user) if s.origin}
     found = skills.catalog()
@@ -54,14 +55,14 @@ def list_catalog(db: Session = Depends(get_db), user: User = Depends(get_current
 
 @router.post("")
 def create_skill(payload: SkillPayload, db: Session = Depends(get_db),
-                 user: User = Depends(get_current_user)) -> dict[str, Any]:
+                 user: User = Depends(SKILLS)) -> dict[str, Any]:
     data = payload.model_dump(exclude={"team"})
     return _saved(db, lambda: skills.create(db, user, skills.Skill(**data), team=payload.team, budget=_budget()))
 
 
 @router.post("/upload")
 def upload_skill(payload: SkillUploadPayload, db: Session = Depends(get_db),
-                 user: User = Depends(get_current_user)) -> dict[str, Any]:
+                 user: User = Depends(SKILLS)) -> dict[str, Any]:
     """A SKILL.md written for MulteAgent or another assistant."""
     return _saved(db, lambda: skills.create(db, user, skills.parse_skill(payload.text, budget=_budget()),
                                             team=payload.team, budget=_budget()))
@@ -69,25 +70,25 @@ def upload_skill(payload: SkillUploadPayload, db: Session = Depends(get_db),
 
 @router.post("/catalog/{name}/add")
 def add_skill(name: str, payload: SkillAddPayload, db: Session = Depends(get_db),
-              user: User = Depends(get_current_user)) -> dict[str, Any]:
+              user: User = Depends(SKILLS)) -> dict[str, Any]:
     return _saved(db, lambda: skills.add_from_catalog(db, user, name, team=payload.team, budget=_budget()))
 
 
 @router.put("/{skill_id}")
 def update_skill(skill_id: int, payload: SkillUpdatePayload, db: Session = Depends(get_db),
-                 user: User = Depends(get_current_user)) -> dict[str, Any]:
+                 user: User = Depends(SKILLS)) -> dict[str, Any]:
     changes = payload.model_dump(exclude_none=True)
     return _saved(db, lambda: skills.update(db, user, skill_id, changes, budget=_budget()))
 
 
 @router.delete("/{skill_id}")
 def delete_skill(skill_id: int, db: Session = Depends(get_db),
-                 user: User = Depends(get_current_user)) -> dict[str, Any]:
+                 user: User = Depends(SKILLS)) -> dict[str, Any]:
     return _saved(db, lambda: skills.delete(db, user, skill_id))
 
 
 @router.get("/{skill_id}/download")
-def download_skill(skill_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> Response:
+def download_skill(skill_id: int, db: Session = Depends(get_db), user: User = Depends(SKILLS)) -> Response:
     """The skill as a SKILL.md file, to keep or share."""
     skill = next((s for s in skills.yours(db, user) if s.id == skill_id), None)
     if skill is None:

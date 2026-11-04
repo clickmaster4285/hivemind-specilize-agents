@@ -402,7 +402,12 @@ Cisco, TP-Link / D-Link / Netgear**.
 
 - [x] **D1 Devices section — done 2026-11-04:** the tab, heading and every "Settings → Servers" in replies, tool
       descriptions and prompts (20 places) say Devices; internal names (`/api/servers`, `server_vault`) stay
-- [x] **D1b more users — done 2026-11-04:** the Devices tab for admins **and the users an admin gives access**
+- [x] **D1c module access + user page — done 2026-11-04 (user's request):** Settings → Users = the list and a **Create user**
+      button; create and edit open one full-page form (replaces the edit modal and the inline Devices tick) with
+      **module access**: Devices, Skills, Usage (`src/core/modules.py` — one entry per module; only modules the
+      API can enforce). Admins have every module; new members get Skills + Usage (what members had), Devices off.
+      Replaces `users.devices_access` with `users.modules_json`
+- [x] **D1b more users — done 2026-11-04 (superseded by D1c):** the Devices tab for admins **and the users an admin gives access**
       (user's correction: not every user) — `users.devices_access`, off by default, switched on in Settings → Users;
       taking it away forgets that user's device logins at once. Each user sees and uses only the devices they
       added; **trusted** mode (changes without a click) stays admin-only (`ADMIN_ONLY_MODES` in

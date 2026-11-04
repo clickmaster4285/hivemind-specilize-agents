@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlsplit
@@ -21,6 +22,7 @@ from passlib.context import CryptContext
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
+from src.core import modules
 from src.core.config import DEV_JWT_SECRET, Config
 from src.core.db import get_session, session_scope
 from src.core.models_db import RefreshToken, User, utcnow
@@ -212,12 +214,22 @@ def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
-def may_use_devices(user: User) -> bool:
-    """Settings → Devices: admins, and the users an admin gave access."""
-    return user.role == "admin" or bool(user.devices_access)
+def user_modules(user: User) -> list[str]:
+    """The modules the user may use (src/core/modules.py): every one for an admin, else what an admin gave."""
+    return list(modules.MODULE_IDS) if user.role == "admin" else modules.parse(user.modules_json)
 
 
-def require_devices(user: User = Depends(get_current_user)) -> User:
-    if not may_use_devices(user):
-        raise HTTPException(status_code=403, detail="Ask an admin for access to Devices")
-    return user
+def may_use(user: User, module: str) -> bool:
+    return module in user_modules(user)
+
+
+def require_module(module: str) -> Callable[..., User]:
+    """A route of one module: refused (403) for a user an admin has not given it."""
+    title = next(m.title for m in modules.MODULES if m.id == module)
+
+    def dependency(user: User = Depends(get_current_user)) -> User:
+        if not may_use(user, module):
+            raise HTTPException(status_code=403, detail=f"Ask an admin for access to {title}")
+        return user
+
+    return dependency

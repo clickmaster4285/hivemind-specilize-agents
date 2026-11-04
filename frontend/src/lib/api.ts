@@ -5,6 +5,7 @@ import type {
   Health,
   Job,
   ManagedUser,
+  ModuleInfo,
   ModelInfo,
   RunMode,
   ServerInfo,
@@ -114,6 +115,11 @@ export async function me(): Promise<AuthUser> {
 /** Accounts (admin only). Self-serve registration stays disabled — admins create users here. */
 export async function listUsers(): Promise<ManagedUser[]> {
   return request("/api/auth/users");
+}
+
+/** The modules an admin can give a member (Devices, Skills, Usage…). */
+export async function listModules(): Promise<ModuleInfo[]> {
+  return request("/api/auth/users/modules");
 }
 
 export async function createUser(payload: UserCreateInput): Promise<ManagedUser> {

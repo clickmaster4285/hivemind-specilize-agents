@@ -21,7 +21,7 @@ class UserCreatePayload(BaseModel):
     email: str | None = None
     phone: str | None = None
     daily_job_quota: int | None = None  # None keeps the model default
-    devices_access: bool = False       # may use Settings → Devices (admins always may)
+    modules: list[str] | None = None   # src/core/modules.py ids; None = the defaults for a new member
 
 
 class UserUpdatePayload(BaseModel):
@@ -34,7 +34,7 @@ class UserUpdatePayload(BaseModel):
     daily_job_quota: int | None = None
     status: Literal["active", "disabled"] | None = None
     password: str | None = None
-    devices_access: bool | None = None
+    modules: list[str] | None = None   # the full new list of module ids (src/core/modules.py)
 
 
 # ── specialists ────────────────────────────────────────────────────────────

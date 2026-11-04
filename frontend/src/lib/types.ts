@@ -113,8 +113,8 @@ export type AuthUser = {
   phone?: string | null;
   status?: UserStatus;
   daily_job_quota?: number;
-  /** may use Settings → Devices (admins always; others when an admin allows it) */
-  devices_access?: boolean;
+  /** the modules this user may use (src/core/modules.py): every one for an admin */
+  modules?: string[];
 };
 
 /** An account as the admin Users panel sees it (never the password hash). */
@@ -127,7 +127,7 @@ export type ManagedUser = {
   phone: string | null;
   status: UserStatus;
   daily_job_quota: number;
-  devices_access: boolean;
+  modules: string[];
   query_count: number | null;
   created_at: string | null;
   updated_at: string | null;
@@ -143,7 +143,7 @@ export type UserCreateInput = {
   email?: string | null;
   phone?: string | null;
   daily_job_quota?: number | null;
-  devices_access?: boolean;
+  modules?: string[];
 };
 
 /** Admin edit of an account: only the fields sent change. Empty string clears team/email/phone;
@@ -156,8 +156,11 @@ export type UserUpdateInput = {
   daily_job_quota?: number | null;
   status?: UserStatus;
   password?: string;
-  devices_access?: boolean;
+  modules?: string[];
 };
+
+/** A module an admin can give a member (Settings → Users → user form). */
+export type ModuleInfo = { id: string; title: string; description: string; default: boolean };
 
 export type ModelInfo = {
   name: string;

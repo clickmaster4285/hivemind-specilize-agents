@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.core.auth import get_current_user, require_devices
+from src.core.auth import get_current_user, require_module
 from src.core.models_db import User
 from web.schemas import ServerLoginPayload, ServerModePayload
 
@@ -17,6 +17,7 @@ logger = logging.getLogger("multeagent.web")
 
 router = APIRouter(prefix="/api/servers", tags=["servers"])
 
+DEVICES = require_module("devices")
 # changes run without the user's click: an admin's decision, not every user's
 ADMIN_ONLY_MODES = frozenset({"trusted"})
 
@@ -27,7 +28,7 @@ def _check_mode(user: User, mode: str) -> None:
 
 
 @router.get("")
-def list_servers(user: User = Depends(require_devices)) -> list[dict[str, Any]]:
+def list_servers(user: User = Depends(DEVICES)) -> list[dict[str, Any]]:
     from src.servers import server_vault
 
     return [s.public() for s in server_vault.list_servers(user.id, kind=None)]
@@ -69,7 +70,7 @@ def _add_network_device(payload: ServerLoginPayload, user: User) -> dict[str, An
 
 
 @router.post("")
-def add_server(payload: ServerLoginPayload, user: User = Depends(require_devices)) -> dict[str, Any]:
+def add_server(payload: ServerLoginPayload, user: User = Depends(DEVICES)) -> dict[str, Any]:
     """Log in once (learn the server's host key and access level), then keep the login for the session."""
     from src.servers import linux_audit, server_vault
 
@@ -98,7 +99,7 @@ def add_server(payload: ServerLoginPayload, user: User = Depends(require_devices
 
 
 @router.put("/{server_id}/mode")
-def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Depends(require_devices)) -> dict[str, Any]:
+def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Depends(DEVICES)) -> dict[str, Any]:
     """Change a server's trust mode (audit / confirm / trusted)."""
     _check_mode(user, payload.mode)
     from src.servers import server_vault
@@ -110,7 +111,7 @@ def set_server_mode(server_id: str, payload: ServerModePayload, user: User = Dep
 
 
 @router.delete("/{server_id}")
-def remove_server(server_id: str, user: User = Depends(require_devices)) -> dict[str, str]:
+def remove_server(server_id: str, user: User = Depends(DEVICES)) -> dict[str, str]:
     from src.servers import server_vault
 
     if not server_vault.remove(user.id, server_id):

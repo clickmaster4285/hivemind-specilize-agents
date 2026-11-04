@@ -180,6 +180,8 @@ def test_without_a_recorder_login_the_chat_says_where_to_add_it(vault, monkeypat
 # ── who may use Settings → Devices (L19 D1b) ───────────────────────────
 
 def _devices_api(role: str, access: bool = True):
+    import json
+
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -190,7 +192,7 @@ def _devices_api(role: str, access: bool = True):
     app = FastAPI()
     app.include_router(servers.router)
     app.dependency_overrides[get_current_user] = lambda: User(id=USER, username="ana", password_hash="x", role=role,
-                                                              devices_access=access)
+                                                              modules_json=json.dumps(["devices"] if access else []))
     return TestClient(app)
 
 
@@ -214,10 +216,10 @@ def test_taking_access_away_forgets_the_users_device_logins(vault):
     Base.metadata.create_all(engine)
     db = Session(bind=engine)
     admin = User(id=1, username="root", password_hash="x", role="admin")
-    db.add_all([admin, User(id=USER, username="ana", password_hash="x", role="member", devices_access=True)])
+    db.add_all([admin, User(id=USER, username="ana", password_hash="x", role="member", modules_json='["devices"]')])
     db.commit()
     server_vault.add(USER, label="nvr", host="192.168.190.248", port=80, username="admin", password="x", kind="nvr")
-    assert update_user(USER, UserUpdatePayload(devices_access=False), admin=admin, db=db)["devices_access"] is False
+    assert update_user(USER, UserUpdatePayload(modules=["skills"]), admin=admin, db=db)["modules"] == ["skills"]
     assert server_vault.list_servers(USER, kind=None) == []
 
 

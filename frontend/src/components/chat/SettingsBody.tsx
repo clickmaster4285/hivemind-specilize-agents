@@ -36,21 +36,23 @@ export default function SettingsBody({
   skills: SkillsApi;
 }) {
   const isAdmin = user.role === "admin";
-  const canDevices = isAdmin || Boolean(user.devices_access);
+  // the modules an admin gave this user (admins have all): each one is a tab
+  const has = (module: string) => Boolean(user.modules?.includes(module));
+  const canDevices = has("devices");
   const servers = useServers(canDevices);
   const users = useUsers(isAdmin);
   // undefined = modal closed, null = new specialist
   const [editing, setEditing] = useState<Specialist | null | undefined>(undefined);
 
-  // Admins get Users; Devices for admins and the users an admin allowed; everyone gets Models, Agents.
+  // Admins get Users; Devices, Usage, Skills follow the user's modules; everyone gets Models, Agents.
   // The first visible tab is the default.
   const tabs: { id: TabId; label: string }[] = [
     ...(isAdmin ? [{ id: "users" as const, label: "Users" }] : []),
     ...(canDevices ? [{ id: "servers" as const, label: "Devices" }] : []),
-    { id: "usage", label: "Usage" },
+    ...(has("usage") ? [{ id: "usage" as const, label: "Usage" }] : []),
     { id: "models", label: "Models" },
     { id: "agents", label: "Agents" },
-    { id: "skills", label: "Skills" },
+    ...(has("skills") ? [{ id: "skills" as const, label: "Skills" }] : []),
   ];
   const [tab, setTab] = useState<TabId>(tabs[0].id);
 
@@ -92,7 +94,7 @@ export default function SettingsBody({
       ) : null}
 
       {/* Usage (admins: everyone; members: their own) */}
-      {tab === "usage" ? (
+      {tab === "usage" && has("usage") ? (
         <section className={panel}>
           <UsageSection />
         </section>
@@ -175,7 +177,7 @@ export default function SettingsBody({
       ) : null}
 
       {/* Skills (BACKLOG L14) */}
-      {tab === "skills" ? (
+      {tab === "skills" && has("skills") ? (
         <section className={panel}>
           <SkillsSection skills={skills} specialists={specialists} />
         </section>
