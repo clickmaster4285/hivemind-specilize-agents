@@ -235,7 +235,7 @@ class Config:
             sso_enabled=_bool("SSO_ENABLED", False),
             default_admin_user=os.getenv("DEFAULT_ADMIN_USER", "admin"),
             default_admin_password=os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123"),
-            # this PC only: the LAN comes in over https through Caddy (deploy/caddy/Caddyfile)
+            # this PC only: the LAN reaches the API through the UI's /api rewrite (port 3000)
             api_host=os.getenv("API_HOST", "127.0.0.1"),
             api_port=int(os.getenv("API_PORT", "8787")),
             llm_think=_optional_bool("LLM_THINK"),

@@ -343,8 +343,8 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
 Threats: a stolen login token, password guessing, request floods, a malicious uploaded file, XSS, clickjacking.
 DDoS proper is stopped at the network (firewall / reverse proxy); the app limits what one client can do.
 
-Decisions (user, 2026-11-04): **HTTPS via a Caddy reverse proxy** in docker-compose (local certificate, trusted
-once per PC) so cookies are `Secure` on the LAN too; **ClamAV in Docker, fail closed** (scanner down → upload
+Decisions (user, 2026-11-04): **plain http on the LAN** (HTTPS with a local certificate was tried and dropped —
+see S1b); **ClamAV in Docker, fail closed** (scanner down → upload
 refused). AES: nothing secret is stored today (passwords bcrypt, refresh tokens hashed, SSH logins never saved),
 and encrypting a token JS cannot read adds nothing — S5 starts when the app first stores a secret.
 
@@ -358,10 +358,13 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
       whose Origin is another site → 403. Startup refuses the dev default or a <32-byte `JWT_SECRET`.
       Frontend: no token in `localStorage`; `apiFetch` refreshes once on a 401 (one refresh for parallel calls)
       and repeats the call. `src/core/auth.py`, `web/routers/auth.py`, `tests/test_sessions.py`
-- [ ] **S1b HTTPS:** Caddy reverse proxy (`/api` → API, rest → Next.js) with a local certificate; API and
-      Next.js listen on 127.0.0.1 only, so the LAN reaches them only over https. **Native Caddy** (user,
-      2026-11-04 — in Docker the API and UI would have to listen on the LAN and need firewall rules to stop a
-      plain-http bypass); `start.ps1` starts it for this PC's LAN addresses (adapters with a default gateway)
+- [x] **S1b network — done 2026-11-04, HTTPS dropped (user's decision):** a local certificate authority
+      (Caddy `tls internal`) meant installing its root certificate on every PC — too much. Options weighed: own
+      domain + Let's Encrypt (DNS challenge), Tailscale, Group Policy push, plain http — **plain http on the
+      LAN** chosen. Accepted risk: someone sniffing the LAN can read traffic, passwords included; cookies stay
+      `HttpOnly` + `SameSite=Strict` (`Secure` is set by itself if HTTPS is added later). Kept: the API listens on
+      127.0.0.1 only — the LAN reaches it through the UI's `/api` rewrite (port 3000); port 8787 is closed to
+      the LAN. Revisit with a domain + Let's Encrypt if the app leaves the trusted LAN
 - [ ] **S2 abuse limits:** login throttle per account and per IP (back-off, then a short lock), per-user API rate
       limit, request body cap (CORS already gone — S1)
 - [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with

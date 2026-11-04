@@ -6,9 +6,8 @@
   1. Docker Desktop (if not running) -> database container (Postgres + pgvector: app data + brain)
   2. Ollama (tray app)
   3. API  (python main.py --gui)  in its own window
-  4. UI   (npm run dev)          in its own window
-  5. HTTPS proxy (Caddy)         in its own window - the only way in from the LAN
-  6. Health check
+  4. UI   (npm run dev)          in its own window - the LAN's way in (it passes /api on to the API)
+  5. Health check
 
 .EXAMPLE
   .\start.ps1            # everything
@@ -120,23 +119,7 @@ if (-not $NoUI) {
     }
 }
 
-# ── 5. HTTPS proxy ────────────────────────────────────────────────────
-# The API and UI listen on 127.0.0.1 only; Caddy serves them over https on this PC's addresses. Those are
-# read from the adapters that have a default gateway (the real network, not Docker/WSL virtual ones).
-Write-Step "HTTPS proxy (Caddy, port 443)"
-$lan = Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway } | ForEach-Object { $_.IPv4Address.IPAddress }
-$env:MULTEAGENT_HOSTS = (@("localhost") + $lan) -join ", "
-if (Test-Port 443) {
-    Write-Skip "already listening on 443 - assuming Caddy runs"
-} elseif (-not (Get-Command caddy -ErrorAction SilentlyContinue)) {
-    Write-Bad "caddy not found - install it: winget install --id CaddyServer.Caddy -e (then run 'caddy trust' as admin once)"
-} else {
-    $caddyfile = Join-Path $Root "deploy\caddy\Caddyfile"
-    Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location '$Root'; caddy run --config '$caddyfile'"
-    Write-Ok "Caddy window opened for $env:MULTEAGENT_HOSTS"
-}
-
-# ── 6. Health ─────────────────────────────────────────────────────────
+# ── 5. Health ─────────────────────────────────────────────────────────
 Write-Step "Health check"
 if (Wait-Until { Test-Http "http://127.0.0.1:8787/api/health" } 120 "API") {
     $health = Invoke-RestMethod -Uri "http://127.0.0.1:8787/api/health" -TimeoutSec 5
@@ -144,7 +127,9 @@ if (Wait-Until { Test-Http "http://127.0.0.1:8787/api/health" } 120 "API") {
 }
 if (-not $NoUI) {
     if (Wait-Until { Test-Http "http://127.0.0.1:3000" } 120 "UI") {
-        Write-Ok ("UI: " + ((($env:MULTEAGENT_HOSTS -split ", ") | ForEach-Object { "https://$_" }) -join "  "))
+        # this PC's LAN addresses: the adapters with a default gateway (not Docker/WSL virtual ones)
+        $lan = Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway } | ForEach-Object { $_.IPv4Address.IPAddress }
+        Write-Ok ("UI: " + ((@("localhost") + $lan | ForEach-Object { "http://${_}:3000" }) -join "  "))
     }
 }
 Write-Host ""
