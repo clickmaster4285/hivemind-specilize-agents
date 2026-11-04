@@ -36,3 +36,6 @@ Jinja2>=3.1.0
 
 # Linux server audit over SSH (src/linux_audit.py) — LGPL-2.1
 paramiko>=3.5,<4
+
+# NVR camera list (src/servers/nvr.py): untrusted XML from devices, parsed safely — PSF-2.0
+defusedxml>=0.7.1

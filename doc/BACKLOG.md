@@ -375,6 +375,29 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
 - [ ] **S5 encryption at rest (AES-256-GCM):** for secrets the app stores — decided per item (see questions)
 - [ ] **S6 security log:** failed logins, locks, refresh-token reuse, rejected uploads — visible to admins
 
+### L17. NVR camera list — in progress 2026-11-04 (fixes ISSUES_LOG O17; before L16 S2, user's order)
+
+"Tell me all the cameras on the NVR at …" → a table: channel, camera name, IP, model, online/offline (+ .xlsx).
+Read-only requests to the recorder's own API — never the web pages, never a setting changed.
+
+- [x] **N1 readers — done 2026-11-04** (`src/servers/nvr.py`, `tests/test_nvr.py`; Hikvision field names checked
+      live in N3, Dahua's when a Dahua recorder is at hand): Hikvision ISAPI (`/ISAPI/System/deviceInfo`, `/ISAPI/ContentMgmt/InputProxy/channels`
+      + `/status`) and Dahua HTTP API (`magicBox`, `ChannelTitle`, `LogicDeviceManager`), HTTP Digest login;
+      which API a device speaks is found by asking it (the one that answers with a login request), not by a
+      brand list. Parsers tested offline on sample replies
+- [ ] **N2 login:** the NVR login added in Settings → Servers, kept in memory only like SSH logins
+      (`server_vault`: never on disk, in the database, a log, a job or the model); admins only, private addresses
+- [ ] **N3 tool:** `nvr_cameras` in the assistant (IT specialist), table + .xlsx, eval case; live check on the
+      user's Hikvision NVR (192.168.190.248)
+- [ ] **N4 ONVIF:** profiles/video sources for other brands (WS-UsernameToken digest)
+
+### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
+
+To decide with the user: (a) **remote desktop in the browser**, which a person operates — Apache Guacamole
+in Docker (SERVER_ACCESS_DECISION.md §6 C2, already the chosen option for this), or (b) **the AI operating
+desktop apps** — vercel-labs/agent-desktop (accessibility tree, Windows/macOS/Linux, Apache-2.0); it drives
+the machine it runs on (here: the MulteAgent server itself), so it needs its own safety design.
+
 ---
 
 ## Progress log
