@@ -154,6 +154,10 @@ def _job(monkeypatch, tmp_path, **kwargs):
     original = nvr.read_recorder
     monkeypatch.setattr(nvr, "read_recorder",
                         lambda host, user, pw, port: original(host, user, pw, port, connect=connect))
+    from src.servers import nvr_report
+
+    build = nvr_report.build                          # the full report too: offline, from the same fake device
+    monkeypatch.setattr(nvr_report, "build", lambda host, user, pw, port: build(host, user, pw, port, connect=connect))
     events: list[dict] = []
     config = replace(Config.from_env(), artifacts_dir=tmp_path)
     output, errors, _ = nvr.run_nvr_cameras("list the cameras", job_id="job1", config=config,
@@ -166,9 +170,9 @@ def test_the_chat_job_answers_with_the_camera_table_and_an_xlsx(vault, monkeypat
                      password="right-password", kind="nvr")
     output, errors, events = _job(monkeypatch, tmp_path)
     assert not errors
-    assert "**2 cameras** — 1 online, 1 offline" in output
+    assert "Cameras: **2**, 1 online, 1 offline" in output              # a Hikvision recorder: the full report
     assert "| 1 | Gate | 192.168.190.64 |" in output
-    assert any(e["type"] == "artifact_ready" and e["filename"].endswith(".xlsx") for e in events)
+    assert any(e["type"] == "artifact_ready" and e["filename"] == "nvr-report-192.168.190.248.xlsx" for e in events)
 
 
 def test_without_a_recorder_login_the_chat_says_where_to_add_it(vault, monkeypatch, tmp_path):

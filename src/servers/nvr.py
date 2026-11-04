@@ -27,6 +27,7 @@ logger = logging.getLogger("multeagent.nvr")
 REQUEST_TIMEOUT = 10
 
 Fetch = Callable[[str], tuple[int, str]]       # path → (HTTP status, body)
+HIKVISION_API = "Hikvision ISAPI"              # the one API with a full report too (src/servers/nvr_report.py)
 
 
 class NvrError(RuntimeError):
@@ -103,7 +104,7 @@ def _read_hikvision(fetch: Fetch, host: str) -> Recorder:
     online = parse_hikvision_status(body) if status == 200 else {}      # older firmware: no status list
     for cam in cameras:
         cam.online = online.get(cam.channel)
-    return Recorder(host=host, api="Hikvision ISAPI", cameras=cameras, **info)
+    return Recorder(host=host, api=HIKVISION_API, cameras=cameras, **info)
 
 
 # ── Dahua HTTP API (key=value lines) ───────────────────────────────────
@@ -164,7 +165,7 @@ class Dialect:
 
 
 DIALECTS = (
-    Dialect("Hikvision ISAPI", "/ISAPI/System/deviceInfo", _read_hikvision),
+    Dialect(HIKVISION_API, "/ISAPI/System/deviceInfo", _read_hikvision),
     Dialect("Dahua HTTP API", "/cgi-bin/magicBox.cgi?action=getDeviceType", _read_dahua),
 )
 # a device that has the path answers it (200) or asks for a login (401); others say 404 or serve a page
@@ -305,9 +306,18 @@ def run_nvr_cameras(
         else:
             emit({"type": "status", "agent_id": "assistant", "message": f"Reading the cameras on {login.host}…"})
             rec = read_recorder(login.host, login.username, login.password or "", login.port)
+            name, sheet = f"nvr-cameras-{rec.host}.xlsx", xlsx_bytes(rec) if rec.cameras else None
             output = markdown(rec)
-            if rec.cameras:
-                meta = write_bytes(config, job_id, f"nvr-cameras-{rec.host}.xlsx", xlsx_bytes(rec), kind="xlsx")
+            if rec.api == HIKVISION_API:                  # the full report: the NVR, each camera's own details, disks
+                from src.servers import nvr_report
+
+                emit({"type": "status", "agent_id": "assistant",
+                      "message": f"Reading the details of each of the {len(rec.cameras)} cameras…"})
+                report = nvr_report.build(login.host, login.username, login.password or "", login.port)
+                name, sheet = f"nvr-report-{rec.host}.xlsx", nvr_report.xlsx_bytes(report)
+                output = nvr_report.markdown(report)
+            if sheet is not None:
+                meta = write_bytes(config, job_id, name, sheet, kind="xlsx")
                 emit(artifact_event(meta, job_id=job_id))
     except (NvrError, server_vault.VaultError) as exc:
         output = f"The cameras could not be read: {exc}."

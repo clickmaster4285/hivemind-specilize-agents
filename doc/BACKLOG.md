@@ -439,7 +439,13 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
       host key, mode, platform); `server_vault` keeps its functions but reads/writes the table, decrypting only
       for the moment a tool logs in; logins stay until removed (no longer cleared at logout or after 8 hours);
       ciphertext bound to its owner and row (AES-GCM associated data) so it cannot be moved to another user
-- [ ] **N5 full NVR report** (`nvr-report-…xlsx` shape): NVRs sheet (status, network, uptime, CPU, HDDs,
+- [x] **N5 full NVR report — built 2026-11-04, live check pending** (`tests/test_nvr_report.py`; chat: summary +
+      Channel / Name / IP / MAC / Model / Firmware / Status table; `nvr-report-<host>.xlsx` = NVRs, Cameras with the
+      group row, Storage) (`src/servers/nvr_report.py`; columns kept as data: group,
+      column, ISAPI address, field): NVR side `/ISAPI/System/deviceInfo` + `/status`, `/ISAPI/ContentMgmt/Storage/hdd`,
+      `InputProxy/channels` + `/status`, stream settings via `StreamingProxy/channels/{N}01|{N}02`; each camera's
+      own `/ISAPI/System/deviceInfo`, `Network/interfaces`, `status`, `time` + `ntpServers`, `Image/channels/1`
+      with the NVR login, one try per camera, 8 cameras at a time (`nvr-report-…xlsx` shape): NVRs sheet (status, network, uptime, CPU, HDDs,
       camera counts), Cameras (device, network, system, main/sub stream, image settings), Storage (per HDD)
 - [ ] **D5 full pages:** user form, agent editor and device form as full pages inside the app layout
 
