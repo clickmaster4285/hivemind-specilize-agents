@@ -1,0 +1,21 @@
+# HTTPS front door for MulteAgent (BACKLOG L16 S1b). The LAN reaches the app only here: the API (8787) and
+# the UI (3000) listen on 127.0.0.1. Started by start.ps1, which sets MULTEAGENT_HOSTS to this PC's
+# addresses (e.g. "localhost, 192.168.1.10").
+#
+# Certificates come from Caddy's own local authority (no internet, no domain needed). Trust its root once
+# per PC: on this one `caddy trust` (admin), on the others import
+# %APPDATA%\Caddy\pki\authorities\local\root.crt into "Trusted Root Certification Authorities".
+
+{$MULTEAGENT_HOSTS:localhost} {
+	tls internal
+
+	# straight to the API: it sees X-Forwarded-Proto https from 127.0.0.1 (trusted by uvicorn), so the
+	# session cookies get Secure. Event streams are flushed as they arrive.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}

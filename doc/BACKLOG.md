@@ -359,7 +359,9 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
       Frontend: no token in `localStorage`; `apiFetch` refreshes once on a 401 (one refresh for parallel calls)
       and repeats the call. `src/core/auth.py`, `web/routers/auth.py`, `tests/test_sessions.py`
 - [ ] **S1b HTTPS:** Caddy reverse proxy (`/api` → API, rest → Next.js) with a local certificate; API and
-      Next.js listen on 127.0.0.1 only, so the LAN reaches them only over https
+      Next.js listen on 127.0.0.1 only, so the LAN reaches them only over https. **Native Caddy** (user,
+      2026-11-04 — in Docker the API and UI would have to listen on the LAN and need firewall rules to stop a
+      plain-http bypass); `start.ps1` starts it for this PC's LAN addresses (adapters with a default gateway)
 - [ ] **S2 abuse limits:** login throttle per account and per IP (back-off, then a short lock), per-user API rate
       limit, request body cap (CORS already gone — S1)
 - [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with

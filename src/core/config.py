@@ -10,6 +10,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+# used when JWT_SECRET is unset; the API refuses to start with it (src.core.auth.check_secret)
+DEV_JWT_SECRET = "change-me-multeagent-dev-secret-32b+"
 load_dotenv(ROOT / ".env")
 
 
@@ -55,6 +57,7 @@ class Config:
     database_url: str
     jwt_secret: str
     jwt_expire_minutes: int
+    refresh_token_days: int
     llm_slots: int
     image_slots: int
     max_active_jobs_per_user: int
@@ -186,11 +189,10 @@ class Config:
             llm_num_ctx=max(512, int(os.getenv("LLM_NUM_CTX", "8192"))),
             log_dir=Path(os.getenv("LOG_DIR", str(ROOT / "logs"))),
             database_url=os.getenv("DATABASE_URL", default_db),
-            jwt_secret=os.getenv(
-                "JWT_SECRET",
-                "change-me-multeagent-dev-secret-32b+",
-            ),
-            jwt_expire_minutes=int(os.getenv("JWT_EXPIRE_MINUTES", "720")),
+            jwt_secret=os.getenv("JWT_SECRET", DEV_JWT_SECRET),
+            # access token: short, so a copied one is useful briefly; the refresh token keeps you signed in
+            jwt_expire_minutes=int(os.getenv("JWT_EXPIRE_MINUTES", "15")),
+            refresh_token_days=int(os.getenv("REFRESH_TOKEN_DAYS", "7")),
             llm_slots=max(1, int(os.getenv("LLM_SLOTS", "1"))),
             image_slots=max(1, int(os.getenv("IMAGE_SLOTS", "1"))),
             max_active_jobs_per_user=max(1, int(os.getenv("MAX_ACTIVE_JOBS_PER_USER", "1"))),
@@ -233,7 +235,8 @@ class Config:
             sso_enabled=_bool("SSO_ENABLED", False),
             default_admin_user=os.getenv("DEFAULT_ADMIN_USER", "admin"),
             default_admin_password=os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123"),
-            api_host=os.getenv("API_HOST", "0.0.0.0"),
+            # this PC only: the LAN comes in over https through Caddy (deploy/caddy/Caddyfile)
+            api_host=os.getenv("API_HOST", "127.0.0.1"),
             api_port=int(os.getenv("API_PORT", "8787")),
             llm_think=_optional_bool("LLM_THINK"),
             llm_keep_alive=(os.getenv("LLM_KEEP_ALIVE", "30m")).strip(),
