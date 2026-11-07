@@ -22,7 +22,10 @@ source .venv/bin/activate
 pip install -r requirements.txt   # everything: app, GPU torch, tests
 cp .env.example .env
 
-# Terminal 1 — API + in-process worker
+# Everything in order (Docker db + SearXNG, Ollama check, API, UI, health):
+./start.sh            # --tools adds pgAdmin, --no-ui backend only, --stop stops API + UI
+
+# Or by hand — Terminal 1: API + in-process worker
 python main.py --gui
 
 # Terminal 2 — UI

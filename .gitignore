@@ -8,6 +8,7 @@ venv/
 logs/*.md
 logs/*.txt
 logs/*.log
+logs/*.pid
 !logs/.gitkeep
 agents/agents.json
 agents/specialists.json

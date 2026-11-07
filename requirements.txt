@@ -8,6 +8,12 @@ pyjwt>=2.8.0
 passlib[bcrypt]>=1.7.4
 bcrypt>=4.0.0,<4.1
 psycopg[binary]>=3.1.0
+# Imported directly, so listed even though other packages pull them in (O25: Babel was missing that way)
+cryptography>=42.0        # saved device logins, AES-256-GCM (src/core/crypto.py)
+urllib3>=2.0              # src/servers/net_scan.py
+psutil>=5.9               # network and security scans (src/servers/)
+numpy>=1.26               # semantic router (src/llm/semantic_router.py)
+Babel>=2.14               # locales and regions for keyword/SERP research (src/tools/market.py)
 
 # Knowledge brain (Postgres + pgvector) — see doc/BRAIN_DESIGN.md
 pgvector>=0.4.1

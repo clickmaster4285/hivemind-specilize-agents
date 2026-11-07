@@ -454,14 +454,16 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **One requirements file — done 2026-11-07:** `requirements-dev.txt` and `requirements-image-cu118.txt`
       merged into `requirements.txt` (pytest; torch 2.14.1+cu126 for the Pascal GPU, via the PyTorch index);
       README and image-error install hints updated
-- [ ] **Babel (O25):** add `Babel` to `requirements.txt` so the API starts; check every third-party import in
-      `src/` and `web/` is listed
+- [x] **Babel (O25) — done 2026-11-07:** `Babel` added so the API starts; `cryptography`, `numpy`, `psutil`,
+      `urllib3` listed too (imported directly, previously only pulled in by other packages)
 - [ ] **Worker entry point (O26):** `worker_main.py` on the current modules (`src.core.config`, `src.jobs.worker`)
 - [ ] **Backup and restore (O27):** `backup.sh` / `restore.sh` — `pg_dump -Fc`, `.env`, `artifacts/`,
       `agents/*.json` in one dated archive, kept off this machine; optional daily schedule
 - [ ] **Docker plan revision (O28):** update `DOCKER_FULL_STACK_PLAN.md` for S1b (no Caddy, API not on the LAN),
       S1 (`JWT_SECRET` from `.env`), D4 (`DEVICE_KEY`), image size, dev hot reload — then the user decides
-- [ ] **`start.sh`:** Linux version of `start.ps1` (hybrid: db + SearXNG in Docker, API + UI on the host)
+- [x] **`start.sh` — done 2026-11-07:** Linux version of `start.ps1` (hybrid: db + SearXNG in Docker via
+      `compose up --wait`, Ollama check, API + UI in the background with logs in `logs/`, health + LAN URLs;
+      `--tools`, `--no-ui`, `--stop`). Says how to fix Docker permission / stopped services instead of using sudo
 
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
 
@@ -476,6 +478,8 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-07 | **L20 start.sh** | Linux starter in `start.ps1`'s order; API and UI run in their own process groups (logs `logs/api.log`, `logs/ui.log`), `--stop` ends them with their children. Syntax and `--help`/`--stop` checked; full run waits for Docker access |
+| 2026-11-07 | **L20 O25 Babel** | API failed to start on Ubuntu (`No module named 'babel'`, only present on Windows by chance). Added `Babel`, plus `cryptography`, `numpy`, `psutil`, `urllib3` (direct imports found by an import scan). 738 passed, 27 skipped — 25 are database tests waiting for Postgres (Docker permission) |
 | 2026-11-07 | **L20 one requirements file** | Moved to Ubuntu (Python 3.14): `-dev` and `-image-cu118` merged into `requirements.txt` (pytest; `torch==2.14.1+cu126` from the PyTorch index — cu118 has no 3.14 wheels and the default cu132 torch lacks sm_61 kernels for the P4000). README and image-error hints updated |
 | 2026-11-04 | **L17 NVR camera list (N1–N3)** | "Tell me all the cameras on the NVR" → `nvr_cameras`: Hikvision ISAPI / Dahua HTTP API found by asking the device, read-only, one login attempt, defusedxml; login in Settings → Servers (type Camera recorder, memory only, private addresses); table + .xlsx. 744 tests. Live check on 192.168.190.248 pending |
 | 2026-11-04 | **L16 S1 cookie sessions** | Login token out of `localStorage`: HttpOnly SameSite=Strict cookies, 15-min access + rotating 7-day refresh (hashed, reuse → sign-in revoked), logout revokes at once, disabled users locked out immediately (was: until the 12-h token ran out), same-origin `/api` (CORS removed, cross-site writes 403), weak `JWT_SECRET` refused. 733 tests |
