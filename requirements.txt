@@ -16,9 +16,11 @@ beautifulsoup4>=4.13      # web sources: HTML parsing (MIT)
 markdownify>=1.2          # web sources: HTML -> Markdown (MIT)
 
 # Local SDXL image generation (Diffusers).
-# On Quadro P4000 / Pascal GPUs: use Python 3.11–3.13 and install CUDA 11.8 torch:
-#   pip install -r requirements-image-cu118.txt
-# (Do not leave the default CPU/cu12x torch from accelerate — it breaks sm_61.)
+# torch is pinned to a CUDA 12.6 build: the Quadro P4000 is Pascal (sm_61), and the default torch from
+# PyPI (cu13x) has no kernels for it ("no kernel image is available"). 2.14.1 is the newest torch with a
+# cu126 build for Python 3.14. Check after installing: torch.cuda.get_arch_list() must include sm_61.
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch==2.14.1+cu126
 diffusers>=0.31.0
 transformers>=4.44.0
 accelerate>=0.33.0
@@ -39,3 +41,6 @@ paramiko>=3.5,<4
 
 # NVR camera list (src/servers/nvr.py): untrusted XML from devices, parsed safely — PSF-2.0
 defusedxml>=0.7.1
+
+# Tests (python -m pytest -q)
+pytest>=8.4

@@ -149,7 +149,7 @@ def _check_cuda_kernels(config: Config) -> None:
         raise ImageGenCudaError(
             f"PyTorch cannot use the GPU (installed: torch {torch.__version__}, CUDA build: "
             f"{torch.version.cuda or 'none — CPU-only'}). Images would take ~4 minutes on the CPU. "
-            "Install the GPU build:  pip install -r requirements-image-cu118.txt  "
+            "Install the GPU build:  pip install -r requirements.txt  "
             "(or set IMAGE_ALLOW_CPU=true to accept CPU mode)."
         )
     try:
@@ -160,8 +160,8 @@ def _check_cuda_kernels(config: Config) -> None:
     except Exception as exc:  # noqa: BLE001
         raise ImageGenCudaError(
             "CUDA kernels failed on this GPU. Quadro P4000 / Pascal (sm_61) needs "
-            "PyTorch cu118, not cu124/cu130. Install with:\n"
-            "  pip install -r requirements-image-cu118.txt\n"
+            "the PyTorch cu126 build pinned in requirements.txt, not cu13x. Install with:\n"
+            "  pip install -r requirements.txt\n"
             f"Original error: {exc}"
         ) from exc
 

@@ -16,14 +16,11 @@ Local-first, framework-free multi-agent system with:
 ## Quick start (LAN team)
 
 ```bash
-cd D:\multeagent
-# Prefer Python 3.11–3.13 (3.14 has no torch+cu118 wheels for Pascal GPUs)
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-# On Quadro P4000 / Pascal: also pin CUDA 11.8 torch (see Image generation below)
-pip install -r requirements-image-cu118.txt
-copy .env.example .env
+cd ~/projects/multeagent
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt   # everything: app, GPU torch, tests
+cp .env.example .env
 
 # Terminal 1 — API + in-process worker
 python main.py --gui
@@ -42,11 +39,7 @@ Open the Next.js URL, sign in with `admin` / `admin123`.
 Chat prompts like “create an image of …” route to in-process **Hugging Face Diffusers** (no ComfyUI/Ollama image API at runtime).
 
 1. Place `sd_xl_base_1.0.safetensors` in `models/checkpoints/` (or set `MODEL_IMAGE_PATH`).
-2. **Pascal GPUs (Quadro P4000, compute 6.1):** install the CUDA 11.8 wheel — newer cu124/cu130 builds fail with `no kernel image is available`:
-
-```bash
-pip install -r requirements-image-cu118.txt
-```
+2. **Pascal GPUs (Quadro P4000, compute 6.1):** `requirements.txt` pins a CUDA 12.6 torch build — the default cu13x builds fail with `no kernel image is available`. Check that `python -c "import torch; print(torch.cuda.get_arch_list())"` lists `sm_61`.
 
 3. Defaults are **768×768**, ~20 steps, fp16 + model CPU offload + VAE slicing (fits ~8GB VRAM). Prefer ≥32GB system RAM/pagefile when offloading.
 4. **txt2img** — text only. **img2img** — attach a reference image + edit/regenerate wording (`IMAGE_STRENGTH`, default `0.4`). Not pixel-perfect text swaps (needs inpainting later).

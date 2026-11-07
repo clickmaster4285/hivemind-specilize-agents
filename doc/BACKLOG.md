@@ -449,6 +449,12 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
       camera counts), Cameras (device, network, system, main/sub stream, image settings), Storage (per HDD)
 - [ ] **D5 full pages:** user form, agent editor and device form as full pages inside the app layout
 
+### L20. Move to Ubuntu — started 2026-11-07 (ISSUES_LOG O24)
+
+- [x] **One requirements file — done 2026-11-07:** `requirements-dev.txt` and `requirements-image-cu118.txt`
+      merged into `requirements.txt` (pytest; torch 2.14.1+cu126 for the Pascal GPU, via the PyTorch index);
+      README and image-error install hints updated
+
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
 
 To decide with the user: (a) **remote desktop in the browser**, which a person operates — Apache Guacamole

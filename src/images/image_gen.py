@@ -27,13 +27,13 @@ NO_CHECKPOINT = """This request needs **local SDXL image generation**.
 Set `MODEL_IMAGE_PATH` in `.env` to your SDXL checkpoint (`.safetensors`), for example:
 
 ```
-MODEL_IMAGE_PATH=D:/multeagent/models/checkpoints/sd_xl_base_1.0.safetensors
+MODEL_IMAGE_PATH=/home/dev-04/projects/multeagent/models/checkpoints/RealVisXL_V5.0_fp16.safetensors
 ```
 
-On Quadro P4000 / Pascal GPUs install the CUDA 11.8 PyTorch stack:
+On Quadro P4000 / Pascal GPUs install the pinned CUDA 12.6 PyTorch build:
 
 ```
-pip install -r requirements-image-cu118.txt
+pip install -r requirements.txt
 ```
 
 Then restart the API and try again. Vision models (`llava`) can only **look at** images — they cannot draw new ones."""
@@ -288,7 +288,7 @@ def run_image_gen(
                 f"Image generation failed: {exc}\n\n"
                 "On 8GB GPUs keep IMAGE_WIDTH/IMAGE_HEIGHT at 768 (not 1024). "
                 "Unload large Ollama models before generating. "
-                "Pascal GPUs need: pip install -r requirements-image-cu118.txt"
+                "Pascal GPUs need the torch build pinned in: pip install -r requirements.txt"
             )
     else:
         errors.append("MODEL_IMAGE_PATH not set or file missing")
