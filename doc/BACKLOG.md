@@ -454,6 +454,14 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **One requirements file — done 2026-11-07:** `requirements-dev.txt` and `requirements-image-cu118.txt`
       merged into `requirements.txt` (pytest; torch 2.14.1+cu126 for the Pascal GPU, via the PyTorch index);
       README and image-error install hints updated
+- [ ] **Babel (O25):** add `Babel` to `requirements.txt` so the API starts; check every third-party import in
+      `src/` and `web/` is listed
+- [ ] **Worker entry point (O26):** `worker_main.py` on the current modules (`src.core.config`, `src.jobs.worker`)
+- [ ] **Backup and restore (O27):** `backup.sh` / `restore.sh` — `pg_dump -Fc`, `.env`, `artifacts/`,
+      `agents/*.json` in one dated archive, kept off this machine; optional daily schedule
+- [ ] **Docker plan revision (O28):** update `DOCKER_FULL_STACK_PLAN.md` for S1b (no Caddy, API not on the LAN),
+      S1 (`JWT_SECRET` from `.env`), D4 (`DEVICE_KEY`), image size, dev hot reload — then the user decides
+- [ ] **`start.sh`:** Linux version of `start.ps1` (hybrid: db + SearXNG in Docker, API + UI on the host)
 
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
 
@@ -468,6 +476,7 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-07 | **L20 one requirements file** | Moved to Ubuntu (Python 3.14): `-dev` and `-image-cu118` merged into `requirements.txt` (pytest; `torch==2.14.1+cu126` from the PyTorch index — cu118 has no 3.14 wheels and the default cu132 torch lacks sm_61 kernels for the P4000). README and image-error hints updated |
 | 2026-11-04 | **L17 NVR camera list (N1–N3)** | "Tell me all the cameras on the NVR" → `nvr_cameras`: Hikvision ISAPI / Dahua HTTP API found by asking the device, read-only, one login attempt, defusedxml; login in Settings → Servers (type Camera recorder, memory only, private addresses); table + .xlsx. 744 tests. Live check on 192.168.190.248 pending |
 | 2026-11-04 | **L16 S1 cookie sessions** | Login token out of `localStorage`: HttpOnly SameSite=Strict cookies, 15-min access + rotating 7-day refresh (hashed, reuse → sign-in revoked), logout revokes at once, disabled users locked out immediately (was: until the 12-h token ran out), same-origin `/api` (CORS removed, cross-site writes 403), weak `JWT_SECRET` refused. 733 tests |
 | 2026-11-03 | **L14 S3 Settings → Skills** | Yours (Team / Created by you: on/off, edit, download, delete) and Discover (search, categories, view, + Add); create and upload SKILL.md; admins add for the team. Frontend only |
