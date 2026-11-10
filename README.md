@@ -24,6 +24,8 @@ cp .env.example .env
 
 # Everything in order (Docker db + SearXNG, Ollama check, API, UI, health):
 ./start.sh            # --tools adds pgAdmin, --no-ui backend only, --stop stops API + UI
+./start.sh --status   # what runs now: containers, Ollama + model, GPU, API, UI, knowledge base, backups
+./start.sh --follow   # live output of every part, tagged (Ctrl+C stops watching only)
 
 # Or by hand — Terminal 1: API + in-process worker
 python main.py --gui

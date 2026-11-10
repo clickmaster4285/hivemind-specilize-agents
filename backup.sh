@@ -21,7 +21,6 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/deploy/shell-common.sh"
 
-BACKUP_DIR="${BACKUP_DIR:-$ROOT/backups}"
 LABEL=""
 while (($#)); do
     case "$1" in

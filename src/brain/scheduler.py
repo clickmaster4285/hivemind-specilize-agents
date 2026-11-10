@@ -67,15 +67,20 @@ def run_due(config: Config | None = None, *, log_fn: Callable[[str], None] = log
             migrate(config)
             sync_sources(config)
             results: list[IngestStats] = []
-            for slug in due_sources(config):
+            due = due_sources(config)
+            if due:
+                log_fn(f"brain refresh: {len(due)} sources due")
+            for n, slug in enumerate(due, 1):
+                # "n/total" in every line, so the log shows how far a long refresh has got
+                where = f"brain refresh {n}/{len(due)}:"
                 try:
-                    stats = ingest_source(slug, config, log=lambda _line: None)
+                    stats = ingest_source(slug, config, log=lambda line, where=where: log_fn(f"{where} {line.strip()}"))
                 except ValueError as exc:  # disabled / removed between listing and ingest
-                    log_fn(f"brain refresh: {slug} skipped: {exc}")
+                    log_fn(f"{where} {slug} skipped: {exc}")
                     continue
                 results.append(stats)
                 log_fn(
-                    f"brain refresh: {slug} {stats.status} — new {stats.new}, changed {stats.changed}, "
+                    f"{where} {slug} {stats.status} — new {stats.new}, changed {stats.changed}, "
                     f"same {stats.same}, removed {stats.removed}, failed {stats.failed} ({stats.seconds}s)"
                 )
             return results

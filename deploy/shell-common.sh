@@ -38,6 +38,9 @@ ROW_COUNTS_SQL="SELECT n.nspname || '.' || c.relname,
    AND n.nspname NOT LIKE 'pg\\_toast%'
  ORDER BY 1"
 
+# Where backup.sh writes and --status looks; set BACKUP_DIR for a USB drive or NAS mount
+BACKUP_DIR="${BACKUP_DIR:-$ROOT/backups}"
+
 # Besides the database, what a backup carries (paths in the project; git-ignored, so git does not keep them).
 # .env must travel with the dump: its DEVICE_KEY decrypts the saved device logins.
 # Not carried, as they rebuild themselves: data/brain_cache (fetched sources), models, .venv, node_modules.

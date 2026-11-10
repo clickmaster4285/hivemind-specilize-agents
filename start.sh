@@ -12,6 +12,9 @@
 #   ./start.sh --tools    also start pgAdmin (http://localhost:5050)
 #   ./start.sh --no-ui    backend only
 #   ./start.sh --stop     stop the API and UI this script started (containers and Ollama keep running)
+#   ./start.sh --status   what runs right now: containers, Ollama + loaded model, GPU, API, UI, knowledge base, backups
+#   ./start.sh --follow   live output of every part, each line tagged (Ctrl+C stops watching, not the services)
+#   ./start.sh --follow api ollama    only these parts (api ui db searxng pgadmin ollama)
 
 set -u
 source "$(dirname "${BASH_SOURCE[0]}")/deploy/shell-common.sh"
@@ -28,16 +31,24 @@ UI_WAIT_SECONDS=120
 POLL_SECONDS=2
 # compose prints one line per service plus the error itself; this many lines show the cause without the pull progress
 COMPOSE_ERROR_LINES=5
+# --follow first shows this many recent lines per part, so what is happening has some context
+FOLLOW_CONTEXT_LINES=5
+# --follow parts and their tag colours (ANSI): one colour per kind — host processes, containers, the model
+FOLLOW_PARTS=(api ui db searxng pgadmin ollama)
+declare -A FOLLOW_COLOR=([api]=32 [ui]=35 [db]=36 [searxng]=36 [pgadmin]=36 [ollama]=33)
 
-TOOLS=0; NO_UI=0; STOP=0
-for arg in "$@"; do
-    case "$arg" in
+TOOLS=0; NO_UI=0; STOP=0; STATUS=0; FOLLOW=0; FOLLOW_ONLY=()
+while (($#)); do
+    case "$1" in
         --tools) TOOLS=1 ;;
         --no-ui) NO_UI=1 ;;
         --stop)  STOP=1 ;;
-        -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        *) echo "unknown option: $arg (see --help)"; exit 2 ;;
+        --status) STATUS=1 ;;
+        --follow) FOLLOW=1; shift; FOLLOW_ONLY=("$@"); break ;;
+        -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "unknown option: $1 (see --help)"; exit 2 ;;
     esac
+    shift
 done
 
 http_ok()   { curl -fs -o /dev/null --max-time 3 "$1"; }  # quiet: wait_until polls it and reports the outcome itself
@@ -69,6 +80,142 @@ stop_bg() {
     fi
     rm -f "$pidfile"
 }
+
+# One line from /api/health: what the health check and --status print
+api_summary() {
+    curl -fsS --max-time 5 "http://127.0.0.1:$API_PORT/api/health" | "$PYTHON" -c '
+import json, sys
+h = json.load(sys.stdin)
+image = (h.get("image_pipeline") or {}).get("state")
+print(f"   \033[32mOK\033[0m   API up - model {h.get("model")}, Ollama reachable: {h.get("llm_reachable")}, "
+      f"image model: {image}, jobs waiting: {h.get("queue_depth")}")'
+}
+
+pid_note() {  # pid_note <name> — "(pid N, log logs/<name>.log)" when this script started it
+    local pidfile="$LOGS/$1.pid"
+    if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+        echo " (pid $(cat "$pidfile"), log logs/$1.log)"
+    fi
+}
+
+show_status() {
+    step "Containers"
+    if ! docker info >/dev/null 2>&1; then
+        bad "Docker is not reachable"
+    else
+        local any=0 svc state status
+        while IFS=$'\t' read -r svc state status; do
+            any=1
+            if [[ "$state" == running ]]; then ok "$svc: $status"; else bad "$svc: $status"; fi
+        done < <(compose ps -a --format '{{.Service}}\t{{.State}}\t{{.Status}}')
+        ((any)) || bad "none — start them with ./start.sh"
+        status="$(docker ps --filter name='^portainer$' --format '{{.Status}}')"
+        [[ -n "$status" ]] && ok "portainer: $status (https://localhost:9443)"
+    fi
+
+    step "Ollama"
+    if http_ok "$OLLAMA_URL/api/version"; then
+        curl -fsS --max-time 5 "$OLLAMA_URL/api/ps" | "$PYTHON" -c '
+import json, sys
+models = json.load(sys.stdin).get("models") or []
+GIB = 1024 ** 3
+for m in models:
+    size, vram = m.get("size", 0), m.get("size_vram", 0)
+    if vram >= size:
+        where = "all on the GPU"
+    elif vram == 0:
+        where = "on the CPU (slow): it did not fit next to what the GPU already held"
+    else:
+        where = f"{vram / GIB:.1f} of {size / GIB:.1f} GB on the GPU, the rest on the CPU (slower)"
+    print(f"   \033[32mOK\033[0m   loaded: {m["name"]} ({size / GIB:.1f} GB, {where})")
+if not models:
+    print("   \033[90m--   running, no model loaded (it loads on the first chat)\033[0m")'
+    else
+        bad "not running — start it:  sudo systemctl start ollama"
+    fi
+
+    step "GPU"
+    if command -v nvidia-smi >/dev/null; then
+        nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv,noheader,nounits |
+            while IFS=, read -r name used total busy; do
+                ok "$name: ${used// /} / ${total// /} MiB used, ${busy// /} % busy"
+            done
+    else
+        skip "nvidia-smi not found"
+    fi
+
+    step "API (port $API_PORT)"
+    if port_open "$API_PORT"; then
+        api_summary || bad "listening, but /api/health does not answer — see logs/api.log"
+        ok "listening$(pid_note api)"
+    else
+        bad "not running — start it:  ./start.sh"
+    fi
+
+    step "UI (port $UI_PORT)"
+    if port_open "$UI_PORT"; then ok "http://localhost:$UI_PORT$(pid_note ui)"; else bad "not running — start it:  ./start.sh"; fi
+
+    step "Knowledge base"
+    if db_running; then
+        local row
+        row="$(db_sql "$DB_NAME" "SELECT count(*) FILTER (WHERE enabled), count(*) FILTER (WHERE enabled AND last_checked_at IS NOT NULL),
+                   (SELECT count(*) FROM brain.documents), (SELECT count(*) FROM brain.chunks),
+                   EXISTS (SELECT 1 FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+                            WHERE l.locktype = 'advisory' AND l.granted AND a.usename = 'brain_app')
+              FROM brain.sources" 2>/dev/null)"
+        if [[ -n "$row" ]]; then
+            IFS=$'\t' read -r enabled checked docs chunks refreshing <<<"$row"
+            ok "$checked of $enabled sources fetched at least once — $docs documents, $chunks chunks"
+            if [[ "$refreshing" == t ]]; then
+                ok "a refresh is running; latest: $(grep -h "brain refresh" "$LOGS/api.log" 2>/dev/null | tail -n 1 | sed 's/^.*brain\.scheduler: //')"
+            else
+                skip "no refresh running"
+            fi
+        else
+            bad "not set up yet — ./start.sh does it"
+        fi
+    else
+        bad "database not running"
+    fi
+
+    step "Backups ($BACKUP_DIR)"
+    local newest
+    newest="$(ls -1t "$BACKUP_DIR"/multeagent-*.tar.gz 2>/dev/null | head -n 1)"
+    if [[ -n "$newest" ]]; then
+        ok "newest: $(basename "$newest") ($(du -h "$newest" | cut -f1), $(( ($(date +%s) - $(stat -c %Y "$newest")) / 3600 )) h ago)"
+    else
+        bad "none yet — run ./backup.sh"
+    fi
+}
+
+# Live output of every part, each line tagged; Ctrl+C ends only the watching
+follow() {
+    local parts=("$@") part color
+    ((${#parts[@]})) || parts=("${FOLLOW_PARTS[@]}")
+    for part in "${parts[@]}"; do
+        [[ -n "${FOLLOW_COLOR[$part]:-}" ]] || { bad "unknown part: $part (${FOLLOW_PARTS[*]})"; return 2; }
+    done
+    trap 'trap - INT TERM; kill 0' INT TERM
+    echo "Watching: ${parts[*]} — Ctrl+C to stop watching (everything keeps running)"
+    for part in "${parts[@]}"; do
+        color="${FOLLOW_COLOR[$part]}"
+        case "$part" in
+            api|ui)  tail -n "$FOLLOW_CONTEXT_LINES" -F "$LOGS/$part.log" 2>/dev/null ;;
+            ollama)  journalctl -u ollama -f -n "$FOLLOW_CONTEXT_LINES" -o cat 2>&1 ;;
+            *)       compose logs -f --tail "$FOLLOW_CONTEXT_LINES" --no-log-prefix "$part" 2>&1 ;;
+        esac | sed -u "s/^/$(printf '\033[%sm%-8s\033[0m| ' "$color" "$part")/" &
+    done
+    wait
+}
+
+if ((STATUS)); then
+    show_status
+    exit 0
+fi
+if ((FOLLOW)); then
+    follow "${FOLLOW_ONLY[@]}"
+    exit $?
+fi
 
 if ((STOP)); then
     step "Stopping"
@@ -161,12 +308,7 @@ health_url="http://127.0.0.1:$API_PORT/api/health"
 if ((!API_EXPECTED)); then
     skip "API not running — nothing to check"
 elif wait_until "$API_WAIT_SECONDS" "API" http_ok "$health_url"; then
-    curl -fsS --max-time 5 "$health_url" | "$PYTHON" -c '
-import json, sys
-h = json.load(sys.stdin)
-image = (h.get("image_pipeline") or {}).get("state")
-print(f"   \033[32mOK\033[0m   API up - model {h.get("model")}, Ollama reachable: {h.get("llm_reachable")}, "
-      f"image model: {image}")'
+    api_summary
 else
     bad "see logs/api.log"
 fi
@@ -185,4 +327,6 @@ if ((!NO_UI)); then
     fi
 fi
 echo
-echo "Stop the API and UI with:  ./start.sh --stop"
+echo "What runs:    ./start.sh --status"
+echo "Live output:  ./start.sh --follow      (Ctrl+C stops watching only)"
+echo "Stop API+UI:  ./start.sh --stop"

@@ -473,6 +473,10 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
       the logins/schema only when missing; `start.sh` calls it after the database is healthy
 - [ ] **Stronger database owner password (O32):** user changes it in the database and `.env` (walk-through given)
 - [ ] **Separate test database (O33):** DB tests on their own database, not the live one; lock waits time out
+- [x] **See what runs (O34) — done 2026-11-10:** brain refresh progress per file in `logs/api.log`; `./start.sh --status` snapshot
+      (containers, Ollama + loaded model, GPU, API health/queue, UI, brain progress, last backup); `./start.sh --follow`
+      live tagged output of API, UI, containers, Ollama
+- [ ] **Embedding model on the GPU (O35):** it fell back to the CPU next to the chat model (8 GB); decide how both share it
 
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
 
@@ -487,6 +491,7 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-10 | **L20 O34 see what runs** | Brain refresh logs `n/total` + every file; `./start.sh --status` snapshot and `./start.sh --follow` live tagged output (signal stops every watcher — checked). Status showed the embedding model on the CPU → O35 |
 | 2026-11-10 | **L20 O27 backup / restore** | `backup.sh` (dump + `.env`, `artifacts/`, `agents/`, eval results, MANIFEST → `backups/*.tar.gz`, mode 600, unencrypted), `restore.sh --verify` (scratch database, row counts) and `restore.sh` (safety backup first, files, database, logins/grants). Shared shell helpers in `deploy/shell-common.sh` (also used by `start.sh`). `app_db setup` hands restored tables back to the app login (+1 test). Live: backup 67 MB, verify OK. 767 passed, 2 skipped |
 | 2026-11-10 | **L20 O31 fresh database setup** | `app_db prepare` (migrations, `brain_app`, `multeagent_app` + schema `app`, each only when missing); `start.sh` runs it after the database is healthy. 4 new offline tests; 766 passed, 2 skipped (the refresh-lock test deselected: blocked by the API's first full brain refresh, logged as O33) |
 | 2026-11-10 | **L20 O30 start.sh health line** | Health summary crashed with a SyntaxError (escaped quotes in the inline Python); now plain quotes. Checked against the running API |
