@@ -464,6 +464,9 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **`start.sh` — done 2026-11-07:** Linux version of `start.ps1` (hybrid: db + SearXNG in Docker via
       `compose up --wait`, Ollama check, API + UI in the background with logs in `logs/`, health + LAN URLs;
       `--tools`, `--no-ui`, `--stop`). Says how to fix Docker permission / stopped services instead of using sudo
+- [x] **`start.sh` first run (O29) — done 2026-11-10:** name a missing Docker credential helper (Docker Desktop's `credsStore`, left
+      after it was removed) with the fix; skip the API when the database is down; quiet health polling
+- [x] **`start.sh` health line (O30) — done 2026-11-10:** the inline Python had `\"` inside f-strings (syntax error)
 
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
 
@@ -478,6 +481,8 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-10 | **L20 O30 start.sh health line** | Health summary crashed with a SyntaxError (escaped quotes in the inline Python); now plain quotes. Checked against the running API |
+| 2026-11-10 | **L20 O29 start.sh first run** | Removed Docker Desktop left `credsStore` in `~/.docker/config.json` → pulls failed, no DB, API exited. `start.sh` now names the helper and the fix, skips the API while the DB is down, and polls health quietly. Failure path checked with a copy of the bad config |
 | 2026-11-07 | **L20 start.sh** | Linux starter in `start.ps1`'s order; API and UI run in their own process groups (logs `logs/api.log`, `logs/ui.log`), `--stop` ends them with their children. Syntax and `--help`/`--stop` checked; full run waits for Docker access |
 | 2026-11-07 | **L20 O25 Babel** | API failed to start on Ubuntu (`No module named 'babel'`, only present on Windows by chance). Added `Babel`, plus `cryptography`, `numpy`, `psutil`, `urllib3` (direct imports found by an import scan). 738 passed, 27 skipped — 25 are database tests waiting for Postgres (Docker permission) |
 | 2026-11-07 | **L20 one requirements file** | Moved to Ubuntu (Python 3.14): `-dev` and `-image-cu118` merged into `requirements.txt` (pytest; `torch==2.14.1+cu126` from the PyTorch index — cu118 has no 3.14 wheels and the default cu132 torch lacks sm_61 kernels for the P4000). README and image-error hints updated |

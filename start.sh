@@ -28,6 +28,8 @@ DB_WAIT_SECONDS=90
 API_WAIT_SECONDS=120
 UI_WAIT_SECONDS=120
 POLL_SECONDS=2
+# compose prints one line per service plus the error itself; this many lines show the cause without the pull progress
+COMPOSE_ERROR_LINES=5
 
 TOOLS=0; NO_UI=0; STOP=0
 for arg in "$@"; do
@@ -46,7 +48,7 @@ skip() { printf '   \033[90m--   %s\033[0m\n' "$1"; }
 bad()  { printf '   \033[31mFAIL\033[0m %s\n' "$1"; }
 
 port_open() { ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
-http_ok()   { curl -fsS -o /dev/null --max-time 3 "$1"; }
+http_ok()   { curl -fs -o /dev/null --max-time 3 "$1"; }  # quiet: wait_until polls it and reports the outcome itself
 
 wait_until() {  # wait_until <seconds> <what> <command...>
     local seconds="$1" what="$2"; shift 2
@@ -85,6 +87,7 @@ fi
 
 # ── 1. Docker + database + search ─────────────────────────────────────
 step "Docker, the database and SearXNG"
+DB_UP=0
 if ! docker_err="$(docker info 2>&1 >/dev/null)"; then
     if grep -qi "permission denied" <<<"$docker_err"; then
         bad "no permission to use Docker — run once:  sudo usermod -aG docker \$USER  then log out and back in"
@@ -96,11 +99,18 @@ else
     services=(db searxng)
     ((TOOLS)) && services+=(pgadmin)
     profile=(); ((TOOLS)) && profile=(--profile tools)
-    if (cd "$ROOT" && docker compose "${profile[@]}" up -d --wait --wait-timeout "$DB_WAIT_SECONDS" "${services[@]}" >/dev/null); then
+    if compose_out="$(cd "$ROOT" && docker compose "${profile[@]}" up -d --wait --wait-timeout "$DB_WAIT_SECONDS" "${services[@]}" 2>&1)"; then
+        DB_UP=1
         ok "database healthy (127.0.0.1:5432), SearXNG up (127.0.0.1:8888)"
         ((TOOLS)) && ok "pgAdmin: http://localhost:5050"
+    elif helper="$(grep -o 'docker-credential-[[:alnum:]_.-]*' <<<"$compose_out" | head -n 1)" && [[ -n "$helper" ]]; then
+        # typically Docker Desktop's "credsStore", left behind when it is removed; public images need no helper
+        bad "Docker cannot pull images: its config names the credential helper $helper, which is not installed"
+        bad "fix: remove the \"credsStore\" / \"credHelpers\" entry from ~/.docker/config.json, then run ./start.sh again"
     else
-        bad "containers not healthy — see:  docker compose logs db searxng"
+        bad "containers not healthy:"
+        tail -n "$COMPOSE_ERROR_LINES" <<<"$compose_out" | sed 's/^/        /'
+        bad "more:  docker compose logs db searxng"
     fi
 fi
 
@@ -116,10 +126,16 @@ fi
 
 # ── 3. API ────────────────────────────────────────────────────────────
 step "API (port $API_PORT)"
+API_EXPECTED=1
 if port_open "$API_PORT"; then
     skip "already listening on $API_PORT — assuming the API runs (restart it yourself to load new code)"
 elif [[ ! -x "$PYTHON" ]]; then
+    API_EXPECTED=0
     bad "virtual environment not found: $PYTHON"
+elif ((!DB_UP)); then
+    # the API creates its tables and the first admin at startup and exits without the database
+    API_EXPECTED=0
+    bad "not started: it needs the database (fix the Docker step above, then run ./start.sh again)"
 else
     start_bg api "$ROOT" "$PYTHON" main.py --gui
     ok "API started in the background (log: logs/api.log)"
@@ -141,12 +157,15 @@ fi
 # ── 5. Health ─────────────────────────────────────────────────────────
 step "Health check"
 health_url="http://127.0.0.1:$API_PORT/api/health"
-if wait_until "$API_WAIT_SECONDS" "API" http_ok "$health_url"; then
+if ((!API_EXPECTED)); then
+    skip "API not running — nothing to check"
+elif wait_until "$API_WAIT_SECONDS" "API" http_ok "$health_url"; then
     curl -fsS --max-time 5 "$health_url" | "$PYTHON" -c '
 import json, sys
 h = json.load(sys.stdin)
-print(f"   \033[32mOK\033[0m   API up - model {h.get(\"model\")}, Ollama reachable: {h.get(\"llm_reachable\")}, "
-      f"image model: {(h.get(\"image_pipeline\") or {}).get(\"state\")}")'
+image = (h.get("image_pipeline") or {}).get("state")
+print(f"   \033[32mOK\033[0m   API up - model {h.get("model")}, Ollama reachable: {h.get("llm_reachable")}, "
+      f"image model: {image}")'
 else
     bad "see logs/api.log"
 fi
