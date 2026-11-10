@@ -2,7 +2,7 @@
 # Start MulteAgent for local development on Linux, in the right order, skipping whatever already runs.
 # The Linux version of start.ps1 (hybrid: database + SearXNG in Docker, API + UI on this machine).
 #
-#   1. Docker -> database (Postgres + pgvector) and SearXNG containers
+#   1. Docker -> database (Postgres + pgvector) and SearXNG containers; a fresh database gets its setup
 #   2. Ollama (systemd service)
 #   3. API  (python main.py --gui)  in the background, log in logs/api.log
 #   4. UI   (npm run dev)           in the background, log in logs/ui.log — the LAN's way in (it passes /api on)
@@ -103,6 +103,15 @@ else
         DB_UP=1
         ok "database healthy (127.0.0.1:5432), SearXNG up (127.0.0.1:8888)"
         ((TOOLS)) && ok "pgAdmin: http://localhost:5050"
+        # a fresh or restored database still needs its logins, schema and migrations; each step runs only if missing
+        if [[ ! -x "$PYTHON" ]]; then
+            skip "database setup skipped: no virtual environment yet"
+        elif prep="$(cd "$ROOT" && "$PYTHON" -m src.core.app_db prepare 2>&1)"; then
+            while IFS= read -r line; do ok "$line"; done <<<"$prep"
+        else
+            DB_UP=0
+            bad "database setup failed: $prep"
+        fi
     elif helper="$(grep -o 'docker-credential-[[:alnum:]_.-]*' <<<"$compose_out" | head -n 1)" && [[ -n "$helper" ]]; then
         # typically Docker Desktop's "credsStore", left behind when it is removed; public images need no helper
         bad "Docker cannot pull images: its config names the credential helper $helper, which is not installed"

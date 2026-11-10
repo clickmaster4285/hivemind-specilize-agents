@@ -458,7 +458,9 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
       `urllib3` listed too (imported directly, previously only pulled in by other packages)
 - [ ] **Worker entry point (O26):** `worker_main.py` on the current modules (`src.core.config`, `src.jobs.worker`)
 - [ ] **Backup and restore (O27):** `backup.sh` / `restore.sh` — `pg_dump -Fc`, `.env`, `artifacts/`,
-      `agents/*.json` in one dated archive, kept off this machine; optional daily schedule
+      `agents/*.json` in one dated archive in `BACKUP_DIR` (default `backups/`, git-ignored; user's choice
+      2026-11-10), with a reminder to copy it off this machine; optional daily schedule; no encryption at first
+      (user 2026-11-10: plain archive now, encryption later — treat the file like a password file)
 - [ ] **Docker plan revision (O28):** update `DOCKER_FULL_STACK_PLAN.md` for S1b (no Caddy, API not on the LAN),
       S1 (`JWT_SECRET` from `.env`), D4 (`DEVICE_KEY`), image size, dev hot reload — then the user decides
 - [x] **`start.sh` — done 2026-11-07:** Linux version of `start.ps1` (hybrid: db + SearXNG in Docker via
@@ -467,6 +469,10 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **`start.sh` first run (O29) — done 2026-11-10:** name a missing Docker credential helper (Docker Desktop's `credsStore`, left
       after it was removed) with the fix; skip the API when the database is down; quiet health polling
 - [x] **`start.sh` health line (O30) — done 2026-11-10:** the inline Python had `\"` inside f-strings (syntax error)
+- [x] **Fresh database setup (O31) — done 2026-11-10:** `python -m src.core.app_db prepare` runs the brain migrations and creates
+      the logins/schema only when missing; `start.sh` calls it after the database is healthy
+- [ ] **Stronger database owner password (O32):** user changes it in the database and `.env` (walk-through given)
+- [ ] **Separate test database (O33):** DB tests on their own database, not the live one; lock waits time out
 
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
 
@@ -481,6 +487,7 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-10 | **L20 O31 fresh database setup** | `app_db prepare` (migrations, `brain_app`, `multeagent_app` + schema `app`, each only when missing); `start.sh` runs it after the database is healthy. 4 new offline tests; 766 passed, 2 skipped (the refresh-lock test deselected: blocked by the API's first full brain refresh, logged as O33) |
 | 2026-11-10 | **L20 O30 start.sh health line** | Health summary crashed with a SyntaxError (escaped quotes in the inline Python); now plain quotes. Checked against the running API |
 | 2026-11-10 | **L20 O29 start.sh first run** | Removed Docker Desktop left `credsStore` in `~/.docker/config.json` → pulls failed, no DB, API exited. `start.sh` now names the helper and the fix, skips the API while the DB is down, and polls health quietly. Failure path checked with a copy of the bad config |
 | 2026-11-07 | **L20 start.sh** | Linux starter in `start.ps1`'s order; API and UI run in their own process groups (logs `logs/api.log`, `logs/ui.log`), `--stop` ends them with their children. Syntax and `--help`/`--stop` checked; full run waits for Docker access |

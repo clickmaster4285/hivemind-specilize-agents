@@ -6,6 +6,7 @@ so a bug in the app can never read other accounts' private brain rows.
 
 Usage (from the repo root, Docker database running):
     python -m src.core.app_db setup     create the login + schema `app` (uses the owner from BRAIN_DATABASE_URL)
+    python -m src.core.app_db prepare   only what a fresh or restored database still needs (start.sh runs it)
     python -m src.core.app_db copy      copy data/multeagent.db (SQLite) into Postgres, keeping every id
     python -m src.core.app_db status    row counts in SQLite and Postgres
 
@@ -55,13 +56,13 @@ def setup(config: Config | None = None) -> None:
     """Create/refresh the app login and its schema. Safe to run again."""
     config = config or Config.from_env()
     role_name, password = _app_login(config)
-    from src.brain.db import APP_ROLE as BRAIN_ROLE
+    from src.brain.db import APP_ROLE as BRAIN_ROLE, CONNECT_TIMEOUT_SECONDS
 
     if role_name in {BRAIN_ROLE, urlsplit(_owner_url(config)).username}:
         raise AppDBError(f"DATABASE_URL must use its own login, not {role_name!r}")
     role = sql.Identifier(role_name)
-    with psycopg.connect(_owner_url(config), autocommit=True, connect_timeout=10) as conn:
-        exists = conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role_name,)).fetchone()
+    with psycopg.connect(_owner_url(config), autocommit=True, connect_timeout=CONNECT_TIMEOUT_SECONDS) as conn:
+        exists = _role_exists(conn, role_name)
         verb = sql.SQL("ALTER ROLE") if exists else sql.SQL("CREATE ROLE")
         conn.execute(
             sql.SQL("{} {} WITH LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE PASSWORD {}").format(
@@ -74,6 +75,40 @@ def setup(config: Config | None = None) -> None:
         conn.execute(sql.SQL("ALTER SCHEMA {} OWNER TO {}").format(sql.Identifier(APP_SCHEMA), role))
         # unqualified table names (users, jobs, …) resolve to app.*
         conn.execute(sql.SQL("ALTER ROLE {} SET search_path = {}").format(role, sql.Identifier(APP_SCHEMA)))
+
+
+def _role_exists(conn: psycopg.Connection, name: str) -> bool:
+    return conn.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (name,)).fetchone() is not None
+
+
+def _schema_exists(conn: psycopg.Connection, name: str) -> bool:
+    return conn.execute("SELECT 1 FROM pg_namespace WHERE nspname = %s", (name,)).fetchone() is not None
+
+
+def prepare(config: Config | None = None) -> list[str]:
+    """Run only the setup this database still lacks; return what was done (empty: nothing was needed).
+
+    A fresh database has neither login nor any migration; a restored `pg_dump` has the tables and the
+    migration record but no logins (a dump carries none). Both steps are safe to repeat, but are skipped
+    when not needed so a normal start changes nothing.
+    """
+    from src.brain import migrate as brain_migrate
+    from src.brain.db import APP_ROLE as BRAIN_ROLE, CONNECT_TIMEOUT_SECONDS
+
+    config = config or Config.from_env()
+    role_name, _ = _app_login(config)
+    with psycopg.connect(_owner_url(config), autocommit=True, connect_timeout=CONNECT_TIMEOUT_SECONDS) as conn:
+        brain_login = _role_exists(conn, BRAIN_ROLE)
+        app_ready = _role_exists(conn, role_name) and _schema_exists(conn, APP_SCHEMA)
+    done = []
+    if not brain_login or any(state != "applied" for _, state in brain_migrate.status(config)):
+        done += [f"brain migration applied: {name}" for name in brain_migrate.migrate(config)]
+        if not brain_login:
+            done.append(f"login {BRAIN_ROLE} created")
+    if not app_ready:
+        setup(config)
+        done.append(f"login {role_name} and schema '{APP_SCHEMA}' created")
+    return done
 
 
 def _engines(config: Config, sqlite_file: Path):
@@ -141,20 +176,25 @@ def copy(config: Config | None = None, sqlite_file: Path = SQLITE_FILE) -> dict[
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["setup", "copy", "status"])
+    parser.add_argument("command", choices=["setup", "prepare", "copy", "status"])
     parser.add_argument("--sqlite", type=Path, default=SQLITE_FILE, help="SQLite file to copy from")
     args = parser.parse_args(argv)
+    from src.brain.db import BrainDBError
+    from src.brain.migrate import MigrationError
+
     try:
         if args.command == "setup":
             setup()
             print(f"Login and schema '{APP_SCHEMA}' are ready.")
+        elif args.command == "prepare":
+            print("\n".join(prepare()) or "Database already set up.")
         elif args.command == "copy":
             for name, n in copy(sqlite_file=args.sqlite).items():
                 print(f"copied {n:>6} rows  {name}")
         else:
             for name, (n_src, n_dst) in counts(sqlite_file=args.sqlite).items():
                 print(f"{name:<16} SQLite {n_src:>6}   Postgres {'-' if n_dst is None else n_dst:>6}")
-    except (AppDBError, psycopg.OperationalError) as exc:
+    except (AppDBError, BrainDBError, MigrationError, psycopg.OperationalError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     return 0
