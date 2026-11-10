@@ -21,6 +21,8 @@ data/brain_eval/results/
 !data/router/
 data/router/.cache/
 artifacts/
+# backup.sh archives: every secret, unencrypted (BACKLOG L20 O27)
+backups/
 models/checkpoints/*.safetensors
 models/checkpoints/*.gguf
 models/checkpoints/*.ckpt

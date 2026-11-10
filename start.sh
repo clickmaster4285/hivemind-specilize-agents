@@ -14,12 +14,10 @@
 #   ./start.sh --stop     stop the API and UI this script started (containers and Ollama keep running)
 
 set -u
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON="$ROOT/.venv/bin/python"
+source "$(dirname "${BASH_SOURCE[0]}")/deploy/shell-common.sh"
 LOGS="$ROOT/logs"
 
-# Same defaults as src/core/config.py (API_PORT) and Next.js (3000); override in the environment if changed
-API_PORT="${API_PORT:-8787}"
+# Same default as Next.js; override in the environment if changed
 UI_PORT="${UI_PORT:-3000}"
 OLLAMA_URL="${LLM_BASE_URL:-http://127.0.0.1:11434}"
 
@@ -42,12 +40,6 @@ for arg in "$@"; do
     esac
 done
 
-step() { printf '\n\033[36m== %s\033[0m\n' "$1"; }
-ok()   { printf '   \033[32mOK\033[0m   %s\n' "$1"; }
-skip() { printf '   \033[90m--   %s\033[0m\n' "$1"; }
-bad()  { printf '   \033[31mFAIL\033[0m %s\n' "$1"; }
-
-port_open() { ss -ltnH "sport = :$1" 2>/dev/null | grep -q .; }
 http_ok()   { curl -fs -o /dev/null --max-time 3 "$1"; }  # quiet: wait_until polls it and reports the outcome itself
 
 wait_until() {  # wait_until <seconds> <what> <command...>
@@ -99,7 +91,7 @@ else
     services=(db searxng)
     ((TOOLS)) && services+=(pgadmin)
     profile=(); ((TOOLS)) && profile=(--profile tools)
-    if compose_out="$(cd "$ROOT" && docker compose "${profile[@]}" up -d --wait --wait-timeout "$DB_WAIT_SECONDS" "${services[@]}" 2>&1)"; then
+    if compose_out="$(compose "${profile[@]}" up -d --wait --wait-timeout "$DB_WAIT_SECONDS" "${services[@]}" 2>&1)"; then
         DB_UP=1
         ok "database healthy (127.0.0.1:5432), SearXNG up (127.0.0.1:8888)"
         ((TOOLS)) && ok "pgAdmin: http://localhost:5050"

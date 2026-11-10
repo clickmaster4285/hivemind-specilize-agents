@@ -37,6 +37,20 @@ npm run dev
 Open the Next.js URL, sign in with `admin` / `admin123`.  
 (Multi-user accounts are deferred — admin-only for testing right now.)
 
+## Backup and restore
+
+The database lives in a Docker volume, not in this folder — copying the folder does not copy the data.
+
+```bash
+./backup.sh                          # one archive in backups/ (or BACKUP_DIR=/media/usb ./backup.sh)
+./restore.sh --verify <archive>      # test it in a scratch database — changes nothing
+./start.sh --stop && ./restore.sh <archive>   # put everything back (saves the current state first)
+```
+
+An archive holds the database, `.env` (its `DEVICE_KEY` decrypts saved device logins), `artifacts/`, `agents/`
+and eval results. It is **not encrypted**: copy it off this machine and keep it like a password file.
+Daily backup: see `./backup.sh --help`.
+
 ## Image generation (local SDXL)
 
 Chat prompts like “create an image of …” route to in-process **Hugging Face Diffusers** (no ComfyUI/Ollama image API at runtime).

@@ -457,7 +457,7 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **Babel (O25) — done 2026-11-07:** `Babel` added so the API starts; `cryptography`, `numpy`, `psutil`,
       `urllib3` listed too (imported directly, previously only pulled in by other packages)
 - [ ] **Worker entry point (O26):** `worker_main.py` on the current modules (`src.core.config`, `src.jobs.worker`)
-- [ ] **Backup and restore (O27):** `backup.sh` / `restore.sh` — `pg_dump -Fc`, `.env`, `artifacts/`,
+- [x] **Backup and restore (O27) — done 2026-11-10:** `backup.sh` / `restore.sh` — `pg_dump -Fc`, `.env`, `artifacts/`,
       `agents/*.json` in one dated archive in `BACKUP_DIR` (default `backups/`, git-ignored; user's choice
       2026-11-10), with a reminder to copy it off this machine; optional daily schedule; no encryption at first
       (user 2026-11-10: plain archive now, encryption later — treat the file like a password file)
@@ -487,6 +487,7 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-10 | **L20 O27 backup / restore** | `backup.sh` (dump + `.env`, `artifacts/`, `agents/`, eval results, MANIFEST → `backups/*.tar.gz`, mode 600, unencrypted), `restore.sh --verify` (scratch database, row counts) and `restore.sh` (safety backup first, files, database, logins/grants). Shared shell helpers in `deploy/shell-common.sh` (also used by `start.sh`). `app_db setup` hands restored tables back to the app login (+1 test). Live: backup 67 MB, verify OK. 767 passed, 2 skipped |
 | 2026-11-10 | **L20 O31 fresh database setup** | `app_db prepare` (migrations, `brain_app`, `multeagent_app` + schema `app`, each only when missing); `start.sh` runs it after the database is healthy. 4 new offline tests; 766 passed, 2 skipped (the refresh-lock test deselected: blocked by the API's first full brain refresh, logged as O33) |
 | 2026-11-10 | **L20 O30 start.sh health line** | Health summary crashed with a SyntaxError (escaped quotes in the inline Python); now plain quotes. Checked against the running API |
 | 2026-11-10 | **L20 O29 start.sh first run** | Removed Docker Desktop left `credsStore` in `~/.docker/config.json` → pulls failed, no DB, API exited. `start.sh` now names the helper and the fix, skips the API while the DB is down, and polls health quietly. Failure path checked with a copy of the bad config |

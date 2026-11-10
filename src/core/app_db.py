@@ -73,6 +73,12 @@ def setup(config: Config | None = None) -> None:
         conn.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(sql.Identifier(db_name), role))
         conn.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {} AUTHORIZATION {}").format(sql.Identifier(APP_SCHEMA), role))
         conn.execute(sql.SQL("ALTER SCHEMA {} OWNER TO {}").format(sql.Identifier(APP_SCHEMA), role))
+        # tables restored from a dump (restore.sh: pg_restore --no-owner) belong to the owner login; hand them back
+        # (moving a table also moves its indexes and its id sequence)
+        for (table,) in conn.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname = %s AND tableowner <> %s", (APP_SCHEMA, role_name)
+        ).fetchall():
+            conn.execute(sql.SQL("ALTER TABLE {} OWNER TO {}").format(sql.Identifier(APP_SCHEMA, table), role))
         # unqualified table names (users, jobs, …) resolve to app.*
         conn.execute(sql.SQL("ALTER ROLE {} SET search_path = {}").format(role, sql.Identifier(APP_SCHEMA)))
 

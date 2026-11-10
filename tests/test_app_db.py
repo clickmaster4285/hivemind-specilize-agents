@@ -102,3 +102,35 @@ def test_prepare_recreates_logins_after_a_restore(prepare_with):
 def test_prepare_applies_only_new_migrations(prepare_with):
     done, calls = prepare_with(ALL_OBJECTS, ["applied", "pending"])
     assert (done, calls) == (["brain migration applied: 002.sql"], ["migrate"])
+
+
+class _RecordingOwnerConn(_Catalog):
+    """Owner connection for setup(): the app login exists, two restored tables belong to someone else."""
+
+    def __init__(self, foreign_tables: list[str]):
+        super().__init__({"multeagent_app"})
+        self.foreign_tables = foreign_tables
+        self.statements: list[str] = []
+
+    def execute(self, query, params=None):
+        self.statements.append(query if isinstance(query, str) else query.as_string())
+        if isinstance(query, str) and "FROM pg_tables" in query:
+            return type("Rows", (), {"fetchall": lambda _self: [(t,) for t in self.foreign_tables]})()
+        if isinstance(query, str) and "current_database" in query:
+            return type("Row", (), {"fetchone": lambda _self: ("multeagent",)})()
+        if params:  # a role / schema lookup
+            return super().execute(query, params)
+        return None  # DDL: only recorded
+
+
+def test_setup_hands_restored_tables_back_to_the_app_login(monkeypatch):
+    from src.core import app_db
+
+    conn = _RecordingOwnerConn(["users", "jobs"])
+    monkeypatch.setattr(app_db, "_owner_url", lambda _cfg: "postgresql://multeagent@127.0.0.1/multeagent")
+    monkeypatch.setattr(app_db.psycopg, "connect", lambda *a, **k: conn)
+    app_db.setup(_cfg(APP_URL))
+    assert [s for s in conn.statements if s.startswith("ALTER TABLE")] == [
+        'ALTER TABLE "app"."users" OWNER TO "multeagent_app"',
+        'ALTER TABLE "app"."jobs" OWNER TO "multeagent_app"',
+    ]
