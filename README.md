@@ -11,7 +11,7 @@ Local-first, framework-free multi-agent system with:
 - **Agentic** planner → tools → critic loop
 - **Vision** — paste/attach images; Auto routes to `MODEL_VISION` (default `llava:7b`)
 - **Job queue**, JWT auth, model registry, GPU fairness for 8–15 users
-- Hybrid path: SQLite/LAN now → Postgres + Caddy + workers for cloud
+- Runs hybrid: Postgres + SearXNG in Docker, API + UI on the host (`./start.sh`); see [doc/DOCKER_FULL_STACK_PLAN.md](doc/DOCKER_FULL_STACK_PLAN.md)
 
 ## Quick start (LAN team)
 
@@ -53,6 +53,15 @@ An archive holds the database, `.env` (its `DEVICE_KEY` decrypts saved device lo
 and eval results. It is **not encrypted**: copy it off this machine and keep it like a password file.
 Daily backup: see `./backup.sh --help`.
 
+## Tests
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Offline: no internet or model needed. The knowledge-brain tests use their own database `multeagent_test`
+(created on the first run, same Postgres container); without the database they skip. The live data is never touched.
+
 ## Image generation (local SDXL)
 
 Chat prompts like “create an image of …” route to in-process **Hugging Face Diffusers** (no ComfyUI/Ollama image API at runtime).
@@ -91,35 +100,26 @@ Agentic tools write files under `artifacts/{job_id}/files/`; the feed shows **Do
 | FastAPI (`web/server.py`) | Auth, agents, models, jobs, SSE |
 | Intent router (`src/intent_router.py`) | Forced intents, attachments; hands Auto to the assistant (tool calling) |
 | Chat (`src/chat_runner.py`) | Single-call Assistant replies |
-| Worker (`src/worker.py` / `worker_main.py`) | Claims jobs: picks the specialist, then chat / tools / agentic |
+| Worker (`src/jobs/worker.py` / `worker_main.py`) | Claims jobs: picks the specialist, then chat / tools / agentic |
 | DB (SQLite or Postgres) | Users, jobs, events, model registry |
 | LLM lock (`LLM_SLOTS`) | Fair GPU concurrency |
 | Next.js (`frontend/`) | Team UI |
 
 **Full review doc (what / how / why / libraries):** [FULL_PROJECT_PLAN.md](FULL_PROJECT_PLAN.md)
 
-## Horizontal workers
+## Extra workers
+
+The API runs one worker itself. More can run beside it (same `.env`, jobs are never claimed twice):
 
 ```bash
-# Same machine / VMs sharing DATABASE_URL
 python main.py --worker
 ```
 
-Or:
+## Database
 
-```bash
-docker compose up --build --scale worker=3
-```
-
-## Postgres (team / cloud)
-
-```bash
-docker compose up -d db
-# set DATABASE_URL=postgresql+psycopg://multeagent:multeagent@localhost:5432/multeagent
-python main.py --gui
-```
-
-TLS / reverse proxy starter: [deploy/Caddyfile](deploy/Caddyfile). SSO is gated by `SSO_ENABLED` (hook endpoint `/api/auth/sso/status`).
+Postgres runs in Docker (`docker compose up -d db`, done by `./start.sh`). The app logs in as its own user from
+`DATABASE_URL` (e.g. `multeagent_app`), never as the owner `multeagent`; `./start.sh` creates the logins on a fresh
+database. SSO is gated by `SSO_ENABLED` (hook endpoint `/api/auth/sso/status`).
 
 ## Quality checks (need Ollama + the brain database)
 

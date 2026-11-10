@@ -26,6 +26,8 @@ from src.brain.web import WebClient, WebError, crawl, feed_urls, sitemap_urls
 from src.core.config import Config
 
 PREFIX = "test-web-"
+# longest the lock test waits for the refresh lock (in the test database it is always free)
+LOCK_WAIT_SECONDS = 10
 
 
 # ── local test web server ────────────────────────────────────────────────
@@ -307,6 +309,8 @@ def test_due_sources(config, web_source):
 
 def test_only_one_refresh_runs_at_a_time(config):
     with psycopg.connect(brain_db.owner_url(config), autocommit=True) as holder:
+        # the test database has no other refresh, so the lock is free at once; fail rather than hang if not
+        holder.execute(f"SET lock_timeout = '{LOCK_WAIT_SECONDS}s'")
         holder.execute("SELECT pg_advisory_lock(%s)", (LOCK_KEY,))
         try:
             assert run_due(config, log_fn=lambda _m: None) == []

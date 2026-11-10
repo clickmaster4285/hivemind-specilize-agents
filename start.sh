@@ -115,13 +115,23 @@ show_status() {
 
     step "Ollama"
     if http_ok "$OLLAMA_URL/api/version"; then
-        curl -fsS --max-time 5 "$OLLAMA_URL/api/ps" | "$PYTHON" -c '
+        curl -fsS --max-time 5 "$OLLAMA_URL/api/ps" | (cd "$ROOT" && "$PYTHON" -c '
 import json, sys
+sys.path.insert(0, ".")
+try:
+    from src.core.config import Config
+    embed_model = Config.from_env().model_embed
+except Exception:  # a broken .env must not break the status view; the API check reports it
+    from src.core.config import Config
+    embed_model = Config.model_embed
 models = json.load(sys.stdin).get("models") or []
 GIB = 1024 ** 3
 for m in models:
     size, vram = m.get("size", 0), m.get("size_vram", 0)
-    if vram >= size:
+    if m["name"] == embed_model and vram < size:
+        # src/brain/embed.py asks for num_gpu=0: the chat model keeps the GPU; a search costs ~0.1 s on the CPU
+        where = "on the CPU, as intended: the GPU stays free for the chat model"
+    elif vram >= size:
         where = "all on the GPU"
     elif vram == 0:
         where = "on the CPU (slow): it did not fit next to what the GPU already held"
@@ -129,7 +139,7 @@ for m in models:
         where = f"{vram / GIB:.1f} of {size / GIB:.1f} GB on the GPU, the rest on the CPU (slower)"
     print(f"   \033[32mOK\033[0m   loaded: {m["name"]} ({size / GIB:.1f} GB, {where})")
 if not models:
-    print("   \033[90m--   running, no model loaded (it loads on the first chat)\033[0m")'
+    print("   \033[90m--   running, no model loaded (it loads on the first chat)\033[0m")')
     else
         bad "not running — start it:  sudo systemctl start ollama"
     fi
