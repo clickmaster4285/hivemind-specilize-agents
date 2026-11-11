@@ -2,7 +2,7 @@
 
 import { isValidElement, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 // tables, strikethrough, task lists: without it a | table | shows as raw text
 import remarkGfm from "remark-gfm";
 
@@ -35,6 +35,14 @@ const md = {
   img: "max-w-full rounded-[0.45rem]",
   a: "text-teal",
   externalImg: "text-[0.82em] text-muted",
+};
+
+// Links and images in answers (L16 S4): http(s), mailto and relative only. react-markdown's own filter already
+// drops javascript:, data: and the rest; it also lets chat schemes through, which an answer never needs
+const CHAT_SCHEMES = /^(ircs?|xmpp):/i;
+const answerUrl = (url: string) => {
+  const safe = defaultUrlTransform(url);
+  return CHAT_SCHEMES.test(safe) ? "" : safe;
 };
 
 /** Only our own images load inside answers. A model once wrote an image.pollinations.ai link with
@@ -213,6 +221,7 @@ export default function MarkdownBody({ content, pending, sources }: Props) {
     <div className={md.body}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        urlTransform={answerUrl}
         components={{
           // wide tables (network scan, weather) scroll sideways instead of squeezing the chat
           table: ({ children }) => (

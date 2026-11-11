@@ -31,14 +31,14 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L13](#l13-marketing--seo-tools---done-2026-11-02-fixes-o11-assistant-eval-run-pending) | Marketing / SEO tools | ✅ 2026-11-02 | assistant eval run (user) |
 | [L14](#l14-skills--reusable-instruction-packs--in-progress-2026-11-03-fixes-issues_log-o13) | Skills | in progress | a unit test for `clarify_query` |
 | [L15](#l15-seo-suite--screaming-frog--semrush-capabilities--p1-p3-p5-done-p2-on-hold-fixes-o12) | SEO suite | P1, P3–P6 ✅ | P2 page speed on hold |
-| [L16](#l16-security-hardening--in-progress-s1-s1b-s2-s2b-s7-done-s3s6-open-fixes-issues_log-o16) | Security hardening | in progress | S2b live check (user); S3 uploads, S4 headers, S5, S6 |
+| [L16](#l16-security-hardening--in-progress-s1-s1b-s2-s2b-s4-s7-done-s3-s5-s6-open-fixes-issues_log-o16) | Security hardening | in progress | S3 uploads, S5, S6 |
 | [L17](#l17-nvr-camera-list--in-progress-2026-11-04-fixes-issues_log-o17-before-l16-s2-users-order) | NVR camera list | in progress | N4 ONVIF; live check on the NVR |
 | [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
 | [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
 | [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
 | [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user) |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
-| [L22](#l22-styles-in-tailwind-only--built-2026-11-11-issues_log-o42) | Styles in Tailwind only | built 2026-11-11 | visual check (user) |
+| [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
 
 ---
@@ -374,7 +374,7 @@ then skills (L14) and sub-agents.
       now leaves out `nav`, `aside`, the site header/footer and ARIA navigation landmarks (content gap, word counts).
       Country data from Babel's CLDR (no lists of ours). Phone numbers / currency not used (would need lists)
 
-### L16. Security hardening — in progress (S1, S1b, S2, S2b, S7 done; S3–S6 open) (fixes ISSUES_LOG O16)
+### L16. Security hardening — in progress (S1, S1b, S2, S2b, S4, S7 done; S3, S5, S6 open) (fixes ISSUES_LOG O16)
 
 Threats: a stolen login token, password guessing, request floods, a malicious uploaded file, XSS, clickjacking.
 DDoS proper is stopped at the network (firewall / reverse proxy); the app limits what one client can do.
@@ -397,15 +397,16 @@ How the finished parts work: **[SECURITY.md](SECURITY.md)**.
 - [x] **S2 abuse limits (O36) — done 2026-11-11:** sign-in back-off and locks per account and per PC,
       request rates per user / per PC, 30 MB body cap, real client address through `frontend/server.mjs`;
       `daily_job_quota` (50 model jobs/day) unchanged → [SECURITY.md §1.3, §2.3](SECURITY.md#13-abuse-limits-s2)
-- [x] **S2b unlock + CAPTCHA (O39) — built 2026-11-11:** image CAPTCHA drawn by our API (sign-up always,
+- [x] **S2b unlock + CAPTCHA (O39) — done 2026-11-11, live check passed:** image CAPTCHA drawn by our API (sign-up always,
       sign-in from the 3rd failure; a try without it is not counted, so nobody locks an account without a
       person); admin **Unlock now** and **Blocked computers** → [SECURITY.md §1.4–1.5, §2.4–2.5](SECURITY.md#14-the-captcha-s2b).
       **Left (user):** live check — picture readable, shown at the right time; tune ([SECURITY.md Part 3](SECURITY.md#part-3--the-numbers-and-where-to-change-them))
 - [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with
       Pillow (drops hidden payloads and metadata, pixel limit against decompression bombs), virus scan (ClamAV)
       on uploaded files; skill uploads size-capped
-- [ ] **S4 headers + XSS:** CSP, `X-Content-Type-Options: nosniff`, `frame-ancestors 'none'`, `Referrer-Policy`,
-      HSTS over HTTPS; links in answers limited to http(s)/mailto; downloads sent as attachments
+- [x] **S4 headers + XSS — done 2026-11-11:** CSP with a nonce per page, `nosniff`, no framing, no referrer;
+      the API's own locked-down policy; answer links http(s)/mailto only. How: [SECURITY.md 1.7](SECURITY.md#17-what-the-browser-is-told-s4).
+      HSTS comes with HTTPS
 - [ ] **S5 encryption at rest (AES-256-GCM):** for secrets the app stores — decided per item (see questions)
 - [ ] **S6 security log:** failed logins, locks, refresh-token reuse, rejected uploads — visible to admins
 - [x] **S7 self sign-up (O38) — done 2026-11-11:** "Create account" (username, email, phone optional,
@@ -535,13 +536,13 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
       progress log in its own file `doc/PROGRESS_LOG.md`, newest first
 - [x] ISSUES_LOG: open issues apart from solved ones, both in number order
 
-### L22. Styles in Tailwind only — built 2026-11-11 (ISSUES_LOG O42)
+### L22. Styles in Tailwind only — ✅ done 2026-11-11 (ISSUES_LOG O42)
 
 - [x] `@theme` maps the colour tokens to Tailwind names (`text-muted`, `bg-panel`, `border-line`, `shadow-shadow` …),
       kept as `var()` so the light theme still switches
 - [x] Every class in `globals.css` moved into Tailwind utilities in its component; shared ones (buttons) in one module
 - [x] `globals.css` keeps only the tokens, the theme mapping and base styles (scrollbars, page height and background)
-- [ ] The user looks over the app in both themes (chat, answers with tables/code/diagrams, settings, login)
+- [x] The user looks over the app in both themes (chat, answers with tables/code/diagrams, settings, login)
 
 ### L23. Frontend components in feature folders — ✅ done 2026-11-11 (ISSUES_LOG O43)
 

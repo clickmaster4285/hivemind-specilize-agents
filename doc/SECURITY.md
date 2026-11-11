@@ -2,10 +2,10 @@
 
 What protects the login, the accounts and the API: what each part does, when you see it, and why it is
 there. Part 1 is the plain-language picture; Part 2 is the technical reference (routes, tables, files);
-Part 3 lists the numbers and where to change them; Part 4 the known limits and what is still to build.
+Part 3 lists the numbers and where to change them; Part 4 the known limits and what is still to build. Section 1.7 / 2.7: what each page tells the browser (S4).
 
 Plans and status: [BACKLOG.md](BACKLOG.md) L16 (S1–S7). Problems found on the way: [ISSUES_LOG.md](ISSUES_LOG.md)
-O16, O36, O38, O39. The device-login vault (AES) is in [SERVER_ACCESS_DECISION.md](SERVER_ACCESS_DECISION.md).
+O16, O36, O38, O39, O45. The device-login vault (AES) is in [SERVER_ACCESS_DECISION.md](SERVER_ACCESS_DECISION.md).
 
 ---
 
@@ -128,6 +128,25 @@ You don't have to wait the 15 minutes.
   an outside service and need internet.
 
 ---
+### 1.7 What the browser is told (S4)
+
+Every answer the app sends tells the browser what the page may do. If someone ever slips a script into an
+answer, a chat title or a file, the browser itself refuses to run it.
+
+- **Only our own scripts run.** Each page load gets a fresh random code (a *nonce*). The browser runs a
+  script only if it carries that code, or was loaded by one that did. A script that someone sneaks into the
+  page doesn't have the code, so it never runs.
+- **Pictures and styles only from known places:** the app itself, plus two Google addresses it uses today:
+  the fonts, and the small site icons on source pills. Nothing else loads.
+- **No framing.** No other site can show the app inside its own page, so no one can trick you into clicking
+  in a page that only looks like ours.
+- **Nothing is sent along to other sites.** Opening a link in an answer tells the other site nothing about
+  where you came from (your LAN address, the chat).
+- **Files from the API can't act as a page.** Downloads arrive as files. Even if a browser opened one
+  (an SVG with a script, say), it would run walled off, with no access to your session.
+- **Links in answers:** only `http(s)`, `mailto` and the app's own addresses become links. `javascript:`
+  and other tricks are dropped.
+
 
 ## Part 2 — Technical reference
 
@@ -219,7 +238,34 @@ LAN browser ─► UI :3000 (frontend/server.mjs → Next.js) ──rewrite /api
 | UI | `AuthScreen.tsx` (sign-up mode; `?invite=` opens it); Settings → Users: "Waiting for approval" → Review → Approve / Reject (`UserForm.tsx`), `InvitesPanel.tsx`. On plain http there is no clipboard API, so Copy selects the link for Ctrl+C |
 | Tests | `tests/test_signup.py` |
 
-### 2.7 Files
+### 2.7 Security headers (S4)
+
+**Pages** (`frontend/src/proxy.ts`, policy in `frontend/src/lib/csp.ts`; the other headers in `next.config.ts`):
+
+| Header | Value | Why |
+|---|---|---|
+| `Content-Security-Policy` | `script-src 'self' 'nonce-…' 'strict-dynamic'` | a fresh nonce per request; Next puts it on its own scripts, `app/layout.tsx` on the theme script. `'unsafe-eval'` in dev only (React's error stacks) |
+| | `style-src 'self' 'unsafe-inline'` + Google Fonts CSS | React `style` props and the `<style>` in a Mermaid SVG cannot carry a nonce; a style cannot run code |
+| | `img-src 'self' data: blob:` + `www.google.com`, `*.gstatic.com` | `data:` the CAPTCHA, `blob:` upload previews and diagram export, Google the favicons (they redirect to gstatic) |
+| | `font-src 'self'` + `fonts.gstatic.com`; `connect-src 'self'` | the API through `/api`; in dev also the reload socket |
+| | `object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'` | no plugins, no `<base>` hijack, forms post only here, no framing |
+| `X-Content-Type-Options` | `nosniff` | the declared type is the type |
+| `Referrer-Policy` | `no-referrer` | links out send no address |
+| `X-Frame-Options` | `DENY` | no framing, for older browsers |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | the app uses none of them |
+
+No `upgrade-insecure-requests` and no HSTS: the LAN uses plain http (S1b). Both come with HTTPS.
+
+**API** (`web/headers.py`, the outermost middleware, so refusals such as 413 and 429 carry the headers too):
+the same `nosniff`, `Referrer-Policy` and `X-Frame-Options` on every response. On `/api` it adds
+`Content-Security-Policy: default-src 'none'; frame-ancestors 'none'; sandbox`: the API never serves a page,
+so a document it returns can do nothing. Downloads go out as `attachment` (FileResponse with a file name, and
+the skill export).
+
+**Answers** (`frontend/src/components/answer/MarkdownBody.tsx`): `urlTransform` is react-markdown's own filter
+(it drops `javascript:`, `data:` …) minus the chat schemes `irc:` / `xmpp:` it would let through.
+
+### 2.8 Files
 
 | Part | File |
 |---|---|
@@ -228,10 +274,11 @@ LAN browser ─► UI :3000 (frontend/server.mjs → Next.js) ──rewrite /api
 | Request rate + body cap | `web/limits.py` |
 | Cross-site write check | `web/server.py` (`CrossSiteGuard`) |
 | Real client address on the UI side | `frontend/server.mjs` |
+| Security headers | `web/headers.py`, `frontend/src/proxy.ts`, `frontend/src/lib/csp.ts`, `frontend/next.config.ts` |
 | CAPTCHA | `src/core/captcha.py`, `frontend/src/components/auth/Captcha.tsx` |
 | Sign-up, invites | `src/core/signup.py`, `src/core/accounts.py`, `frontend/src/components/auth/AuthScreen.tsx`, `InvitesPanel.tsx` |
 | Admin pages | `web/routers/users.py`, `UsersSection.tsx`, `UserForm.tsx`, `BlockedComputers.tsx` |
-| Tests | `tests/test_sessions.py`, `tests/test_abuse_limits.py`, `tests/test_captcha.py`, `tests/test_signup.py` |
+| Tests | `tests/test_sessions.py`, `tests/test_abuse_limits.py`, `tests/test_captcha.py`, `tests/test_signup.py`, `tests/test_security_headers.py` |
 
 ---
 
@@ -264,6 +311,11 @@ Every number is a named constant; changing one is a one-line edit plus an API re
 ## Part 4 — Known limits and what is next
 
 **Accepted limits**
+- **Styles are not locked down** (`'unsafe-inline'`, 1.7 / 2.7): needed by React and Mermaid. An injected style
+  can change how a page looks, but it can't run code.
+- **Two Google addresses are allowed** (fonts, site icons). Each one tells Google that the app was opened, or
+  which sites an answer cites. Serving the fonts from the app and dropping the icons would close that (a
+  decision for you).
 - **Plain http on the LAN.** Traffic, passwords included, can be read by someone sniffing the LAN (S1b decision).
 - **The CAPTCHA is a speed bump, not a wall.** Good text-recognition software could read some pictures.
   Together with the S2 limits, that is a fair trade on an office LAN. If automated tries get through, raise
@@ -275,10 +327,7 @@ Every number is a named constant; changing one is a one-line edit plus an API re
   unlocks it if needed.
 
 **Still to build** (BACKLOG L16)
-- **S2b live check (O39).** You check that the picture is readable and shows at the right time; the numbers
-  are then tuned here and in Part 3.
 - **S3 uploads:** file type read from the bytes, images re-encoded, ClamAV scan (fail closed).
-- **S4 headers + XSS:** CSP, `nosniff`, `frame-ancestors 'none'`, `Referrer-Policy`; safe links in answers.
 - **S5 encryption at rest:** each new stored secret is decided one at a time.
 - **S6 security log:** failed sign-ins, locks, unlocks, token reuse and rejected uploads, shown to admins.
 - **HTTPS**, if the app ever leaves the trusted LAN (own domain + Let's Encrypt). After that comes

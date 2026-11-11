@@ -27,6 +27,7 @@ from src.core.db import init_db
 from src.jobs.worker import start_inprocess_worker
 from src.llm.model_registry import sync_models_from_ollama
 from web.brain_routes import router as brain_router
+from web.headers import SecurityHeaders
 from web.limits import RequestLimits
 from web.routers import auth, history, jobs, models, servers, skills, specialists, system, usage, users
 
@@ -94,8 +95,10 @@ class CrossSiteGuard:
 
 
 app.add_middleware(CrossSiteGuard)
-# added last = runs first: a flood or an oversized body is refused before anything else looks at it
+# a flood or an oversized body is refused before anything else looks at it
 app.add_middleware(RequestLimits)
+# added last = runs first, outermost: every response carries the security headers, refusals included
+app.add_middleware(SecurityHeaders)
 
 # One router per domain (web/routers/*). brain_router carries its own /api/brain prefix.
 for module in (system, auth, users, specialists, skills, servers, models, jobs, history, usage):

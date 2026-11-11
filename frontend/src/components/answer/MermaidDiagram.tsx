@@ -36,10 +36,12 @@ function loadMermaid() {
       startOnLoad: false,
       securityLevel: "strict",
       theme: "neutral",
-      // plain SVG text instead of HTML labels, so the PNG export can draw it on a canvas.
+      // plain SVG text instead of HTML labels, so the PNG export can draw it on a canvas (a canvas holding
+      // HTML may not be exported). Top level: Mermaid 11 ignores the old `flowchart.htmlLabels` (ISSUES_LOG O45)
+      htmlLabels: false,
       // `step` = orthogonal right-angle edges (the clean org-chart / taxonomy look). `basis` drew wavy
       // curves that bunched and crossed on wide trees and read as messy vs mermaid.live's straight lines.
-      flowchart: { htmlLabels: false, curve: "step" },
+      flowchart: { curve: "step" },
       // a font every browser has: boxes are sized with it, and "Open full size" / PNG export draw
       // without the app's web font — with IBM Plex the labels came out wider than their boxes
       fontFamily: "Arial, Helvetica, sans-serif",
