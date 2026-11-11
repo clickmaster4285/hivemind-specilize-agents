@@ -19,6 +19,8 @@ data/*
 data/brain_eval/results/
 # Semantic router examples + test set are tracked; their computed vectors are not
 !data/router/
+# Assistant tool-choice test set is tracked (ISSUES_LOG O37: lost once while it was ignored)
+!data/assistant/
 data/router/.cache/
 artifacts/
 # backup.sh archives: every secret, unencrypted (BACKLOG L20 O27)

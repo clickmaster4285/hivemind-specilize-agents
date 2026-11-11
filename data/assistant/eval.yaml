@@ -1,0 +1,108 @@
+# Assistant tool-choice test set — does the model pick the right tool (or none)?
+# Run:  python -m src.llm.assistant --eval            (--specialists: pick a specialist first, as real chats do)
+#
+# Rebuilt 2026-11-11 (ISSUES_LOG O37): the first set was never committed and was lost in the move to Ubuntu.
+# Fields:
+#   text    the user's message
+#   tool    the tool the model must call; a list = any of these; null = answer directly, no tool
+#   expect  (optional) arguments the call must carry, compared without case ("" = left empty)
+#   skill   (optional) a built-in skill applied as /name would (its specialist, instructions and tools)
+# Add every real message that was answered with the wrong tool.
+
+cases:
+  # ── answer directly ────────────────────────────────────────────────────────────────────────
+  - text: "Give me 3 slogans for a coffee shop"
+    tool: null
+  - text: "Rewrite this sentence to sound more polite: send me the report now"
+    tool: null
+  - text: "What is 15% of 2400?"
+    tool: null
+  - text: "Translate 'good morning, how are you?' into Urdu"
+    tool: null
+
+  # ── about the assistant ────────────────────────────────────────────────────────────────────
+  - text: "What is in your knowledge base?"
+    tool: about_multeagent
+  - text: "Which model are you running on and what can you do?"
+    tool: about_multeagent
+
+  # ── look things up ─────────────────────────────────────────────────────────────────────────
+  - text: "What is the latest stable version of PostgreSQL and what changed in it?"
+    tool: web_search
+  - text: "How do I configure a VLAN on a MikroTik router? Give me the steps with sources"
+    tool: [search_knowledge_base, web_search]
+  - text: "What's the weather in Lahore this week?"
+    tool: get_weather
+    expect: {place: "Lahore"}
+
+  # ── the local network ──────────────────────────────────────────────────────────────────────
+  - text: "Check all the IPs on 192.168.88.0/24 and show me the results in a table"
+    tool: network_scan
+    expect: {subnet: "192.168.88.0/24"}
+  - text: "saare devices dikhao jo network pe hain"
+    tool: network_scan
+  - text: "Is 192.168.88.1 up?"
+    tool: ping_host
+    expect: {host: "192.168.88.1"}
+  - text: "Check the security of 192.168.88.10 — which ports are open and is anything risky?"
+    tool: security_check
+
+  # ── devices from Settings → Devices ───────────────────────────────────────────────────────
+  - text: "Audit the firewall and open ports on my web server"
+    tool: server_audit
+  - text: "My server is slow and nginx keeps restarting — find out why"
+    tool: diagnose_server
+  - text: "Create a folder /srv/backups on my server and give it to the www-data user"
+    tool: operate_server
+  - text: "Access the NVR's web interface and tell me all the cameras"
+    tool: nvr_cameras
+  - text: "Show me who is connected to the MikroTik router and its interface status"
+    tool: network_device
+
+  # ── pictures and diagrams ─────────────────────────────────────────────────────────────────
+  - text: "Draw a photo of a red sports car on a mountain road at sunset"
+    tool: generate_image
+  - text: "Create a schematic of my office network: router, two switches, 10 PCs and an NVR"
+    tool: draw_diagram
+  - text: "Make a flowchart of our leave approval process"
+    tool: draw_diagram
+
+  # ── marketing / SEO ───────────────────────────────────────────────────────────────────────
+  - text: "Audit the SEO of https://example.com"
+    tool: site_audit
+  - text: "Show the sites I'm tracking and how their SEO score changed"
+    tool: seo_projects
+  - text: "Compare my site example.com with competitor1.com and competitor2.com"
+    tool: compare_sites
+  - text: "Who ranks for 'best laptop price' in Pakistan?"
+    tool: keyword_research
+  - text: "Write a 1000-word blog post about choosing a CCTV system for a small shop"
+    tool: write_content
+
+  # ── files to download ─────────────────────────────────────────────────────────────────────
+  - text: "Make a PDF of a one-page checklist for onboarding a new employee"
+    tool: create_document
+    expect: {format: "pdf"}
+  - text: "Put a table of 5 common router models and their prices into an Excel file"
+    tool: create_document
+    expect: {format: "xlsx"}
+
+  # ── too vague: ask first ──────────────────────────────────────────────────────────────────
+  - text: "Make me a report"
+    tool: ask_clarification
+  - text: "Set it up for me"
+    tool: ask_clarification
+
+  # ── skills (applied as /name) ─────────────────────────────────────────────────────────────
+  - text: "192.168.88.0/24"
+    skill: network-inventory
+    tool: network_scan
+  - text: "https://example.com"
+    skill: seo-audit-report
+    tool: site_audit
+  - text: "solar panels for homes in Lahore, website solarlahore.pk"
+    skill: keyword-plan
+    tool: keyword_research
+  - text: "To my landlord: I want the broken water heater fixed this week"
+    skill: professional-email
+    tool: null
