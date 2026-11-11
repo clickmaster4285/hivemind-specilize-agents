@@ -11,7 +11,8 @@
 #   ./start.sh            everything
 #   ./start.sh --tools    also start pgAdmin (http://localhost:5050)
 #   ./start.sh --no-ui    backend only
-#   ./start.sh --stop     stop the API and UI this script started (containers and Ollama keep running)
+#   ./start.sh --stop     stop the API and UI — found by their ports, only this project's processes, with their
+#                         children (containers and Ollama keep running)
 #   ./start.sh --status   what runs right now: containers, Ollama + loaded model, GPU, API, UI, knowledge base, backups
 #   ./start.sh --follow   live output of every part, each line tagged (Ctrl+C stops watching, not the services)
 #   ./start.sh --follow api ollama    only these parts (api ui db searxng pgadmin ollama)
@@ -29,6 +30,9 @@ DB_WAIT_SECONDS=90
 API_WAIT_SECONDS=120
 UI_WAIT_SECONDS=120
 POLL_SECONDS=2
+# --stop: the API finishes open requests and closes its database pool, Next.js stops at once; after this the
+# processes are forced (SIGKILL)
+STOP_WAIT_SECONDS=15
 # compose prints one line per service plus the error itself; this many lines show the cause without the pull progress
 COMPOSE_ERROR_LINES=5
 # --follow first shows this many recent lines per part, so what is happening has some context
@@ -53,13 +57,18 @@ done
 
 http_ok()   { curl -fs -o /dev/null --max-time 3 "$1"; }  # quiet: wait_until polls it and reports the outcome itself
 
-wait_until() {  # wait_until <seconds> <what> <command...>
-    local seconds="$1" what="$2"; shift 2
-    local deadline=$((SECONDS + seconds))
+wait_for() {  # wait_for <seconds> <command...> — true as soon as the command is, false when time runs out
+    local deadline=$((SECONDS + $1)); shift
     while ((SECONDS < deadline)); do
         "$@" && return 0
         sleep "$POLL_SECONDS"
     done
+    return 1
+}
+
+wait_until() {  # wait_until <seconds> <what> <command...>
+    local seconds="$1" what="$2"; shift 2
+    wait_for "$seconds" "$@" && return 0
     bad "$what did not become ready within $seconds s"
     return 1
 }
@@ -71,14 +80,68 @@ start_bg() {  # start_bg <name> <dir> <command...>
     (cd "$dir" && setsid nohup "$@" >"$LOGS/$name.log" 2>&1 & echo $! >"$LOGS/$name.pid")
 }
 
-stop_bg() {
-    local name="$1" pidfile="$LOGS/$1.pid"
-    if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
-        kill -- "-$(cat "$pidfile")" 2>/dev/null && ok "$name stopped"
-    else
-        skip "$name not started by this script"
+# ── stopping (ISSUES_LOG O40): found by port, not only by PID file ───────────────────────────────────
+# the PIDs listening on a TCP port (ss shows them for this user's processes only)
+port_pids() { ss -ltnpH "sport = :$1" 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u; }
+port_closed() { ! port_open "$1"; }
+
+# true when the process runs from this project: its working directory is the project or inside it
+in_project() {
+    local cwd
+    cwd="$(readlink "/proc/$1/cwd" 2>/dev/null)" || return 1
+    [[ "$cwd" == "$ROOT" || "$cwd" == "$ROOT/"* ]]
+}
+
+# what to signal for a PID: its whole process group (npm -> sh -> node, started with setsid) when every
+# member is this project's and it is not this script's own group; else the process alone
+stop_target() {
+    local pid="$1" pgid member
+    pgid="$(ps -o pgid= -p "$pid" | tr -d ' ')"
+    if [[ -n "$pgid" && "$pgid" != "$(ps -o pgid= -p $$ | tr -d ' ')" ]]; then
+        for member in $(pgrep -g "$pgid"); do
+            in_project "$member" || { echo "$pid"; return; }
+        done
+        echo "-$pgid"
+        return
     fi
+    echo "$pid"
+}
+
+stop_service() {  # stop_service <name> <port>
+    local name="$1" port="$2" pidfile="$LOGS/$1.pid" pids=() targets=() pid target foreign=0
+    if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then pids+=("$(cat "$pidfile")"); fi
+    for pid in $(port_pids "$port"); do pids+=("$pid"); done
+    for pid in "${pids[@]}"; do
+        if in_project "$pid"; then
+            target="$(stop_target "$pid")"
+            [[ " ${targets[*]} " == *" $target "* ]] || targets+=("$target")
+        else
+            bad "$name: port $port is used by '$(ps -o args= -p "$pid" | cut -c1-60)' — not this project's, left alone"
+            foreign=1
+        fi
+    done
     rm -f "$pidfile"
+    if ((${#targets[@]} == 0)); then
+        if ((foreign)); then
+            :                                   # said above
+        elif port_open "$port"; then
+            bad "$name: port $port is used by another user's process — left alone"
+        else
+            skip "$name not running"
+        fi
+        return
+    fi
+    kill -TERM -- "${targets[@]}" 2>/dev/null
+    if wait_for "$STOP_WAIT_SECONDS" port_closed "$port"; then
+        ok "$name stopped (port $port free)"
+        return
+    fi
+    kill -KILL -- "${targets[@]}" 2>/dev/null
+    if wait_for "$STOP_WAIT_SECONDS" port_closed "$port"; then
+        ok "$name stopped — forced after $STOP_WAIT_SECONDS s"
+    else
+        bad "$name: port $port still in use — see: ss -ltnp 'sport = :$port'"
+    fi
 }
 
 # One line from /api/health: what the health check and --status print
@@ -229,8 +292,8 @@ fi
 
 if ((STOP)); then
     step "Stopping"
-    stop_bg api
-    stop_bg ui
+    stop_service api "$API_PORT"
+    stop_service ui "$UI_PORT"
     exit 0
 fi
 

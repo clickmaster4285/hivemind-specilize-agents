@@ -390,7 +390,9 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
         overwrites the header with the socket address. Every failed sign-in is logged (INFO) with account and
         address. The cross-site write check became plain ASGI too: a `@app.middleware` turned the body
         cap's 413 into a 400
-- [ ] **S2b unlock + CAPTCHA (ISSUES_LOG O39) — plan approved by the user 2026-11-11 (check and tune after the build):**
+- [x] **S2b unlock + CAPTCHA (ISSUES_LOG O39) — built 2026-11-11** (plan approved the same day; the user checks
+      and tunes it live: `src/core/captcha.py`, `src/core/abuse.py`, `Captcha.tsx`, `BlockedComputers.tsx`,
+      `tests/test_captcha.py`):
       - **Why both:** after S2 a lock can only run out (15 min), and 10 wrong passwords lock *any* account, so
         someone can lock a colleague out on purpose. A CAPTCHA before that point makes each further try need a
         person; the unlock button undoes a lock at once
@@ -418,6 +420,11 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
       - **Tests (offline):** an answer works once and runs out; login asks after 3 failures; sign-up refuses
         without one; unlock clears an account and an address; members cannot unlock
       - **Approved numbers:** 6 characters, valid 5 min, login CAPTCHA from the 3rd failure
+      - **Built as:** the "CAPTCHA needed" signal is a response header (`X-Captcha: required`) on the 400 (none
+        or wrong) and on the 401 of the failure that reaches 3, so the picture shows at once; every error keeps its
+        plain-text message. A new picture after every try (each works once). Throttling and sign-up tests count
+        CAPTCHAs as solved (`captchas_solved` fixture); the CAPTCHA has its own tests
+      - **Left (user):** live check — is the picture readable, is it shown at the right time; tune
 - [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with
       Pillow (drops hidden payloads and metadata, pixel limit against decompression bombs), virus scan (ClamAV)
       on uploaded files; skill uploads size-capped
@@ -553,6 +560,8 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **Assistant eval cases lost (O37) — done 2026-11-11:** `data/assistant/eval.yaml` was never committed
       (`data/*` ignored); new set of 34 cases (all 20 tools, direct answers, clarify, 4 skills), `data/assistant/`
       tracked. Left: the user runs `python -m src.llm.assistant --eval`
+- [x] **`--stop` finds the API and UI (O40) — done 2026-11-11:** by port, not only by PID file; this
+      project's processes only (working directory); the whole process group; 15 s, then forced; honest messages
 
 ### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
 
@@ -567,6 +576,8 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-11 | **L20 O40 `--stop` finds the services** | API and UI found by port as well as PID file (the PID files were gone, and a failed kill used to delete them silently); only this project's processes, whole group, wait then force; checked on stand-in services |
+| 2026-11-11 | **L16 S2b unlock + CAPTCHA** | Image CAPTCHA drawn by the API (Pillow, 6 characters, no look-alikes, 5 min, works once, at most 2000 open): sign-up always, login from the 3rd failure; a try without it is not counted, so no one locks an account without a person. Admin: "locked" badge + Unlock now, Blocked computers + Unlock (logged). Live check by the user pending. 817 tests |
 | 2026-11-11 | **L16 S7 self sign-up** | "Create account" on the login page (username, email, phone optional, password); open sign-up (admin switch, on by default) and one-use invite links (7 days, optional email + modules); every new account waits for an admin (status `pending`); 5 sign-ups per address per day; approve / reject in Settings → Users. Tables `user_invites`, `app_settings`. 801 tests |
 | 2026-11-11 | **L20 O37 assistant eval set** | `data/assistant/eval.yaml` lost in the move (ignored by `data/*`, never committed); rebuilt with 34 cases for today's tools and skills; folder now tracked |
 | 2026-11-11 | **L16 S2 abuse limits** | Sign-in: per account 5 free failures, back-off 1–30 s, 10 in 15 min → 15-min lock; per address 20 in 15 min → 15-min block; unknown names counted and timed like accounts (table `login_failures`). Requests: 120/min per user (burst 60), 60/min per address signed out; 30 MB body cap (413). Real client address via `frontend/server.mjs`. 788 tests |
