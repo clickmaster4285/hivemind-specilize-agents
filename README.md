@@ -10,8 +10,11 @@ Local-first, framework-free multi-agent system with:
 - **Chat** — single fast Assistant reply
 - **Agentic** planner → tools → critic loop
 - **Vision** — paste/attach images; Auto routes to `MODEL_VISION` (default `llava:7b`)
-- **Job queue**, JWT auth, model registry, GPU fairness for 8–15 users
+- **Job queue**, cookie sessions with sign-in protection and self sign-up ([doc/SECURITY.md](doc/SECURITY.md)),
+  model registry, GPU fairness for 8–15 users
 - Runs hybrid: Postgres + SearXNG in Docker, API + UI on the host (`./start.sh`); see [doc/DOCKER_FULL_STACK_PLAN.md](doc/DOCKER_FULL_STACK_PLAN.md)
+
+**All docs** (plans, issues, how things work, decisions): **[doc/README.md](doc/README.md)**
 
 ## Quick start (LAN team)
 
@@ -91,7 +94,7 @@ Ask Auto for a downloadable file, or click **Document** in the composer:
 - “make a PowerPoint deck on …”
 - “export this as a Word doc”
 
-Agentic tools write files under `artifacts/{job_id}/files/`; the feed shows **Download** chips. See [IMPROVEMENT_ROADMAP.md](IMPROVEMENT_ROADMAP.md) Tier 5.
+Agentic tools write files under `artifacts/{job_id}/files/`; the feed shows **Download** chips. See [doc/IMPROVEMENT_ROADMAP.md](doc/IMPROVEMENT_ROADMAP.md) Tier 5.
 
 ## Architecture (short)
 
@@ -105,7 +108,7 @@ Agentic tools write files under `artifacts/{job_id}/files/`; the feed shows **Do
 | LLM lock (`LLM_SLOTS`) | Fair GPU concurrency |
 | Next.js (`frontend/`) | Team UI |
 
-**Full review doc (what / how / why / libraries):** [FULL_PROJECT_PLAN.md](FULL_PROJECT_PLAN.md)
+**Full review doc (what / how / why / libraries):** [doc/FULL_PROJECT_PLAN.md](doc/FULL_PROJECT_PLAN.md)
 
 ## Extra workers
 

@@ -1,9 +1,43 @@
 # MulteAgent — Backlog & Decisions
 
-Things we have decided, and things we will plan and build later.
-**Current focus: the Knowledge Brain (Phase 1).** Everything under "Later" waits until the brain works.
+What we decided, what is being built, and what comes later. **Start with "At a glance".**
 
-Related: [FULL_PROJECT_PLAN.md](FULL_PROJECT_PLAN.md) · [HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) · [IMPROVEMENT_ROADMAP.md](IMPROVEMENT_ROADMAP.md) · [ISSUES_LOG.md](ISSUES_LOG.md) (problems we hit and how we solved them)
+- **One item = one `### Ln.` section**, in number order. Finished parts stay as one or two lines with a link
+  to the doc that explains how they work; the detail lives there, not here.
+- **Problems** go to [ISSUES_LOG.md](ISSUES_LOG.md) (O-numbers) and are linked from the item.
+- **What got done, by date:** [PROGRESS_LOG.md](PROGRESS_LOG.md) (newest first).
+- **Every doc and where new information goes:** [README.md](README.md).
+
+---
+
+## At a glance
+
+| Item | What | Status | Left |
+|---|---|---|---|
+| [L1](#l1-model-comparison-qwen359b-vs-gemma412b) | Model comparison qwen3.5:9b vs gemma4:12b | open |  |
+| [L2](#l2-domain-specialist-agents-replace-the-debate---first-version-2026-10-17-issues_log-39) | Domain specialists (replace the debate) | ✅ first version 2026-10-17 |  |
+| [L3](#l3-stop--pause-and-progress-feedback) | Stop / pause and progress feedback | ✅ streaming + Stop 2026-10-17 | left: pause |
+| [L4](#l4-enforce-local-only-no-cloud---done-2026-11-02) | Local-only (no cloud) | ✅ 2026-11-02 |  |
+| [L5](#l5-router-heuristics) | Router heuristics | open | revisit with specialists |
+| [L5b](#l5b-the-model-does-not-know-todays-date---fixed-in-b4-datetime-in-every-chat-prompt) | Model knows today's date | ✅ (B4) |  |
+| [L5c](#l5c-citation-checker-answer-quality---built-2026-10-19) | Citation checker | ✅ 2026-10-19 |  |
+| [L6](#l6-cleanup---done-2026-11-02) | Cleanup | ✅ 2026-11-02 |  |
+| [L7](#l7-sdxl-memory-is-double-the-expected-size--slow-images---resolved-2026-10-16) | SDXL memory / slow images | ✅ 2026-10-16 |  |
+| [L8](#l8-serving-throughput-revisit-vllm--only-if-we-go-multi-user-on-linux--gpu) | vLLM serving | not now | only for many users on Linux + GPU |
+| [L9](#l9-serial-number-for-inventoried-servers-over-ssh-credentialed-path) | Serial numbers over SSH | deferred | when inventory + stored SSH logins exist |
+| [L10](#l10-documents-direct-export-download-as-section-by-section-writer---done-2026-11-02-fixes-issues_log-o8) | Documents: export, Download as | ✅ 2026-11-02 |  |
+| [L11](#l11-token-usage-tracking---done-2026-11-02) | Token usage tracking | ✅ 2026-11-02 |  |
+| [L12](#l12-context-awareness-meter-auto-compaction-new-chat---done-2026-11-02-fixes-o9) | Context meter, auto-compaction | ✅ 2026-11-02 |  |
+| [L13](#l13-marketing--seo-tools---done-2026-11-02-fixes-o11-assistant-eval-run-pending) | Marketing / SEO tools | ✅ 2026-11-02 | assistant eval run (user) |
+| [L14](#l14-skills--reusable-instruction-packs--in-progress-2026-11-03-fixes-issues_log-o13) | Skills | in progress | a unit test for `clarify_query` |
+| [L15](#l15-seo-suite--screaming-frog--semrush-capabilities--p1-p3-p5-done-p2-on-hold-fixes-o12) | SEO suite | P1, P3–P6 ✅ | P2 page speed on hold |
+| [L16](#l16-security-hardening--in-progress-s1-s1b-s2-s2b-s7-done-s3s6-open-fixes-issues_log-o16) | Security hardening | in progress | S2b live check (user); S3 uploads, S4 headers, S5, S6 |
+| [L17](#l17-nvr-camera-list--in-progress-2026-11-04-fixes-issues_log-o17-before-l16-s2-users-order) | NVR camera list | in progress | N4 ONVIF; live check on the NVR |
+| [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
+| [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
+| [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
+| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user) |
+| [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 
 ---
 
@@ -26,22 +60,22 @@ Benchmark evidence: the router, panel-quality and parallel-load test (`bench_mod
 
 ---
 
-## Now — Knowledge Brain (Phase 1)
+## Knowledge Brain — Phase 1 checklist
 
 The brain is the knowledge system, not the model: documents + metadata + search index + update tracking.
 The model only reasons over what the brain retrieves.
 
 - [x] Brain design doc → [BRAIN_DESIGN.md](BRAIN_DESIGN.md) (draft, open decisions in §11)
-- [ ] **Hybrid retrieval**: vector search (meaning) + keyword/full-text search (exact terms such as CVE IDs, error codes, package names, flags), merged and optionally re-ranked
-- [ ] **Fresh sources**: scheduled ingestion of trusted official sources (docs, advisories, feeds) + change detection + re-indexing — no retraining
-- [ ] Answers cite sources and say "not enough evidence" when retrieval finds nothing relevant
-- [ ] Stale-content tracking (last checked date, version, superseded documents)
-- [ ] Evaluation set: 30–50 questions with known source documents, in the languages we use
-- [ ] Embedding calls go through the GPU lock rules (or run on CPU) so they do not evict the 9b
+- [x] **Hybrid retrieval** (B3, 2026-10-15): vector search (meaning) + keyword/full-text search (exact terms such as CVE IDs, error codes, package names, flags), merged and optionally re-ranked
+- [x] **Fresh sources** (B5, 2026-10-16): scheduled ingestion of trusted official sources (docs, advisories, feeds) + change detection + re-indexing — no retraining
+- [x] (B4, 2026-10-15) Answers cite sources and say "not enough evidence" when retrieval finds nothing relevant
+- [x] (B5: versions, `superseded`, `last_checked_at`, `src/brain/freshness.py`) Stale-content tracking (last checked date, version, superseded documents)
+- [x] (60 questions by B5) Evaluation set: 30–50 questions with known source documents, in the languages we use
+- [x] (on the CPU by design, ISSUES_LOG O35) Embedding calls go through the GPU lock rules (or run on CPU) so they do not evict the 9b
 
 ---
 
-## Later — planned, not started
+## Items
 
 ### L1. Model comparison: `qwen3.5:9b` vs `gemma4:12b`
 
@@ -105,6 +139,12 @@ To build:
 - Rule-based routing sent a clear decision question ("…would a self-service portal be worth it compared to hiring two more agents?") to plain chat before the model was asked
 - Revisit once specialists exist — routing will become "which specialist", not "chat vs debate"
 
+### L5b. The model does not know today's date — ✅ fixed in B4 (date/time in every chat prompt)
+
+- Asked "what is the date today", it answered "October 16, 2023" once and "I don't have real-time information" the other times
+- Fix: put the current date/time (and timezone) into every system prompt — small change
+- Same root cause as stale facts ("who is the PM…"): the model only knows its training data; fresh facts must come from the brain
+
 ### L5c. Citation checker (answer quality) — ✅ built 2026-10-19
 
 - **Built:** after each knowledge-base answer, one more model call (`src/brain/verify.py`, the same
@@ -122,11 +162,11 @@ Earlier notes:
 - After the model answers, check each cited sentence against its passage (cheap: keyword/embedding overlap; stronger: a second short LLM pass) and drop or flag unsupported claims
 - Seen in B4: "Scavenging tab hota hai jab record ki TTL expire ho chuki ho [5]" — passage [5] does not say that
 
-### L5b. The model does not know today's date — ✅ fixed in B4 (date/time in every chat prompt)
+### L6. Cleanup — ✅ done 2026-11-02
 
-- Asked "what is the date today", it answered "October 16, 2023" once and "I don't have real-time information" the other times
-- Fix: put the current date/time (and timezone) into every system prompt — small change
-- Same root cause as stale facts ("who is the PM…"): the model only knows its training data; fresh facts must come from the brain
+- `deepseek-r1:1.5b` is no longer installed (Ollama has only `qwen3.5:9b` + `qwen3-embedding:0.6b`)
+- Old registry rows: the startup sync now deletes rows for models Ollama no longer has (they return if the
+  model is pulled again); an Ollama outage skips this, so the list is never emptied
 
 ### L7. SDXL memory is double the expected size → slow images — ✅ resolved 2026-10-16
 
@@ -145,12 +185,6 @@ Original notes:
 - Effect: with ~12 GB already in use the PC runs near 31.7 GB → paging → a second 768², 16-step image took **215 s**
 - Measure per-component dtype/size once, fix (e.g. explicit fp16 for every component, `low_cpu_mem_usage`), re-time
 - Option after that: `enable_sequential_cpu_offload` vs model offload, TinyVAE
-
-### L6. Cleanup — ✅ done 2026-11-02
-
-- `deepseek-r1:1.5b` is no longer installed (Ollama has only `qwen3.5:9b` + `qwen3-embedding:0.6b`)
-- Old registry rows: the startup sync now deletes rows for models Ollama no longer has (they return if the
-  model is pulled again); an Ollama outage skips this, so the list is never emptied
 
 ### L8. Serving throughput: revisit vLLM — only if we go multi-user on Linux + GPU
 
@@ -254,48 +288,6 @@ content are and say what to fix, AND improve our own written content over severa
 - Measured on example.com (no model): 1 page, 37/100 Beginner — no robots.txt, sitemap, description, H1,
   canonical, Open Graph or structured data; title 14 chars
 
-### L15. SEO suite — Screaming Frog / Semrush capabilities — P1, P3-P5 done; P2 on hold (fixes O12)
-
-Research + capability matrix: [SEO_TOOLS.md](SEO_TOOLS.md). Order (user, 2026-11-02): SEO capabilities first,
-then skills (L14) and sub-agents.
-
-- [x] **P1 Crawler depth** — done 2026-11-02: the fetcher now keeps redirect hops, response time, size and headers
-      (`WebResponse`); the audit builds a link graph → click depth, inlinks, orphan pages (in the sitemap, linked
-      from nowhere), links to redirects / broken pages, redirect chains, link text reused for ≥3 different pages,
-      near-duplicates (5-word shingles ≥ 90%, SF's default); canonical to a redirect/broken URL, mixed content,
-      clean URLs (lowercase, no _, ≤ 115 chars), security headers, images without width/height, server response
-      ≤ 0.8 s. 27 page + 6 site checks in 6 areas (+ Links, Performance). Every page and redirect in
-      `seo-crawl-<host>.xlsx`. Real run python.org (10 pages): 79/100 Established — one description for all
-      pages, several H1s, no canonical, a menu link through a redirect, no width/height on images
-- [ ] **P2 Performance** — ON HOLD (user wants to discuss first): options A-D compared in SEO_TOOLS.md (recommended: PageSpeed API for key pages + our crawl proxies)
-- [x] **P3 Keywords & SERP** (approximate is fine — user) — done 2026-11-02: `src/tools/serp.py` (SearXNG results with
-      positions, related searches, autocomplete ideas two levels deep, top pages read in parallel, shared two-word
-      phrases, difficulty estimate = share of top-10 titles targeting the keyword + share of home pages) →
-      `keyword_research` tool: table per keyword (your rank ≈, difficulty), who ranks, what top pages cover (median
-      length, phrases), ideas, the model's intent + what to target. States that it is approximate, no volume. Live
-      test: 2 keywords + a domain in 8 s (results come from SearXNG's region — UK)
-- [x] **P4 Competitors & writing** — done 2026-11-02: `compare_sites` tool (named competitors or the sites ranking
-      for a keyword; all audited in parallel, page budget shared; scores side by side; checks they pass and you
-      fail; content gap = phrases on ≥2 pages of each competitor, minus its menu/footer and brand, on ≥ half the
-      competitors, nowhere on your site; model plan). `write_content` reads the top pages for its main keyword:
-      median length + shared phrases go into the brief and a "Covers what top pages cover" check. Live:
-      python.org vs ruby-lang.org in 12 s
-- [x] **P5 Projects** — done 2026-11-02: every audit saved per user (`seo_audits`); the next audit of the same site
-      shows score/area changes and fixed / new / worse / better checks; "track it weekly" → `seo_projects` row,
-      re-audited by the `seo-tracker` thread (hourly check, crawl + checks, no model); `seo_projects` tool lists
-      sites, trend, latest changes, stops tracking
-- [x] 6 more assistant eval cases; 27 tests (search faked on 127.0.0.1, in-memory database)
-- Not possible locally: search volume, traffic estimates, backlinks (paid API — user's choice); Search Console
-  (OAuth) and JS rendering later
-- [x] **P6 search market + menu text (ISSUES_LOG O14) — done 2026-11-03:** `src/tools/market.py` decides the
-      market per request: the user's words (tool argument `market`: PK / GB / worldwide) → the website (declared
-      locale `<html lang>` / `og:locale` / own `hreflang`, else its country domain; `.com`/`.io` say nothing) →
-      ask once (the user's own country, from the browser time zone, offered first). Sent to SearXNG as
-      `language=en-PK` (`all` = worldwide); search language follows the keyword's script (Urdu keyword → `ur-PK`);
-      the report says which market and why. `write_content` does not stop to ask: worldwide, said so. Page text
-      now leaves out `nav`, `aside`, the site header/footer and ARIA navigation landmarks (content gap, word counts).
-      Country data from Babel's CLDR (no lists of ours). Phone numbers / currency not used (would need lists)
-
 ### L14. Skills — reusable instruction packs — in progress 2026-11-03 (fixes ISSUES_LOG O13)
 
 A **specialist** is the domain (who answers: IT, Development, Marketing). A **skill** is a repeatable task
@@ -338,7 +330,49 @@ the owner sees them); **no automatic picking** for now — a skill runs only whe
 - Later: automatic picking from the descriptions (measured with an eval first); skill files beyond SKILL.md
   (scripts, references) are not run — MulteAgent never executes uploaded code
 
-### L16. Security hardening — planned 2026-11-04 (fixes ISSUES_LOG O16)
+### L15. SEO suite — Screaming Frog / Semrush capabilities — P1, P3-P5 done; P2 on hold (fixes O12)
+
+Research + capability matrix: [SEO_TOOLS.md](SEO_TOOLS.md). Order (user, 2026-11-02): SEO capabilities first,
+then skills (L14) and sub-agents.
+
+- [x] **P1 Crawler depth** — done 2026-11-02: the fetcher now keeps redirect hops, response time, size and headers
+      (`WebResponse`); the audit builds a link graph → click depth, inlinks, orphan pages (in the sitemap, linked
+      from nowhere), links to redirects / broken pages, redirect chains, link text reused for ≥3 different pages,
+      near-duplicates (5-word shingles ≥ 90%, SF's default); canonical to a redirect/broken URL, mixed content,
+      clean URLs (lowercase, no _, ≤ 115 chars), security headers, images without width/height, server response
+      ≤ 0.8 s. 27 page + 6 site checks in 6 areas (+ Links, Performance). Every page and redirect in
+      `seo-crawl-<host>.xlsx`. Real run python.org (10 pages): 79/100 Established — one description for all
+      pages, several H1s, no canonical, a menu link through a redirect, no width/height on images
+- [ ] **P2 Performance** — ON HOLD (user wants to discuss first): options A-D compared in SEO_TOOLS.md (recommended: PageSpeed API for key pages + our crawl proxies)
+- [x] **P3 Keywords & SERP** (approximate is fine — user) — done 2026-11-02: `src/tools/serp.py` (SearXNG results with
+      positions, related searches, autocomplete ideas two levels deep, top pages read in parallel, shared two-word
+      phrases, difficulty estimate = share of top-10 titles targeting the keyword + share of home pages) →
+      `keyword_research` tool: table per keyword (your rank ≈, difficulty), who ranks, what top pages cover (median
+      length, phrases), ideas, the model's intent + what to target. States that it is approximate, no volume. Live
+      test: 2 keywords + a domain in 8 s (results come from SearXNG's region — UK)
+- [x] **P4 Competitors & writing** — done 2026-11-02: `compare_sites` tool (named competitors or the sites ranking
+      for a keyword; all audited in parallel, page budget shared; scores side by side; checks they pass and you
+      fail; content gap = phrases on ≥2 pages of each competitor, minus its menu/footer and brand, on ≥ half the
+      competitors, nowhere on your site; model plan). `write_content` reads the top pages for its main keyword:
+      median length + shared phrases go into the brief and a "Covers what top pages cover" check. Live:
+      python.org vs ruby-lang.org in 12 s
+- [x] **P5 Projects** — done 2026-11-02: every audit saved per user (`seo_audits`); the next audit of the same site
+      shows score/area changes and fixed / new / worse / better checks; "track it weekly" → `seo_projects` row,
+      re-audited by the `seo-tracker` thread (hourly check, crawl + checks, no model); `seo_projects` tool lists
+      sites, trend, latest changes, stops tracking
+- [x] 6 more assistant eval cases; 27 tests (search faked on 127.0.0.1, in-memory database)
+- Not possible locally: search volume, traffic estimates, backlinks (paid API — user's choice); Search Console
+  (OAuth) and JS rendering later
+- [x] **P6 search market + menu text (ISSUES_LOG O14) — done 2026-11-03:** `src/tools/market.py` decides the
+      market per request: the user's words (tool argument `market`: PK / GB / worldwide) → the website (declared
+      locale `<html lang>` / `og:locale` / own `hreflang`, else its country domain; `.com`/`.io` say nothing) →
+      ask once (the user's own country, from the browser time zone, offered first). Sent to SearXNG as
+      `language=en-PK` (`all` = worldwide); search language follows the keyword's script (Urdu keyword → `ur-PK`);
+      the report says which market and why. `write_content` does not stop to ask: worldwide, said so. Page text
+      now leaves out `nav`, `aside`, the site header/footer and ARIA navigation landmarks (content gap, word counts).
+      Country data from Babel's CLDR (no lists of ours). Phone numbers / currency not used (would need lists)
+
+### L16. Security hardening — in progress (S1, S1b, S2, S2b, S7 done; S3–S6 open) (fixes ISSUES_LOG O16)
 
 Threats: a stolen login token, password guessing, request floods, a malicious uploaded file, XSS, clickjacking.
 DDoS proper is stopped at the network (firewall / reverse proxy); the app limits what one client can do.
@@ -348,83 +382,23 @@ see S1b); **ClamAV in Docker, fail closed** (scanner down → upload
 refused). AES: nothing secret is stored today (passwords bcrypt, refresh tokens hashed, SSH logins never saved),
 and encrypting a token JS cannot read adds nothing — S5 starts when the app first stores a secret.
 
-- [x] **S1 sessions — done 2026-11-04:** 15-minute access token (`JWT_EXPIRE_MINUTES`) + rotating refresh token
-      (`REFRESH_TOKEN_DAYS`, 7), both `HttpOnly` cookies (`ma_access` path `/api`, `ma_refresh` path `/api/auth`),
-      `SameSite=Strict`, `Secure` when the request came over https. Table `refresh_tokens` keeps only SHA-256
-      hashes; one family per sign-in — a spent token shown again (later than REFRESH_REUSE_GRACE, 10 s: two tabs
-      refreshing together) revokes the family. `/api/auth/refresh`, `/api/auth/logout` (revokes; access tokens of
-      a revoked family are refused at once). Disabled users refused on every request. No more CORS: the browser
-      calls `/api` on the page's own origin (Next.js rewrite, proxy timeout 300 s, SSE heartbeat 15 s); writes
-      whose Origin is another site → 403. Startup refuses the dev default or a <32-byte `JWT_SECRET`.
-      Frontend: no token in `localStorage`; `apiFetch` refreshes once on a 401 (one refresh for parallel calls)
-      and repeats the call. `src/core/auth.py`, `web/routers/auth.py`, `tests/test_sessions.py`
+How the finished parts work: **[SECURITY.md](SECURITY.md)**.
+
+- [x] **S1 sessions — done 2026-11-04:** `HttpOnly` cookie sessions (15-min access + rotating 7-day refresh,
+      stored hashed), logout and disabling a user take effect at once, same-origin `/api` (no CORS),
+      cross-site writes 403, weak `JWT_SECRET` refused → [SECURITY.md §1.2, §2.2](SECURITY.md#22-sessions-s1)
 - [x] **S1b network — done 2026-11-04, HTTPS dropped (user's decision):** a local certificate authority
-      (Caddy `tls internal`) meant installing its root certificate on every PC — too much. Options weighed: own
-      domain + Let's Encrypt (DNS challenge), Tailscale, Group Policy push, plain http — **plain http on the
-      LAN** chosen. Accepted risk: someone sniffing the LAN can read traffic, passwords included; cookies stay
-      `HttpOnly` + `SameSite=Strict` (`Secure` is set by itself if HTTPS is added later). Kept: the API listens on
-      127.0.0.1 only — the LAN reaches it through the UI's `/api` rewrite (port 3000); port 8787 is closed to
-      the LAN. Revisit with a domain + Let's Encrypt if the app leaves the trusted LAN
-- [x] **S2 abuse limits (ISSUES_LOG O36) — done 2026-11-11** (limits approved by the user the same day;
-      `src/core/abuse.py`, `web/limits.py`, `frontend/server.mjs`, `tests/test_abuse_limits.py`):
-      - **Client address:** every request comes from the Next.js rewrite on 127.0.0.1, so the address is read
-        from `X-Forwarded-For`, trusted only when the direct peer is 127.0.0.1 (check first that the rewrite
-        sends it). Assumption (user): one user per PC, so one address = one person
-      - **Login per account:** 5 failures free; then back-off 1 s, 2 s, 4 s, 8 s … capped at 30 s; 10 failures
-        within 15 min → account locked 15 min. A successful login clears the count
-      - **Login per address:** 20 failures within 15 min → logins from that address blocked 15 min (catches one
-        PC trying many usernames)
-      - **Unknown usernames:** counted like real accounts; same message and timing (does not reveal which
-        usernames exist)
-      - **Requests per signed-in user:** 120/min average, burst 60 (a page load is ~10–20 calls).
-        `daily_job_quota` (50 model jobs/day) stays as is
-      - **Requests without sign-in, per address:** 60/min (login page, SSO status)
-      - **Request body cap:** 30 MB for any request (largest real upload: a 25 MB artifact file + form
-        overhead), checked from `Content-Length` and again while the body streams in → 413
-      - **Answer:** 429 + `Retry-After`; the login page shows "Too many attempts — try again in N min"
-      - **Storage:** failed logins in a database table (an API restart does not reset an attacker's count);
-        request rates in memory (the API is one process)
-      - **Logging:** each lock → a warning in `logs/api.log` (S6 shows them to admins later)
-      - **Built as:** Next's rewrite adds no `X-Forwarded-For` and passes on a forged one (checked with its
-        own proxy code), so the UI now runs a small custom server (`npm run dev` → `node server.mjs`) that
-        overwrites the header with the socket address. Every failed sign-in is logged (INFO) with account and
-        address. The cross-site write check became plain ASGI too: a `@app.middleware` turned the body
-        cap's 413 into a 400
-- [x] **S2b unlock + CAPTCHA (ISSUES_LOG O39) — built 2026-11-11** (plan approved the same day; the user checks
-      and tunes it live: `src/core/captcha.py`, `src/core/abuse.py`, `Captcha.tsx`, `BlockedComputers.tsx`,
-      `tests/test_captcha.py`):
-      - **Why both:** after S2 a lock can only run out (15 min), and 10 wrong passwords lock *any* account, so
-        someone can lock a colleague out on purpose. A CAPTCHA before that point makes each further try need a
-        person; the unlock button undoes a lock at once
-      - **Unlock (admin):** Settings → Users shows a "locked" badge on a locked account (until when, how many
-        failures) and an **Unlock now** button in its form; a **Blocked computers** list (address, until when)
-        with Unlock. Unlock deletes that key's rows in `login_failures`. Routes: `GET /api/auth/users/locks`,
-        `DELETE /api/auth/users/{id}/lock`, `DELETE /api/auth/users/locks/address/{address}`. Each unlock is
-        logged (who, what) for S6
-      - **CAPTCHA kind — image text, drawn by the API with Pillow** (already installed; its own font, no
-        files): 6 characters from an alphabet without look-alikes (no 0/O, 1/I/l), each turned and shifted,
-        with noise lines and dots; the answer is not case-sensitive. "New image" button. Nothing leaves the LAN
-      - **Not chosen:** proof-of-work CAPTCHAs (Altcha, mCaptcha, Friendly Captcha): the browser's
-        `crypto.subtle` exists only on https or localhost pages, not on the plain-http LAN address, and they
-        cost a script CPU time, not a person — S2 already limits the rate. Google reCAPTCHA / hCaptcha /
-        Cloudflare Turnstile: outside services (send visitors' data out, need internet)
-      - **When it is asked:** **sign-up always**; **login after 3 failures** (account or address, within the
-        15-min window) — before the S2 back-off starts at 5, so a normal typo or two never sees it
-      - **How it works:** `GET /api/auth/captcha` → `{id, image}` (a PNG as a data URL). The answer is kept in
-        memory (one API process) for 5 min and can be checked **once** (right or wrong, then it is gone); at most
-        a fixed number open at a time (oldest dropped), so it cannot fill memory. Login / sign-up send
-        `captcha_id` + `captcha_answer`. A login that needs one and lacks it (or has it wrong) → 400 with
-        `captcha_required: true`; the password is not checked and the try is not counted
-      - **Frontend:** a small `Captcha` part in the login card (image, answer box, New image), shown when the
-        API asks for it, always in the sign-up form
-      - **Tests (offline):** an answer works once and runs out; login asks after 3 failures; sign-up refuses
-        without one; unlock clears an account and an address; members cannot unlock
-      - **Approved numbers:** 6 characters, valid 5 min, login CAPTCHA from the 3rd failure
-      - **Built as:** the "CAPTCHA needed" signal is a response header (`X-Captcha: required`) on the 400 (none
-        or wrong) and on the 401 of the failure that reaches 3, so the picture shows at once; every error keeps its
-        plain-text message. A new picture after every try (each works once). Throttling and sign-up tests count
-        CAPTCHAs as solved (`captchas_solved` fixture); the CAPTCHA has its own tests
-      - **Left (user):** live check — is the picture readable, is it shown at the right time; tune
+      (Caddy `tls internal`) meant installing its root certificate on every PC. Weighed: own domain + Let's
+      Encrypt (DNS challenge), Tailscale, Group Policy push, plain http → **plain http on the LAN** (accepted
+      risk: LAN sniffing). API on 127.0.0.1 only, reached through the UI's `/api` rewrite. Revisit with a
+      domain + Let's Encrypt if the app leaves the trusted LAN → [SECURITY.md §1.1](SECURITY.md#11-who-can-reach-the-app)
+- [x] **S2 abuse limits (O36) — done 2026-11-11:** sign-in back-off and locks per account and per PC,
+      request rates per user / per PC, 30 MB body cap, real client address through `frontend/server.mjs`;
+      `daily_job_quota` (50 model jobs/day) unchanged → [SECURITY.md §1.3, §2.3](SECURITY.md#13-abuse-limits-s2)
+- [x] **S2b unlock + CAPTCHA (O39) — built 2026-11-11:** image CAPTCHA drawn by our API (sign-up always,
+      sign-in from the 3rd failure; a try without it is not counted, so nobody locks an account without a
+      person); admin **Unlock now** and **Blocked computers** → [SECURITY.md §1.4–1.5, §2.4–2.5](SECURITY.md#14-the-captcha-s2b).
+      **Left (user):** live check — picture readable, shown at the right time; tune ([SECURITY.md Part 3](SECURITY.md#part-3--the-numbers-and-where-to-change-them))
 - [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with
       Pillow (drops hidden payloads and metadata, pixel limit against decompression bombs), virus scan (ClamAV)
       on uploaded files; skill uploads size-capped
@@ -432,29 +406,10 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
       HSTS over HTTPS; links in answers limited to http(s)/mailto; downloads sent as attachments
 - [ ] **S5 encryption at rest (AES-256-GCM):** for secrets the app stores — decided per item (see questions)
 - [ ] **S6 security log:** failed logins, locks, refresh-token reuse, rejected uploads — visible to admins
-- [x] **S7 self sign-up (ISSUES_LOG O38) — done 2026-11-11** (design approved by the user the same day;
-      `src/core/signup.py`, `src/core/accounts.py`, `GET/POST /api/auth/signup`, `/api/auth/users/invites`,
-      `/api/auth/users/signup-settings`, `AuthScreen` sign-up mode, `InvitesPanel`, `tests/test_signup.py`):
-      - "Create account" on the login page: username, email, phone, password
-      - Two ways in: **open sign-up** for anyone who can open the page (the LAN), and an **invite link** an
-        admin creates and shares
-      - New accounts **wait for an admin's approval** (status `pending`) and can use nothing until approved
-        (Settings → Users)
-      - Protected by the S2 limits; the S2b CAPTCHA covers sign-up too
-      - Google / Microsoft sign-in (OAuth 2.0 / OpenID Connect): **later**, once there is HTTPS (their
-        sign-in only returns to https:// or localhost addresses). Clerk not used (accounts would live on
-        an outside service; needs internet)
-      - **Approved details:** phone optional; username ≥ 3, password ≥ 8, email valid and unused (as the
-        admin's user form). Sign-in while pending → "waiting for an admin's approval". Admin switch "open
-        sign-up" in Settings (on by default). Invite: optional email + modules, one use, **7 days**; works
-        when open sign-up is off; **an invited account waits for approval too** (its modules apply on
-        approval). At most **5 sign-ups per address per day**. Approve = active; reject = deleted. Table
-        `user_invites` (token hash only), status value `pending`
-      - **Built as:** the account rules (username, password, email) are one module now, shared by the admin
-        form, `seed_users` and sign-up. Settings → Users: "Waiting for approval" (count) → Review opens the
-        user form with Approve / Reject; "Sign-up and invites": the open switch, Invite someone (email +
-        modules) → the link is shown once. On plain http the browser has no clipboard API, so Copy selects
-        the link for Ctrl+C. `POST /api/auth/register` (always 403) removed
+- [x] **S7 self sign-up (O38) — done 2026-11-11:** "Create account" (username, email, phone optional,
+      password); open sign-up (admin switch) and one-use 7-day invite links; every new account waits for an
+      admin; 5 sign-ups per PC per day. Google / Microsoft sign-in later, with HTTPS; Clerk not used
+      → [SECURITY.md §1.6, §2.6](SECURITY.md#16-self-sign-up-s7)
 
 ### L17. NVR camera list — in progress 2026-11-04 (fixes ISSUES_LOG O17; before L16 S2, user's order)
 
@@ -474,6 +429,13 @@ Read-only requests to the recorder's own API — never the web pages, never a se
       DS-7732NI-M4 (firmware V5.04.065) at 192.168.190.248 → 27 cameras with names, IPs, models, online, 0.7 s.
       Left: the assistant eval run (user)
 - [ ] **N4 ONVIF:** profiles/video sources for other brands (WS-UsernameToken digest)
+
+### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
+
+To decide with the user: (a) **remote desktop in the browser**, which a person operates — Apache Guacamole
+in Docker (SERVER_ACCESS_DECISION.md §6 C2, already the chosen option for this), or (b) **the AI operating
+desktop apps** — vercel-labs/agent-desktop (accessibility tree, Windows/macOS/Linux, Apache-2.0); it drives
+the machine it runs on (here: the MulteAgent server itself), so it needs its own safety design.
 
 ### L19. Devices — routers, switches and more, read-only — in progress 2026-11-04 (fixes ISSUES_LOG O19)
 
@@ -563,61 +525,10 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **`--stop` finds the API and UI (O40) — done 2026-11-11:** by port, not only by PID file; this
       project's processes only (working directory); the whole process group; 15 s, then forced; honest messages
 
-### L18. "RDP window" — open 2026-11-04 (ISSUES_LOG O18)
+### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)
 
-To decide with the user: (a) **remote desktop in the browser**, which a person operates — Apache Guacamole
-in Docker (SERVER_ACCESS_DECISION.md §6 C2, already the chosen option for this), or (b) **the AI operating
-desktop apps** — vercel-labs/agent-desktop (accessibility tree, Windows/macOS/Linux, Apache-2.0); it drives
-the machine it runs on (here: the MulteAgent server itself), so it needs its own safety design.
-
----
-
-## Progress log
-
-| Date | Item | Notes |
-|------|------|-------|
-| 2026-11-11 | **L20 O40 `--stop` finds the services** | API and UI found by port as well as PID file (the PID files were gone, and a failed kill used to delete them silently); only this project's processes, whole group, wait then force; checked on stand-in services |
-| 2026-11-11 | **L16 S2b unlock + CAPTCHA** | Image CAPTCHA drawn by the API (Pillow, 6 characters, no look-alikes, 5 min, works once, at most 2000 open): sign-up always, login from the 3rd failure; a try without it is not counted, so no one locks an account without a person. Admin: "locked" badge + Unlock now, Blocked computers + Unlock (logged). Live check by the user pending. 817 tests |
-| 2026-11-11 | **L16 S7 self sign-up** | "Create account" on the login page (username, email, phone optional, password); open sign-up (admin switch, on by default) and one-use invite links (7 days, optional email + modules); every new account waits for an admin (status `pending`); 5 sign-ups per address per day; approve / reject in Settings → Users. Tables `user_invites`, `app_settings`. 801 tests |
-| 2026-11-11 | **L20 O37 assistant eval set** | `data/assistant/eval.yaml` lost in the move (ignored by `data/*`, never committed); rebuilt with 34 cases for today's tools and skills; folder now tracked |
-| 2026-11-11 | **L16 S2 abuse limits** | Sign-in: per account 5 free failures, back-off 1–30 s, 10 in 15 min → 15-min lock; per address 20 in 15 min → 15-min block; unknown names counted and timed like accounts (table `login_failures`). Requests: 120/min per user (burst 60), 60/min per address signed out; 30 MB body cap (413). Real client address via `frontend/server.mjs`. 788 tests |
-| 2026-11-10 | **L20 O34 see what runs** | Brain refresh logs `n/total` + every file; `./start.sh --status` snapshot and `./start.sh --follow` live tagged output (signal stops every watcher — checked). Status showed the embedding model on the CPU → O35 |
-| 2026-11-10 | **L20 O26 worker entry point** | `worker_main.py` imports the current modules, checks `DEVICE_KEY`, hides the database password, leaves running jobs alone; +1 offline test |
-| 2026-11-10 | **L20 O35 embedding on the CPU** | Not a fault: `embed.py` asks for `num_gpu: 0`; chat 6.5 GB + desktop leave no room anyway; query embedding 0.09 s on the CPU. User kept it; `--status` wording fixed |
-| 2026-11-10 | **L20 O33 test database** | Brain tests on `multeagent_test` (conftest creates it); lock test with `lock_timeout`; full suite 770 passed, nothing deselected, 68 s instead of 254 s |
-| 2026-11-10 | **L20 O28 Docker plan** | User: hybrid stays, remove the broken services. Compose now `db`, `searxng`, `pgadmin` only; `Dockerfile` + `deploy/Caddyfile` deleted; README worker/database sections corrected; plan doc rewritten |
-| 2026-11-10 | **L20 O27 backup / restore** | `backup.sh` (dump + `.env`, `artifacts/`, `agents/`, eval results, MANIFEST → `backups/*.tar.gz`, mode 600, unencrypted), `restore.sh --verify` (scratch database, row counts) and `restore.sh` (safety backup first, files, database, logins/grants). Shared shell helpers in `deploy/shell-common.sh` (also used by `start.sh`). `app_db setup` hands restored tables back to the app login (+1 test). Live: backup 67 MB, verify OK. 767 passed, 2 skipped |
-| 2026-11-10 | **L20 O31 fresh database setup** | `app_db prepare` (migrations, `brain_app`, `multeagent_app` + schema `app`, each only when missing); `start.sh` runs it after the database is healthy. 4 new offline tests; 766 passed, 2 skipped (the refresh-lock test deselected: blocked by the API's first full brain refresh, logged as O33) |
-| 2026-11-10 | **L20 O30 start.sh health line** | Health summary crashed with a SyntaxError (escaped quotes in the inline Python); now plain quotes. Checked against the running API |
-| 2026-11-10 | **L20 O29 start.sh first run** | Removed Docker Desktop left `credsStore` in `~/.docker/config.json` → pulls failed, no DB, API exited. `start.sh` now names the helper and the fix, skips the API while the DB is down, and polls health quietly. Failure path checked with a copy of the bad config |
-| 2026-11-07 | **L20 start.sh** | Linux starter in `start.ps1`'s order; API and UI run in their own process groups (logs `logs/api.log`, `logs/ui.log`), `--stop` ends them with their children. Syntax and `--help`/`--stop` checked; full run waits for Docker access |
-| 2026-11-07 | **L20 O25 Babel** | API failed to start on Ubuntu (`No module named 'babel'`, only present on Windows by chance). Added `Babel`, plus `cryptography`, `numpy`, `psutil`, `urllib3` (direct imports found by an import scan). 738 passed, 27 skipped — 25 are database tests waiting for Postgres (Docker permission) |
-| 2026-11-07 | **L20 one requirements file** | Moved to Ubuntu (Python 3.14): `-dev` and `-image-cu118` merged into `requirements.txt` (pytest; `torch==2.14.1+cu126` from the PyTorch index — cu118 has no 3.14 wheels and the default cu132 torch lacks sm_61 kernels for the P4000). README and image-error hints updated |
-| 2026-11-04 | **L17 NVR camera list (N1–N3)** | "Tell me all the cameras on the NVR" → `nvr_cameras`: Hikvision ISAPI / Dahua HTTP API found by asking the device, read-only, one login attempt, defusedxml; login in Settings → Servers (type Camera recorder, memory only, private addresses); table + .xlsx. 744 tests. Live check on 192.168.190.248 pending |
-| 2026-11-04 | **L16 S1 cookie sessions** | Login token out of `localStorage`: HttpOnly SameSite=Strict cookies, 15-min access + rotating 7-day refresh (hashed, reuse → sign-in revoked), logout revokes at once, disabled users locked out immediately (was: until the 12-h token ran out), same-origin `/api` (CORS removed, cross-site writes 403), weak `JWT_SECRET` refused. 733 tests |
-| 2026-11-03 | **L14 S3 Settings → Skills** | Yours (Team / Created by you: on/off, edit, download, delete) and Discover (search, categories, view, + Add); create and upload SKILL.md; admins add for the team. Frontend only |
-| 2026-11-03 | **L14 S2 fix: `/` menu + typing lag** | Built-in skills run without adding them (`skills.usable`; `GET /api/skills` → `usable`); `/s` lists names starting with s, then names/titles containing it; the message feed is memoised so typing does not re-render the conversation. 724 tests |
-| 2026-11-03 | **L14 S2 skills in chat** | `/name` in the message box runs a skill: its specialist, instructions and tools; missing inputs asked first; `/` menu in the composer + "Use a skill" in "+". 4 eval cases (`skill:` key). 723 tests |
-| 2026-11-03 | **L14 S1 skills store + catalog** | Skills in the open SKILL.md format; Discover = 17 built-in skills in `skills/<name>/SKILL.md`; Yours = team skills (admins) + personal skills (owner only) in table `skills`; `/api/skills` list / catalog / add / create / upload / edit / delete / download. 720 tests |
-| 2026-11-03 | **L15 P6 search market** | SEO searches run in one market: the user's words, else the site's own locale/country domain, else asked once (own country first). Live: "best laptop price" UK → currys/argos, Pakistan → paklap/priceoye; paklap.pk, priceoye.pk → en-PK, currys.co.uk → en-GB, python.org → ask. Menus/header/footer out of page text. 4 eval cases check the `market` argument (`expect:`). 705 tests |
-| 2026-11-02 | **L15 P3-P5 keywords, competitors, projects** | `keyword_research` (SearXNG: ranks ≈, ideas, difficulty estimate, what top pages cover), `compare_sites` (side-by-side audit, what they do better, content gap), `write_content` briefed by the top pages, saved audits with change reports, tracked sites re-audited on a schedule, `seo_projects`. P2 page speed on hold for discussion. 695 tests |
-| 2026-11-02 | **L15 P1 SEO crawler depth** | Research of Semrush / Screaming Frog / PageSpeed / Search Console → SEO_TOOLS.md matrix + phases. Audit gains redirects + chains, response time, click depth, orphans, inlinks, reused link text, near-duplicates, canonical/mixed content/URL/security-header checks, Links + Performance areas, a spreadsheet of every page. 681 tests |
-| 2026-11-02 | **L13 marketing tools** | `site_audit`: polite crawl of a public site → 20 checks → maturity score per area + level → model writes the fix plan and judges the content. `write_content`: brief → draft → checks + editor → revisions, best draft wins with a score table; can start from an existing page's copy. 679 tests |
-| 2026-11-02 | **L12 chat memory** | Memory rebuilt from the chat's own jobs, budgeted in tokens (35% of LLM_NUM_CTX), oldest turns folded into a saved running summary; memory meter + 80% banner → "Summarize & continue in a new chat" / "Save summary". 662 tests |
-| 2026-11-02 | **L10 documents + L11 token usage** | Answers export to md/txt/docx/pdf/pptx/html with no model call ("Download as", "make this a PDF" reads the full earlier answer); new documents written section by section with checks; file names follow the topic. Every model call recorded in `llm_usage` → usage per answer, per chat (under the message bar) and per user (Settings → Usage). 655 tests |
-| 2026-10-14 | Model setup | `LLM_THINK` setting added; all roles on `qwen3.5:9b`; embedding models hidden from chat model list |
-| 2026-10-14 | Backlog created | This file |
-| 2026-10-17 | **Web search on request** (step 4) | SearXNG in Docker (`searxng/searxng:2026.9.30-a9d990033`, 127.0.0.1:8888 only, secret `SEARXNG_SECRET`); `src/web_search.py`: SearXNG → top 4 pages read in parallel with the brain's polite fetcher → embeddings pick the 6 best passages → answer with `[n]` citations + source list; web text treated as data, nothing stored in the brain. Router intent `web_search` (`data/router/intents.yaml`, examples EN+Hinglish) + **Web** button (`force_intent: web_search`); eval 56/56, 0 wrong. `WEB_SEARCH_URL` in `.env`/`.env.example` |
-| 2026-10-17 | **The assistant picks its tools (native tool calling)** | No more intent routes per situation: tools = one entry each in `src/assistant.py`; the model answers or calls a tool with arguments. Eval 27/27. New weather tool (6.5 s). Web search 60 s → 12 s. ISSUES_LOG #37 |
-| 2026-10-17 | **First action tool: `network_scan`** | "Check all the IPs … table" now scans instead of advising: direct route (no LLM planning) + agentic tool; private ranges only, ≤1024 addresses, 60 s, Stop, off switch. Real LAN: 25 devices in 9.6 s, table + .xlsx. First brick of the L2 IT specialist; pattern for more networking/security tools. [TOOLS_DECISION.md](TOOLS_DECISION.md) §7 |
-| 2026-10-17 | Semantic router, browser time zone, model identity from Ollama, web search | Intents = example sentences in `data/router/intents.yaml` (eval 61 cases, 0 wrong); time in the user's own zone; no hand-made model table; SearXNG in Docker for "search the web" |
-| 2026-10-17 | **L3 done** (chat + diagrams) — streaming + Stop | Answers stream into the chat; Send turns into Stop, which ends the model call at its next word and keeps the text; statuses Searching / Loading model / Thinking / Writing with a timer; plain error messages. Details: ISSUES_LOG #36. Left: debate/agentic streaming, pause |
-| 2026-10-17 | App data → Postgres; "about MulteAgent" answers; diagrams | Users/jobs/events in schema `app` with own login (#34); questions about the assistant answered from live facts (#35); Mermaid diagram writer with fixes + review (#29–#33). 217 tests |
-| 2026-10-16 | Images: RealVisXL V5.0 + Lightning, hires fix, prompt rewrite | Fast ~30 s / Balanced ~80 s / Quality ~190 s; `localhost` → `127.0.0.1` (+2 s per Ollama call removed). ISSUES_LOG #21–#28, #31–#32 |
-| 2026-10-16 | **SDXL image service** — own process | API RAM at start: +13.3 GB → **+0.7 GB**. Cause was SDXL warm-loading inside the API (`enable_model_cpu_offload` keeps the whole model in system RAM). Now: `src/image_service.py` (127.0.0.1:8790, token, one job at a time, cancel, `--exit-when-idle`), `src/image_client.py` (API starts it on the first image request, sends jobs over HTTP, forwards cancel); the API never imports torch/diffusers. Service exits after `IMAGE_IDLE_UNLOAD_MINUTES` (10) → all memory returned. `IMAGE_WARM_ON_START=false` by default. `start.ps1` starts Docker/db, Ollama, API, UI. 103/103 tests. Real run: first image 257 s (incl. load), service 17.4 GB, exited after 73 s idle (1-minute test setting). |
-| 2026-10-16 | **B5 done** — web sources + automatic refresh | `src/brain/web.py` (robots.txt, 1 req/s/host, same-host redirects only, 5 MB/30 s limits, ETag/Last-Modified → HTTP 304), kinds `web_page` (bounded link-following, `crawl_depth` ≤ 3), `sitemap` (incl. indexes), `feed` (RSS/Atom); HTML → Markdown via main-content + `markdownify` (`trafilatura` rejected: mangled inline code/tables); outage protection (unreachable start page stops the run — never "all pages missing"); `src/brain/scheduler.py` started with the API (every 30 min, optional `BRAIN_REFRESH_WINDOW`, advisory lock), manual `python -m src.brain.ingest --due`. Second source **python-docs-howto** (PSF-2.0): 27 pages, 615 chunks; first run lost internet for the last 3 pages (status `partial`), re-run fetched those 3 and skipped 24 unchanged. 81/81 tests (local test web server, no internet). Eval 60 questions: **hybrid Recall@8 100%, MRR 0.95, 5/5 out-of-scope refused** |
-| 2026-10-15 | **B4 done** — grounded answers in chat | `src/brain/answer.py`: retrieve → numbered passages + current date/time + grounding rules → `qwen3.5:9b` (temperature 0.2) → `[n]` citations → sources list in the chat UI (`SourceList` in ControlDeck) → `brain.retrieval_log` row per answer (private per account). Chat uses the brain automatically for real questions (≥3 words); greetings, creative writing, images, documents skip it. No evidence → `BRAIN_NO_EVIDENCE=general` (default: marked notice + general answer) or `refuse`. Brain down → chat still answers with a "knowledge base unavailable" notice. Every chat reply now gets the current date/time (fixes L5b). 59/59 tests, frontend typecheck clean. Real answers: English/cmdlet/off-topic correct; Hinglish fixed after prompt rule (keep technical terms in English — model had glossed "scavenging" as "pakhana"). Follow-ups: (1) **citation checker** — the 9B model sometimes cites a passage that does not support the sentence (e.g. "scavenging happens when TTL expires" [5]); (2) long answers take 25–60 s — streaming (L3) will make this feel faster; (3) debate/agentic modes do not use the brain yet (comes with specialists, L2) |
-| 2026-10-15 | **B3 done** — hybrid search | `src/brain/retrieve.py` (meaning search + exact-identifier vote, weighted RRF, max 2 passages/page, 3,000-token budget, evidence threshold 0.49); `GET /api/brain/search`, `GET /api/brain/stats`; eval `python -m src.brain.evaluate` on 45 questions (40 answerable: 28 EN + 12 Hinglish, 8 of them exact identifiers; 5 out-of-scope): **hybrid Recall@8 100%, MRR 0.93, 5/5 out-of-scope refused** (meaning-only 0.88, keyword-only 0.64). Big tables now split by rows (chunker v2; 483 chunks, max 591 tokens). 44/44 tests. Follow-ups: heading_path repeats the page title (cosmetic); first query after idle ~2.3 s while the embedding model loads on CPU; evidence margin is small (0.451 vs 0.526) — grow the eval set with each new source |
-| 2026-10-15 | **B2 done** — source registry + ingestion | `python -m src.brain.ingest` syncs `data/brain/sources.yaml` and ingests enabled sources. First source: 42 Microsoft DNS pages → 472 chunks, 0 failures, ~7 min (embedding on CPU); re-run skips unchanged pages in 6.5 s. Migration `002_source_config.sql` (sources.config). 31/31 tests pass. Citation URLs verified (learn.microsoft.com, HTTP 200). Follow-ups for B3: (1) split very large tables by rows with the header repeated (largest chunk = 2,684-token audit-events table); (2) Hinglish "purane DNS records apne aap delete kaise honge" ranked manual deletion above *aging & scavenging* — first eval-set question; (3) HTML extraction arrives with web sources (B5) |
-| 2026-10-15 | **B1 done** — brain schema | `deploy/brain-migrations/001_init.sql` applied via `python -m src.brain.migrate`; 6 tables + `source_status` view in schema `brain`; app login `brain_app` (no superuser, no RLS bypass); 12/12 RLS tests pass (`python -m pytest tests/test_brain_rls.py`). First source registered: Microsoft Windows Server DNS docs (CC-BY-4.0) in `data/brain/sources.yaml`. Gotcha: use `127.0.0.1`, not `localhost`, in `BRAIN_DATABASE_URL` (Windows tries IPv6 first and hangs) |
-| 2026-10-14 | Brain database up | Docker `pgvector/pgvector:0.8.0-pg17` on 127.0.0.1:5432 (`docker compose up -d db`); extensions `vector` + `pg_trgm`; password + `BRAIN_DATABASE_URL` in `.env`. Search test: Hinglish↔English vector matches work; exact CVE ID found by full-text; trigram weak on very short words (`kese`/`kaise` = 0.22) |
+- [x] `doc/README.md`: index of every doc (what it is for, status) + where new information goes
+- [x] `doc/SECURITY.md`: plain-language guide to sign-in protection (sessions, limits, CAPTCHA, unlock, sign-up)
+- [x] BACKLOG: status table at the top, items in number order, finished items short with a link to their guide;
+      progress log in its own file `doc/PROGRESS_LOG.md`, newest first
+- [x] ISSUES_LOG: open issues apart from solved ones, both in number order
