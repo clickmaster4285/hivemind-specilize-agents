@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 
 import { errorText, toggleIn } from "@/lib/chat";
 import type { Skill, SkillInput, Specialist, SpecialistOptions } from "@/lib/types";
+import { btn, iconBtn } from "@/lib/ui";
 
 const emptyForm: SkillInput = {
   name: "",
@@ -55,11 +56,11 @@ type Props = {
 
 // Inline Tailwind building blocks, matching SpecialistModal.
 const field =
-  "w-full rounded-[0.55rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.55rem] font-[inherit] text-[var(--text)] outline-none resize-y disabled:opacity-80";
-const labelCol = "flex flex-col gap-1 text-[0.82rem] text-[var(--muted)]";
-const checkRow = "flex items-center gap-[0.45rem] text-[var(--text)]";
+  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-[0.55rem] font-[inherit] text-text outline-none resize-y disabled:opacity-80";
+const labelCol = "flex flex-col gap-1 text-[0.82rem] text-muted";
+const checkRow = "flex items-center gap-[0.45rem] text-text";
 const toolGrid =
-  "m-0 grid gap-x-[0.8rem] gap-y-[0.35rem] rounded-[0.65rem] border border-[var(--line)] px-[0.7rem] py-[0.6rem] [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]";
+  "m-0 grid gap-x-[0.8rem] gap-y-[0.35rem] rounded-[0.65rem] border border-line px-[0.7rem] py-[0.6rem] [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]";
 
 /** Create, edit or view a skill: what it is for, who answers, what it asks for, its tools and its steps. */
 export default function SkillModal(props: Props) {
@@ -88,20 +89,20 @@ export default function SkillModal(props: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[var(--backdrop)] p-4 backdrop-blur-[4px]"
+      className="fixed inset-0 z-50 grid place-items-center bg-backdrop p-4 backdrop-blur-[4px]"
       onClick={onClose}
     >
       <form
-        className="flex max-h-[92vh] w-[min(680px,100%)] flex-col gap-3 overflow-y-auto rounded-2xl border border-[var(--line)] bg-[var(--panel)] px-[1.1rem] pt-4 pb-[1.1rem] shadow-[var(--shadow)]"
+        className="flex max-h-[92vh] w-[min(680px,100%)] flex-col gap-3 overflow-y-auto rounded-2xl border border-line bg-panel px-[1.1rem] pt-4 pb-[1.1rem] shadow-shadow"
         onClick={(e) => e.stopPropagation()}
         onSubmit={save}
       >
         <header className="flex items-center justify-between gap-3">
           <h3 className="m-0 text-[1.15rem] [font-family:var(--font-display)]">
             {isNew ? "New skill" : form.title || form.name}
-            {!isNew ? <span className="ml-2 text-[0.85rem] text-[var(--muted)]">/{form.name}</span> : null}
+            {!isNew ? <span className="ml-2 text-[0.85rem] text-muted">/{form.name}</span> : null}
           </h3>
-          <button type="button" className="icon-btn" onClick={onClose}>
+          <button type="button" className={iconBtn()} onClick={onClose}>
             ×
           </button>
         </header>
@@ -175,7 +176,7 @@ export default function SkillModal(props: Props) {
             <textarea className={field} rows={3} value={inputsText} onChange={(e) => setInputsText(e.target.value)} />
           </label>
           <fieldset className={toolGrid}>
-            <legend className="px-[0.3rem] text-[0.85rem] text-[var(--muted)]">
+            <legend className="px-[0.3rem] text-[0.85rem] text-muted">
               Tools it may use (only those the answering specialist may use are offered)
             </legend>
             {options.tools.map((tool) => (
@@ -214,11 +215,11 @@ export default function SkillModal(props: Props) {
         </fieldset>
 
         <footer className="flex justify-end gap-2">
-          <button type="button" className="btn ghost" onClick={onClose}>
+          <button type="button" className={btn("ghost")} onClick={onClose}>
             {readOnly ? "Close" : "Cancel"}
           </button>
           {readOnly ? null : (
-            <button type="submit" className="btn primary" disabled={busy}>
+            <button type="submit" className={btn("primary")} disabled={busy}>
               {busy ? "Saving…" : "Save"}
             </button>
           )}

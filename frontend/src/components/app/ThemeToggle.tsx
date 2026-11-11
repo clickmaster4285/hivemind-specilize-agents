@@ -50,7 +50,7 @@ export default function ThemeToggle() {
     <div className="relative">
       <button
         type="button"
-        className="flex h-[2.1rem] items-center gap-1.5 rounded-[0.55rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.6rem] text-[0.82rem] text-[var(--text)] hover:border-[var(--copper)]"
+        className="flex h-[2.1rem] items-center gap-1.5 rounded-[0.55rem] border border-line bg-panel-2 px-[0.6rem] text-[0.82rem] text-text hover:border-copper"
         aria-haspopup="menu"
         aria-expanded={open}
         title="Theme"
@@ -65,7 +65,7 @@ export default function ThemeToggle() {
       {open ? (
         <>
           <button type="button" className="fixed inset-0 z-40 cursor-default" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />
-          <div role="menu" className="absolute right-0 top-full z-50 mt-1.5 w-[10rem] rounded-xl border border-[var(--line)] bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]">
+          <div role="menu" className="absolute right-0 top-full z-50 mt-1.5 w-40 rounded-xl border border-line bg-panel p-1.5 shadow-shadow">
             {OPTIONS.map((o) => (
               <button
                 key={o.value}
@@ -73,13 +73,13 @@ export default function ThemeToggle() {
                 role="menuitemradio"
                 aria-checked={pref === o.value}
                 onClick={() => pick(o.value)}
-                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.85rem] hover:bg-[var(--hover)] ${
-                  pref === o.value ? "font-semibold text-[var(--text-strong)]" : "text-[var(--text)]"
+                className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[0.85rem] hover:bg-hover ${
+                  pref === o.value ? "font-semibold text-text-strong" : "text-text"
                 }`}
               >
-                <span className="text-[var(--muted)]">{o.icon}</span>
+                <span className="text-muted">{o.icon}</span>
                 <span className="flex-1">{o.label}</span>
-                {pref === o.value ? <span className="text-[var(--copper)]" aria-hidden>✓</span> : null}
+                {pref === o.value ? <span className="text-copper" aria-hidden>✓</span> : null}
               </button>
             ))}
           </div>

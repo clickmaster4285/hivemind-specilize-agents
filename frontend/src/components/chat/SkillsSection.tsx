@@ -9,18 +9,19 @@ import { downloadSkill, listSkillCatalog } from "@/lib/api";
 import { errorText } from "@/lib/chat";
 import { saveUrl } from "@/lib/download";
 import type { CatalogSkill, Skill, SkillCategory } from "@/lib/types";
+import { btn } from "@/lib/ui";
 
 // Inline Tailwind building blocks (styling stays with the component), matching the other Settings sections.
 const heading = "text-base font-semibold [font-family:var(--font-display)]";
-const hint = "text-xs leading-relaxed text-[var(--muted)]";
-const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5";
+const hint = "text-xs leading-relaxed text-muted";
+const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-line bg-panel-2 px-3 py-2.5";
 const field =
-  "w-full rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--copper)]";
+  "w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm text-text placeholder:text-muted outline-none focus:border-copper";
 const pill = (on: boolean) =>
   `rounded-full border px-3 py-1 text-xs ${
     on
-      ? "border-[var(--copper)] bg-[color-mix(in_srgb,var(--copper)_14%,transparent)] text-[var(--text)]"
-      : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]"
+      ? "border-copper bg-[color-mix(in_srgb,var(--copper)_14%,transparent)] text-text"
+      : "border-line text-muted hover:text-text"
   }`;
 
 type View = "yours" | "discover";
@@ -33,9 +34,9 @@ function SkillRow({ skill, children }: { skill: Skill; children: ReactNode }) {
     <li className={`${rowCard} ${skill.enabled ? "" : "opacity-60"}`}>
       <span className="min-w-0">
         <span className="block truncate text-sm">
-          <strong>{skill.title}</strong> <span className="text-[var(--muted)]">/{skill.name}</span>
+          <strong>{skill.title}</strong> <span className="text-muted">/{skill.name}</span>
         </span>
-        <small className="line-clamp-1 text-xs text-[var(--muted)]">{skill.description}</small>
+        <small className="line-clamp-1 text-xs text-muted">{skill.description}</small>
       </span>
       <span className="flex shrink-0 items-center gap-1.5">{children}</span>
     </li>
@@ -91,7 +92,7 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
     const id = s.id as number;          // skills in Yours always have an id
     return (
       <SkillRow key={id} skill={s}>
-        <label className="flex items-center gap-1 text-xs text-[var(--muted)]" title="On: /name runs it">
+        <label className="flex items-center gap-1 text-xs text-muted" title="On: /name runs it">
           <input
             type="checkbox"
             checked={s.enabled}
@@ -100,12 +101,12 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
           />
           On
         </label>
-        <button type="button" className="btn ghost sm" onClick={() => setEditing({ skill: s, readOnly: !canChange(s) })}>
+        <button type="button" className={btn("ghost", "sm")} onClick={() => setEditing({ skill: s, readOnly: !canChange(s) })}>
           {canChange(s) ? "Edit" : "View"}
         </button>
         <button
           type="button"
-          className="btn ghost sm"
+          className={btn("ghost", "sm")}
           title="Download as SKILL.md"
           onClick={() =>
             void attempt(async () => {
@@ -119,7 +120,7 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
         {canChange(s) ? (
           <button
             type="button"
-            className="btn ghost sm"
+            className={btn("ghost", "sm")}
             title="Delete"
             onClick={() => {
               if (confirm(`Delete the skill “${s.title}”?`)) void attempt(() => skills.remove(id));
@@ -138,15 +139,15 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
         <h4 className={heading}>Skills</h4>
         <div className="flex flex-wrap items-center gap-2">
           {canManageTeam ? (
-            <label className="flex items-center gap-1.5 text-xs text-[var(--muted)]" title="Where + Add and Upload put a skill">
+            <label className="flex items-center gap-1.5 text-xs text-muted" title="Where + Add and Upload put a skill">
               <input type="checkbox" checked={forTeam} onChange={(e) => setForTeam(e.target.checked)} />
               Add for the whole team
             </label>
           ) : null}
-          <button type="button" className="btn ghost sm" onClick={() => uploadRef.current?.click()}>
+          <button type="button" className={btn("ghost", "sm")} onClick={() => uploadRef.current?.click()}>
             Upload SKILL.md
           </button>
-          <button type="button" className="btn ghost sm" onClick={() => setEditing({ skill: null, readOnly: false })}>
+          <button type="button" className={btn("ghost", "sm")} onClick={() => setEditing({ skill: null, readOnly: false })}>
             New skill
           </button>
           <input
@@ -168,7 +169,7 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
         it.
       </p>
 
-      <div className="flex gap-1 border-b border-[var(--line)]">
+      <div className="flex gap-1 border-b border-line">
         {(["yours", "discover"] as const).map((v) => (
           <button
             key={v}
@@ -176,7 +177,7 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
             onClick={() => show(v)}
             aria-current={view === v ? "page" : undefined}
             className={`-mb-px border-b-2 px-3 py-1.5 text-sm capitalize ${
-              view === v ? "border-[var(--copper)] text-[var(--text)]" : "border-transparent text-[var(--muted)] hover:text-[var(--text)]"
+              view === v ? "border-copper text-text" : "border-transparent text-muted hover:text-text"
             }`}
           >
             {v}
@@ -184,7 +185,7 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
         ))}
       </div>
 
-      {error ? <p className="text-xs text-[var(--danger)]">{error}</p> : null}
+      {error ? <p className="text-xs text-danger">{error}</p> : null}
 
       {view === "yours" ? (
         <>
@@ -227,13 +228,13 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
           <ul className="flex flex-col gap-2">
             {found.map((s) => (
               <SkillRow key={s.name} skill={s}>
-                <span className="hidden text-xs text-[var(--muted)] sm:inline">{s.category}</span>
-                <button type="button" className="btn ghost sm" onClick={() => setEditing({ skill: s, readOnly: true })}>
+                <span className="hidden text-xs text-muted sm:inline">{s.category}</span>
+                <button type="button" className={btn("ghost", "sm")} onClick={() => setEditing({ skill: s, readOnly: true })}>
                   View
                 </button>
                 <button
                   type="button"
-                  className="btn ghost sm"
+                  className={btn("ghost", "sm")}
                   disabled={s.added}
                   title={s.added ? "Already in Yours" : forTeam ? "Add for the whole team" : "Add to your skills"}
                   onClick={() =>

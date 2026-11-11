@@ -7,6 +7,7 @@ import { buildGraphSvg, graphIconNames, parseGraphSpec } from "@/lib/graphdiagra
 import { buildNetworkSvg, iconNames, looksCompleteJson, parseNetSpec } from "@/lib/netdiagram";
 
 import SvgPanZoom from "./SvgPanZoom";
+import { btn, diagram } from "@/lib/ui";
 
 /* Renders a ```netdiagram block (hub-and-spoke: sites → HQ) as a designed network infographic.
  * The layout/icons live in lib/netdiagram.ts + lib/deviceIcons.ts (pure SVG-string builders), so PNG/SVG
@@ -87,25 +88,25 @@ export default function NetworkDiagram({ code }: { code: string }) {
     // while the answer is still streaming the JSON is incomplete — show a placeholder, not an error
     if (!looksCompleteJson(code)) {
       return (
-        <div className="mermaid-card">
-          <div className="mermaid-loading">Drawing the network diagram…</div>
+        <div className={diagram.card}>
+          <div className={diagram.loading}>Drawing the network diagram…</div>
         </div>
       );
     }
     // complete but not parseable — fall back to showing the code, so nothing is lost
     return (
-      <div className="mermaid-card">
-        <div className="mermaid-error">Could not render this network diagram (invalid spec).</div>
-        <pre className="md-pre mermaid-code">{code}</pre>
+      <div className={diagram.card}>
+        <div className={diagram.error}>Could not render this network diagram (invalid spec).</div>
+        <pre className={diagram.code}>{code}</pre>
       </div>
     );
   }
 
   return (
-    <div className="mermaid-card">
+    <div className={diagram.card}>
       <SvgPanZoom svg={svg} />
-      <div className="mermaid-actions">
-        <button type="button" className="btn ghost sm"
+      <div className={diagram.actions}>
+        <button type="button" className={btn("ghost", "sm")}
           onClick={() => {
             const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
             window.open(url, "_blank", "noopener");
@@ -113,16 +114,16 @@ export default function NetworkDiagram({ code }: { code: string }) {
           }}>
           Open full size
         </button>
-        <button type="button" className="btn ghost sm"
+        <button type="button" className={btn("ghost", "sm")}
           onClick={() => download("network-diagram.svg", new Blob([svg], { type: "image/svg+xml" }))}>
           Download SVG
         </button>
-        <button type="button" className="btn ghost sm"
+        <button type="button" className={btn("ghost", "sm")}
           onClick={() => svgToPng(svg).then((b) => download("network-diagram.png", b)).catch((e) => setErr(String(e)))}>
           Download PNG
         </button>
       </div>
-      {err ? <div className="mermaid-error">{err}</div> : null}
+      {err ? <div className={diagram.error}>{err}</div> : null}
     </div>
   );
 }

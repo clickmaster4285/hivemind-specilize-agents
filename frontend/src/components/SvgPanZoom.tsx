@@ -112,13 +112,13 @@ export default function SvgPanZoom({ svg }: { svg: string }) {
   const fullscreen = () => void box.current?.requestFullscreen?.().catch(() => undefined);
 
   const btn =
-    "flex h-[1.75rem] w-[1.75rem] items-center justify-center rounded-[0.35rem] border border-[var(--line)] " +
-    "bg-[color-mix(in_srgb,var(--panel)_88%,transparent)] text-[0.95rem] leading-none text-[var(--text)] hover:bg-[var(--panel-2)]";
+    "flex h-[1.75rem] w-[1.75rem] items-center justify-center rounded-[0.35rem] border border-line " +
+    "bg-[color-mix(in_srgb,var(--panel)_88%,transparent)] text-[0.95rem] leading-none text-text hover:bg-panel-2";
 
   return (
     <div
       ref={box}
-      className="relative overflow-hidden rounded-[0.5rem] border border-[var(--line)] bg-white [&:fullscreen]:!aspect-auto [&:fullscreen]:!h-screen [&:fullscreen]:!max-h-none"
+      className="relative overflow-hidden rounded-lg border border-line bg-white [&:fullscreen]:!aspect-auto [&:fullscreen]:!h-screen [&:fullscreen]:!max-h-none"
       style={{
         // the box matches the diagram's shape (so nothing is cropped); capped so a very tall one can't take over the chat.
         // width must be explicit: with width:auto, aspect-ratio + max-height shrinks the box's WIDTH instead of its height.
@@ -142,7 +142,7 @@ export default function SvgPanZoom({ svg }: { svg: string }) {
         dangerouslySetInnerHTML={{ __html: svg }}
       />
       <div
-        className="absolute right-[0.4rem] top-[0.4rem] flex gap-[0.25rem]"
+        className="absolute right-[0.4rem] top-[0.4rem] flex gap-1"
         onPointerDown={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
       >
@@ -151,7 +151,7 @@ export default function SvgPanZoom({ svg }: { svg: string }) {
         <button type="button" title="Fit to view" aria-label="Fit to view" className={btn} onClick={refit}>⟲</button>
         <button type="button" title="Fullscreen" aria-label="Fullscreen" className={btn} onClick={fullscreen}>⤢</button>
       </div>
-      <div className="pointer-events-none absolute bottom-[0.4rem] left-[0.5rem] text-[0.68rem] text-[var(--muted)]">
+      <div className="pointer-events-none absolute bottom-[0.4rem] left-2 text-[0.68rem] text-muted">
         drag to move · scroll to zoom · double-click to fit
       </div>
     </div>

@@ -42,7 +42,7 @@ export default function LiveStatus({ text, steps, startedAt }: Props) {
   const list = steps && steps.length ? steps : [text || "Working…"];
 
   return (
-    <div className="mt-[0.5rem] flex flex-col gap-[0.3rem]" role="status" aria-live="polite">
+    <div className="mt-2 flex flex-col gap-[0.3rem]" role="status" aria-live="polite">
       {list.map((step, i) => {
         const current = i === list.length - 1;
         const funWord =
@@ -52,18 +52,18 @@ export default function LiveStatus({ text, steps, startedAt }: Props) {
         return (
           <p
             key={`${i}-${step}`}
-            className={`flex items-center gap-[0.5rem] text-[0.8rem] ${current ? "text-[var(--text)]" : "text-[var(--muted)]"}`}
+            className={`flex items-center gap-2 text-[0.8rem] ${current ? "text-text" : "text-muted"}`}
           >
             {current ? (
-              <span className="h-[0.5rem] w-[0.5rem] shrink-0 rounded-full bg-[var(--copper)] animate-pulse" aria-hidden />
+              <span className="h-2 w-2 shrink-0 rounded-full bg-copper animate-pulse" aria-hidden />
             ) : (
-              <span className="shrink-0 text-[0.72rem] text-[var(--teal)]" aria-hidden>
+              <span className="shrink-0 text-[0.72rem] text-teal" aria-hidden>
                 ✓
               </span>
             )}
             <span>{funWord ? `${funWord}…` : step}</span>
             {current && seconds !== null ? (
-              <span className="text-[var(--muted)] [font-variant-numeric:tabular-nums]"> · {seconds} s</span>
+              <span className="text-muted [font-variant-numeric:tabular-nums]"> · {seconds} s</span>
             ) : null}
           </p>
         );

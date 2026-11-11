@@ -38,6 +38,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
 | [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user) |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
+| [L22](#l22-styles-in-tailwind-only--built-2026-11-11-issues_log-o42) | Styles in Tailwind only | built 2026-11-11 | visual check (user) |
 
 ---
 
@@ -532,3 +533,11 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] BACKLOG: status table at the top, items in number order, finished items short with a link to their guide;
       progress log in its own file `doc/PROGRESS_LOG.md`, newest first
 - [x] ISSUES_LOG: open issues apart from solved ones, both in number order
+
+### L22. Styles in Tailwind only — built 2026-11-11 (ISSUES_LOG O42)
+
+- [x] `@theme` maps the colour tokens to Tailwind names (`text-muted`, `bg-panel`, `border-line`, `shadow-shadow` …),
+      kept as `var()` so the light theme still switches
+- [x] Every class in `globals.css` moved into Tailwind utilities in its component; shared ones (buttons) in one module
+- [x] `globals.css` keeps only the tokens, the theme mapping and base styles (scrollbars, page height and background)
+- [ ] The user looks over the app in both themes (chat, answers with tables/code/diagrams, settings, login)

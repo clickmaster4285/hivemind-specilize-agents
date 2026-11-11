@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { listLocks, unlockAddress } from "@/lib/api";
 import type { Locks } from "@/lib/types";
+import { btn } from "@/lib/ui";
 
 /** Settings → Users: computers blocked after too many failed passwords, with Unlock (BACKLOG L16 S2b).
  *  Shown only while there is one. */
@@ -33,21 +34,21 @@ export default function BlockedComputers() {
 
   if (!blocked.length && !error) return null;
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-[var(--danger)] bg-[var(--panel-2)] p-3">
+    <section className="flex flex-col gap-2 rounded-lg border border-danger bg-panel-2 p-3">
       <h5 className="m-0 text-sm font-semibold">Blocked computers</h5>
       <ul className="flex flex-col gap-1 text-xs">
         {blocked.map((b) => (
           <li key={b.address} className="flex items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-[var(--muted)]">
+            <span className="min-w-0 truncate text-muted">
               {b.address} · {b.failures} failed passwords · until {new Date(b.until).toLocaleTimeString()}
             </span>
-            <button type="button" className="btn ghost sm shrink-0" onClick={() => void unblock(b.address)}>
+            <button type="button" className={`${btn("ghost", "sm")} shrink-0`} onClick={() => void unblock(b.address)}>
               Unlock
             </button>
           </li>
         ))}
       </ul>
-      {error ? <p className="m-0 text-xs text-[var(--danger)]">{error}</p> : null}
+      {error ? <p className="m-0 text-xs text-danger">{error}</p> : null}
     </section>
   );
 }

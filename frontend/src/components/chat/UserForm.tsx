@@ -6,12 +6,13 @@ import type { UsersApi } from "@/hooks/useUsers";
 import { listModules } from "@/lib/api";
 import { errorText } from "@/lib/chat";
 import type { ManagedUser, ModuleInfo, UserStatus } from "@/lib/types";
+import { btn } from "@/lib/ui";
 
 // Inline Tailwind building blocks (styling stays with the component), matching ServersSection.
 const field =
-  "w-full rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--copper)]";
-const label = "flex flex-col gap-1 text-xs text-[var(--muted)]";
-const section = "flex flex-col gap-3 rounded-xl border border-[var(--line)] p-4";
+  "w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm text-text placeholder:text-muted outline-none focus:border-copper";
+const label = "flex flex-col gap-1 text-xs text-muted";
+const section = "flex flex-col gap-3 rounded-xl border border-line p-4";
 const sectionTitle = "m-0 text-sm font-semibold";
 
 function fmt(iso: string | null): string {
@@ -134,7 +135,7 @@ export default function UserForm({ users, user, onDone }: Props) {
   return (
     <form className="flex flex-col gap-4" onSubmit={save} autoComplete="off">
       <header className="flex items-center gap-3">
-        <button type="button" className="btn ghost sm" onClick={onDone} disabled={busy}>
+        <button type="button" className={btn("ghost", "sm")} onClick={onDone} disabled={busy}>
           ← Users
         </button>
         <h4 className="m-0 text-base font-semibold [font-family:var(--font-display)]">
@@ -142,18 +143,18 @@ export default function UserForm({ users, user, onDone }: Props) {
         </h4>
       </header>
       {user?.locked_until ? (
-        <p className="m-0 flex items-center justify-between gap-3 rounded-lg border border-[var(--danger)] px-3 py-2 text-xs">
+        <p className="m-0 flex items-center justify-between gap-3 rounded-lg border border-danger px-3 py-2 text-xs">
           <span>
             Locked after {user.failed_logins} failed passwords — can sign in again at{" "}
             {new Date(user.locked_until).toLocaleTimeString()}.
           </span>
-          <button type="button" className="btn ghost sm shrink-0" disabled={busy} onClick={() => void unlock()}>
+          <button type="button" className={`${btn("ghost", "sm")} shrink-0`} disabled={busy} onClick={() => void unlock()}>
             Unlock now
           </button>
         </p>
       ) : null}
       {pending ? (
-        <p className="m-0 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs text-[var(--muted)]">
+        <p className="m-0 rounded-lg border border-line bg-panel-2 px-3 py-2 text-xs text-muted">
           Signed up {user.invited_by ? `with ${user.invited_by}'s invite` : "on the sign-up page"}
           {user.signup_address ? ` from ${user.signup_address}` : ""} — waiting for your approval. Check the details and
           modules, then approve or reject.
@@ -161,9 +162,9 @@ export default function UserForm({ users, user, onDone }: Props) {
       ) : null}
 
       {user ? (
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-[var(--line)] px-4 py-2.5 text-xs text-[var(--muted)]">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-line px-4 py-2.5 text-xs text-muted">
           <span>
-            Questions asked: <strong className="text-[var(--text)]">{user.query_count ?? 0}</strong>
+            Questions asked: <strong className="text-text">{user.query_count ?? 0}</strong>
           </span>
           <span>Created: {fmt(user.created_at)}</span>
           <span>Last sign-in: {fmt(user.last_login_at)}</span>
@@ -272,13 +273,13 @@ export default function UserForm({ users, user, onDone }: Props) {
 
       <div className={section}>
         <h5 className={sectionTitle}>Module access</h5>
-        <p className="m-0 text-xs text-[var(--muted)]">
+        <p className="m-0 text-xs text-muted">
           {admin ? "Admins have every module." : "What this person may use besides chat."}
         </p>
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {catalog.map((m) => (
             <li key={m.id}>
-              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5">
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-panel-2 px-3 py-2.5">
                 <input
                   type="checkbox"
                   className="mt-0.5"
@@ -288,7 +289,7 @@ export default function UserForm({ users, user, onDone }: Props) {
                 />
                 <span className="min-w-0">
                   <strong className="block text-sm">{m.title}</strong>
-                  <small className="block text-xs text-[var(--muted)]">{m.description}</small>
+                  <small className="block text-xs text-muted">{m.description}</small>
                 </span>
               </label>
             </li>
@@ -296,25 +297,25 @@ export default function UserForm({ users, user, onDone }: Props) {
         </ul>
       </div>
 
-      {error ? <p className="m-0 text-xs text-[var(--danger)]">{error}</p> : null}
+      {error ? <p className="m-0 text-xs text-danger">{error}</p> : null}
 
       <div className="flex items-center justify-between gap-3">
         {user ? (
-          <button type="button" className="btn ghost sm" onClick={deactivate} disabled={busy || user.status === "disabled"}>
+          <button type="button" className={btn("ghost", "sm")} onClick={deactivate} disabled={busy || user.status === "disabled"}>
             {pending ? "Reject" : user.status === "disabled" ? "Already disabled" : "Deactivate"}
           </button>
         ) : (
           <span />
         )}
         <div className="flex gap-2">
-          <button type="button" className="btn ghost sm" onClick={onDone} disabled={busy}>
+          <button type="button" className={btn("ghost", "sm")} onClick={onDone} disabled={busy}>
             Cancel
           </button>
-          <button type="submit" className={`btn sm ${pending ? "ghost" : "primary"}`} disabled={busy}>
+          <button type="submit" className={btn(pending ? "ghost" : "primary", "sm")} disabled={busy}>
             {busy ? "Saving…" : creating ? "Create user" : "Save"}
           </button>
           {pending ? (
-            <button type="button" className="btn primary sm" disabled={busy} onClick={(e) => void save(e, true)}>
+            <button type="button" className={btn("primary", "sm")} disabled={busy} onClick={(e) => void save(e, true)}>
               Approve
             </button>
           ) : null}

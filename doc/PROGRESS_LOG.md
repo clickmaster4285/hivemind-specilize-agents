@@ -5,6 +5,7 @@ The plan and status of each item: [BACKLOG.md](BACKLOG.md). Problems and their f
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-11 | **L22 O42 styles in Tailwind only** | Colour tokens mapped in `@theme inline` (the short names `text-muted`, `bg-panel` … gave no CSS before); every globals.css class (`btn`, `icon-btn`, `msg-action`, `md-*`, `mermaid-*`, `confirm-*`, `app-*`, `brand-mark`, `status`) moved into Tailwind in its component, shared sets in `frontend/src/lib/ui.ts`; dead rules removed; globals.css 659 → 143 lines. Every class compiled and checked; tsc, eslint clean |
 | 2026-11-11 | **L21 docs organised** | `doc/README.md` index + where things go; `doc/SECURITY.md` (sessions, limits, CAPTCHA, unlock, sign-up — plain words, reference, numbers); BACKLOG: At a glance, number order, L16 short; this file split out, newest first; ISSUES_LOG Open / Solved. Links checked |
 | 2026-11-11 | **L20 O40 `--stop` finds the services** | API and UI found by port as well as PID file (the PID files were gone, and a failed kill used to delete them silently); only this project's processes, whole group, wait then force; checked on stand-in services |
 | 2026-11-11 | **L16 S2b unlock + CAPTCHA** | Image CAPTCHA drawn by the API (Pillow, 6 characters, no look-alikes, 5 min, works once, at most 2000 open): sign-up always, login from the 3rd failure; a try without it is not counted, so no one locks an account without a person. Admin: "locked" badge + Unlock now, Blocked computers + Unlock (logged). Live check by the user pending. 817 tests |

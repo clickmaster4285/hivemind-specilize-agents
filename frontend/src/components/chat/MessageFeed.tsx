@@ -8,15 +8,16 @@ import MessageAvatar from "@/components/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
 import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, SourceList, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
+import { msgAction } from "@/lib/ui";
 
-// Inline Tailwind building blocks. Only msg-action and the react-markdown output (md-body) stay global CSS.
+// Inline Tailwind building blocks. Shared ones (buttons, message actions) are in lib/ui.ts.
 // The scroll container is full-width (so the scrollbar sits at the Main-area edge, not against the text);
 // the content lives in a centered, comfortably-wide column inside it.
 const scrollCls =
   "flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden px-6 pt-4 pb-5 [overscroll-behavior:contain]";
 const colCls = "mx-auto flex w-full max-w-[1040px] flex-col gap-5";
 const captionCls =
-  "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[0.72rem] leading-[1.25] text-[var(--muted)]";
+  "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[0.72rem] leading-[1.25] text-muted";
 
 /** Claude/ChatGPT-style column: the assistant answer is plain full-width text (no card); the user's
  *  message stays a bubble on the right; system lines are small centered pills. */
@@ -29,9 +30,9 @@ function cardClass(kind: FeedItem["kind"], isError: boolean) {
   }
   // system
   if (isError) {
-    return "min-w-0 w-fit max-w-[85%] rounded-[0.45rem] border px-[0.6rem] py-[0.2rem] border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-[var(--danger-soft)]";
+    return "min-w-0 w-fit max-w-[85%] rounded-[0.45rem] border px-[0.6rem] py-[0.2rem] border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-danger-soft";
   }
-  return "min-w-0 w-fit max-w-[85%] rounded-full border border-transparent px-[0.6rem] py-[0.15rem] bg-[var(--hover)]";
+  return "min-w-0 w-fit max-w-[85%] rounded-full border border-transparent px-[0.6rem] py-[0.15rem] bg-hover";
 }
 
 /** Inline edit of a user message (ChatGPT-style): the bubble becomes a textarea with Cancel / Send. */
@@ -39,7 +40,7 @@ function InlineEdit({ initial, onCancel, onSend }: { initial: string; onCancel: 
   const [text, setText] = useState(initial);
   const trimmed = text.trim();
   return (
-    <div className="w-full rounded-2xl border border-[color-mix(in_srgb,var(--copper)_45%,var(--line))] bg-[var(--panel-2)] px-[0.8rem] py-[0.6rem]">
+    <div className="w-full rounded-2xl border border-[color-mix(in_srgb,var(--copper)_45%,var(--line))] bg-panel-2 px-[0.8rem] py-[0.6rem]">
       <textarea
         autoFocus
         value={text}
@@ -53,15 +54,15 @@ function InlineEdit({ initial, onCancel, onSend }: { initial: string; onCancel: 
           }
         }}
         rows={Math.min(10, Math.max(1, text.split("\n").length))}
-        className="w-full resize-none border-0 bg-transparent text-[0.86rem] leading-[1.4] text-[var(--text)] outline-none placeholder:text-[var(--muted)]"
+        className="w-full resize-none border-0 bg-transparent text-[0.86rem] leading-[1.4] text-text outline-none placeholder:text-muted"
       />
       <div className="mt-[0.45rem] flex justify-end gap-[0.4rem]">
-        <button type="button" className="msg-action" onClick={onCancel}>
+        <button type="button" className={msgAction()} onClick={onCancel}>
           Cancel
         </button>
         <button
           type="button"
-          className="msg-action !border-[var(--copper)] !bg-[color-mix(in_srgb,var(--copper)_16%,var(--panel-2))] !text-[var(--text)] disabled:!opacity-45"
+          className={msgAction("accent")}
           disabled={!trimmed}
           onClick={() => onSend(trimmed)}
         >
@@ -89,8 +90,8 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
     return (
       <div className={scrollCls}>
         <div className={`${colCls} h-full`}>
-          <div className="m-auto mt-[12vh] max-w-[22rem] text-center text-[var(--muted)]">
-            <strong className="mb-[0.4rem] block text-[1.2rem] text-[var(--text)] [font-family:var(--font-display)]">
+          <div className="m-auto mt-[12vh] max-w-[22rem] text-center text-muted">
+            <strong className="mb-[0.4rem] block text-[1.2rem] text-text [font-family:var(--font-display)]">
               Start a conversation
             </strong>
             Ask anything: IT, development or marketing questions go to the matching specialist automatically.
@@ -221,16 +222,16 @@ function AnswerImages({ images }: { images: ChatImage[] }) {
         target="_blank"
         rel="noreferrer"
         title="Open image"
-        className="mt-[0.6rem] block w-fit max-w-full overflow-hidden rounded-[0.6rem] border border-[var(--line)] bg-[var(--sunken)] hover:border-[var(--teal)]"
+        className="mt-[0.6rem] block w-fit max-w-full overflow-hidden rounded-[0.6rem] border border-line bg-sunken hover:border-teal"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={img.url} alt={img.filename} loading="lazy" className="block h-auto max-h-[18rem] w-auto max-w-full object-contain" />
+        <img src={img.url} alt={img.filename} loading="lazy" className="block h-auto max-h-72 w-auto max-w-full object-contain" />
       </a>
     );
   }
   const shown = images.slice(0, 4);
   const extra = images.length - shown.length;
-  const h = images.length === 2 ? "h-[11rem]" : images.length === 3 ? "h-[9.5rem]" : "h-[8.5rem]";
+  const h = images.length === 2 ? "h-[11rem]" : images.length === 3 ? "h-[9.5rem]" : "h-34";
   return (
     <div className="mt-[0.6rem] flex flex-wrap items-start gap-[0.4rem]">
       {shown.map((img, i) => (
@@ -240,7 +241,7 @@ function AnswerImages({ images }: { images: ChatImage[] }) {
           target="_blank"
           rel="noreferrer"
           title="Open image"
-          className="relative block overflow-hidden rounded-[0.5rem] border border-[var(--line)] bg-[var(--sunken)] hover:border-[var(--teal)]"
+          className="relative block overflow-hidden rounded-lg border border-line bg-sunken hover:border-teal"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={img.url} alt={img.filename} loading="lazy" className={`block ${h} w-auto max-w-full object-contain`} />
@@ -263,7 +264,7 @@ function ImagesPlaceholder() {
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="h-[8.5rem] w-[12rem] max-w-full animate-pulse rounded-[0.5rem] border border-[var(--line)] bg-[var(--panel-2)]"
+          className="h-34 w-48 max-w-full animate-pulse rounded-lg border border-line bg-panel-2"
           style={{ animationDelay: `${i * 150}ms` }}
         />
       ))}
@@ -352,8 +353,8 @@ function MessageRow({
 }) {
   const { images: webImgs, loading: webImgsLoading } = useWebImages(item, fallbackJobId);
   const rowAlign = item.kind === "user" ? "justify-end" : item.kind === "system" ? "items-center justify-center" : "";
-  const labelCls = `font-semibold ${isError ? "text-[var(--danger-text)]" : "text-[var(--muted)]"}`;
-  const metaCls = isError ? "text-[var(--danger-text)]" : "text-[var(--muted)]";
+  const labelCls = `font-semibold ${isError ? "text-danger-text" : "text-muted"}`;
+  const metaCls = isError ? "text-danger-text" : "text-muted";
   return (
     <article
       className={`flex w-full max-w-full items-start ${editing ? "" : rowAlign}`}
@@ -364,7 +365,7 @@ function MessageRow({
       ) : (
       <div className={cardClass(item.kind, isError)}>
         {item.kind === "system" ? (
-          <p className={`m-0 text-[0.72rem] leading-[1.25] ${isError ? "text-[var(--danger-text)]" : "text-[var(--muted)]"}`}>
+          <p className={`m-0 text-[0.72rem] leading-tight ${isError ? "text-danger-text" : "text-muted"}`}>
             <span className={labelCls}>{item.title}</span>
             {item.body ? <span className={metaCls}> {item.body}</span> : null}
           </p>
@@ -374,8 +375,8 @@ function MessageRow({
               <header className="mb-[0.3rem] flex min-w-0 items-center gap-[0.4rem]">
                 <MessageAvatar kind="agent" title={item.title} accent={item.accent} />
                 <p className={captionCls}>
-                  <span className="font-semibold text-[var(--muted)]">{item.title}</span>
-                  {item.meta ? <span className="text-[var(--muted)]"> · {item.meta}</span> : null}
+                  <span className="font-semibold text-muted">{item.title}</span>
+                  {item.meta ? <span className="text-muted"> · {item.meta}</span> : null}
                 </p>
               </header>
             ) : null}
@@ -389,7 +390,7 @@ function MessageRow({
                         href={img.url}
                         target="_blank"
                         rel="noreferrer"
-                        className="relative block h-[4.4rem] w-[4.4rem] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[var(--sunken)]"
+                        className="relative block h-[4.4rem] w-[4.4rem] overflow-hidden rounded-[0.45rem] border border-line bg-sunken"
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={img.url} alt={img.filename} className="block h-full w-full object-cover" />
@@ -428,12 +429,12 @@ function MessageRow({
             {showToolbar ? (
               <div className={`mt-[0.35rem] flex flex-wrap gap-[0.3rem] ${item.kind === "user" ? "justify-end" : ""}`}>
                 {item.kind === "user" ? (
-                  <button type="button" className="msg-action" disabled={running} onClick={onStartEdit}>
+                  <button type="button" className={msgAction()} disabled={running} onClick={onStartEdit}>
                     Edit
                   </button>
                 ) : null}
                 {canRetry && item.kind !== "agent" ? (
-                  <button type="button" className="msg-action" onClick={onRetry}>
+                  <button type="button" className={msgAction()} onClick={onRetry}>
                     Retry
                   </button>
                 ) : null}

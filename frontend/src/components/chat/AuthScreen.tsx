@@ -6,6 +6,7 @@ import Captcha from "@/components/chat/Captcha";
 
 import { signUp, signupInfo } from "@/lib/api";
 import type { CaptchaAnswer, Health, SignupInfo } from "@/lib/types";
+import { brandMark, btn } from "@/lib/ui";
 
 type Props = {
   health: Health | null;
@@ -26,11 +27,11 @@ const INVITE_PARAM = "invite";
 const inviteToken = () => new URLSearchParams(window.location.search).get(INVITE_PARAM);
 
 const field =
-  "w-full rounded-[0.55rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.55rem] font-[inherit] text-[var(--text)] outline-none";
-const labelCol = "flex flex-col gap-1 text-[0.82rem] text-[var(--muted)]";
+  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-[0.55rem] font-[inherit] text-text outline-none";
+const labelCol = "flex flex-col gap-1 text-[0.82rem] text-muted";
 const errorBox =
-  "m-0 rounded-[0.7rem] border border-[color-mix(in_srgb,var(--danger)_40%,var(--line))] bg-[var(--danger-soft)] px-[0.9rem] py-[0.7rem] text-[var(--danger-text)]";
-const noteBox = "m-0 rounded-[0.7rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.9rem] py-[0.7rem] text-sm";
+  "m-0 rounded-[0.7rem] border border-[color-mix(in_srgb,var(--danger)_40%,var(--line))] bg-danger-soft px-[0.9rem] py-[0.7rem] text-danger-text";
+const noteBox = "m-0 rounded-[0.7rem] border border-line bg-panel-2 px-[0.9rem] py-[0.7rem] text-sm";
 
 /** The sign-in card shown when nobody is signed in; it turns into the sign-up form (BACKLOG L16 S7). */
 export default function AuthScreen({ health, healthError, error, captchaRequired, onSignIn }: Props) {
@@ -122,16 +123,16 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
   return (
     <div className="grid min-h-screen place-items-center p-4">
       <form
-        className="flex w-full max-w-[420px] flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--panel)] p-5 shadow-[var(--shadow)]"
+        className="flex w-full max-w-[420px] flex-col gap-3 rounded-2xl border border-line bg-panel p-5 shadow-shadow"
         onSubmit={signingUp ? submitSignUp : submitSignIn}
       >
         <div className="flex items-center gap-[0.85rem]">
-          <span className="brand-mark" aria-hidden />
+          <span className={brandMark()} aria-hidden />
           <div>
             <h1 className="m-0 text-[1.65rem] leading-none tracking-[-0.03em] [font-family:var(--font-display)]">
               MulteAgent
             </h1>
-            <p className="mt-[0.2rem] text-[0.85rem] text-[var(--muted)]">
+            <p className="mt-[0.2rem] text-[0.85rem] text-muted">
               {signingUp ? "Create your account" : "Sign in to continue"}
             </p>
           </div>
@@ -213,8 +214,8 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
         {signingUp || captchaRequired ? <Captcha round={captchaRound} onChange={onCaptcha} /> : null}
         {shownError ? <p className={errorBox}>{shownError}</p> : null}
         {signingUp ? null : (
-          <div className={`status ${health?.llm_reachable ? "ok" : "bad"}`}>
-            <span className="dot" />
+          <div className="inline-flex items-center gap-[0.55rem] rounded-full border border-line bg-glass px-[0.8rem] py-[0.45rem] text-[0.85rem] text-muted">
+            <span className={`h-[0.55rem] w-[0.55rem] rounded-full ${health?.llm_reachable ? "bg-ok shadow-[0_0_0_4px_rgba(95,191,122,0.15)]" : "bg-danger"}`} />
             <span>
               {health
                 ? health.llm_reachable
@@ -224,15 +225,15 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
             </span>
           </div>
         )}
-        <button type="submit" className="btn primary full" disabled={busy || (signingUp && !mayCreate)}>
+        <button type="submit" className={btn("primary", "full")} disabled={busy || (signingUp && !mayCreate)}>
           {signingUp ? (busy ? "Creating…" : "Create account") : busy ? "Signing in…" : "Sign in"}
         </button>
         {signingUp ? (
-          <button type="button" className="btn ghost full" onClick={() => switchTo("signin")}>
+          <button type="button" className={btn("ghost", "full")} onClick={() => switchTo("signin")}>
             I already have an account
           </button>
         ) : mayCreate ? (
-          <button type="button" className="btn ghost full" onClick={() => switchTo("signup")}>
+          <button type="button" className={btn("ghost", "full")} onClick={() => switchTo("signup")}>
             Create account
           </button>
         ) : null}

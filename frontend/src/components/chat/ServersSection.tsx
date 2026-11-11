@@ -5,6 +5,7 @@ import { useState, type FormEvent } from "react";
 import type { ServersApi } from "@/hooks/useServers";
 import { errorText } from "@/lib/chat";
 import type { ServerKind, ServerLoginInput, ServerMode } from "@/lib/types";
+import { btn } from "@/lib/ui";
 
 // the usual port of each kind: SSH (servers, routers, switches), and the recorder's web API
 const DEFAULT_PORT: Record<ServerKind, number> = { ssh: 22, nvr: 80, network: 22 };
@@ -31,12 +32,12 @@ const MODE_LABEL: Record<string, string> = {
 
 // Inline Tailwind building blocks (styling stays with the component).
 const field =
-  "w-full rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-sm text-[var(--text)] placeholder:text-[var(--muted)] outline-none focus:border-[var(--copper)]";
-const label = "flex flex-col gap-1 text-xs text-[var(--muted)]";
+  "w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm text-text placeholder:text-muted outline-none focus:border-copper";
+const label = "flex flex-col gap-1 text-xs text-muted";
 const modeAccent: Record<ServerMode, string> = {
-  audit: "border-l-[var(--teal)]",
-  confirm: "border-l-[var(--copper)]",
-  trusted: "border-l-[var(--danger)]",
+  audit: "border-l-teal",
+  confirm: "border-l-copper",
+  trusted: "border-l-danger",
 };
 
 /** Settings → Devices: Linux logins kept in the API's memory for this session only (admins). */
@@ -76,7 +77,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
   return (
     <>
       <h4 className="text-base font-semibold [font-family:var(--font-display)]">Devices (this session)</h4>
-      <p className="text-xs leading-relaxed text-[var(--muted)]">
+      <p className="text-xs leading-relaxed text-muted">
         Devices the IT specialist can log in to: servers it can work on, and camera recorders (NVR/DVR) whose
         cameras it can list, and routers and switches (MikroTik) it can read. The login stays in the API&rsquo;s memory only — never
         saved, never in the chat — and is forgotten at logout, restart or after 8 hours. For a server, the mode sets
@@ -92,22 +93,22 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           {servers.servers.map((s) => (
             <li
               key={s.id}
-              className={`rounded-lg border border-l-4 border-[var(--line)] ${modeAccent[s.mode]} bg-[var(--panel-2)] px-3 py-2.5 flex flex-col gap-1.5`}
+              className={`rounded-lg border border-l-4 border-line ${modeAccent[s.mode]} bg-panel-2 px-3 py-2.5 flex flex-col gap-1.5`}
             >
               <div className="flex items-center justify-between gap-2">
                 <strong className="truncate text-sm">{s.label}</strong>
-                <button type="button" className="btn ghost sm" onClick={() => void servers.remove(s.id)}>
+                <button type="button" className={btn("ghost", "sm")} onClick={() => void servers.remove(s.id)}>
                   Remove
                 </button>
               </div>
-              <div className="truncate text-xs text-[var(--muted)]">
+              <div className="truncate text-xs text-muted">
                 {KIND_TAG[s.kind]}
                 {s.username}@{s.host}:{s.port}
                 {s.kind === "ssh" ? ` · ${s.auth}` : " · read-only"}
                 {s.os ? ` · ${s.os}` : ""}
               </div>
               {s.kind !== "ssh" ? null : (
-              <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
+              <label className="flex items-center gap-2 text-xs text-muted">
                 <span className="shrink-0">Agent may</span>
                 <select
                   className={field}
@@ -125,11 +126,11 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-[var(--muted)]">No devices added this session.</p>
+        <p className="text-xs text-muted">No devices added this session.</p>
       )}
 
       {/* Add a login */}
-      <form className="flex flex-col gap-3 border-t border-[var(--line)] pt-4" onSubmit={submit} autoComplete="off">
+      <form className="flex flex-col gap-3 border-t border-line pt-4" onSubmit={submit} autoComplete="off">
         <label className={label}>
           Type
           <select
@@ -253,8 +254,8 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           </>
         )}
 
-        {error ? <p className="text-xs text-[var(--danger)]">{error}</p> : null}
-        <button type="submit" className="btn primary sm" disabled={busy}>
+        {error ? <p className="text-xs text-danger">{error}</p> : null}
+        <button type="submit" className={btn("primary", "sm")} disabled={busy}>
           {busy ? "Testing the login…" : "Add & test login"}
         </button>
       </form>

@@ -14,14 +14,14 @@ const PERIODS = [
   { days: 90, label: "90 days" },
 ];
 
-const th = "px-3 py-2 text-left text-[0.72rem] font-medium uppercase tracking-[0.04em] text-[var(--muted)]";
+const th = "px-3 py-2 text-left text-[0.72rem] font-medium uppercase tracking-[0.04em] text-muted";
 const td = "px-3 py-2 tabular-nums";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-col gap-0.5 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5">
-      <span className="text-[0.72rem] text-[var(--muted)]">{label}</span>
-      <span className="text-lg font-semibold tabular-nums text-[var(--text-strong)]">{value}</span>
+    <div className="flex flex-col gap-0.5 rounded-lg border border-line bg-panel-2 px-3 py-2.5">
+      <span className="text-[0.72rem] text-muted">{label}</span>
+      <span className="text-lg font-semibold tabular-nums text-text-strong">{value}</span>
     </div>
   );
 }
@@ -77,8 +77,8 @@ export default function UsageSection() {
               onClick={() => setDays(p.days)}
               className={`rounded-full border px-3 py-1 text-xs ${
                 days === p.days
-                  ? "border-[var(--copper)] text-[var(--text)]"
-                  : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]"
+                  ? "border-copper text-text"
+                  : "border-line text-muted hover:text-text"
               }`}
             >
               {p.label}
@@ -86,11 +86,11 @@ export default function UsageSection() {
           ))}
         </div>
       </div>
-      <p className="text-xs leading-relaxed text-[var(--muted)]">
+      <p className="text-xs leading-relaxed text-muted">
         <strong>In</strong> = tokens the model read (your question, chat history, sources); <strong>out</strong> =
         tokens it wrote. Counted by Ollama for every model call. {data?.all_users ? "All users." : "Your own usage."}
       </p>
-      {error ? <p className="text-sm text-[var(--danger-text)]">{error}</p> : null}
+      {error ? <p className="text-sm text-danger-text">{error}</p> : null}
       {total ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Stat label="Tokens in" value={compactCount(total.prompt_tokens)} />
@@ -99,11 +99,11 @@ export default function UsageSection() {
           <Stat label="Model time" value={formatSeconds(total.seconds)} />
         </div>
       ) : null}
-      {data && !data.users.length ? <p className="text-sm text-[var(--muted)]">No model calls in this period.</p> : null}
+      {data && !data.users.length ? <p className="text-sm text-muted">No model calls in this period.</p> : null}
       {data?.all_users && data.users.length ? (
-        <div className="overflow-x-auto rounded-lg border border-[var(--line)]">
+        <div className="overflow-x-auto rounded-lg border border-line">
           <table className="w-full text-sm">
-            <thead className="bg-[var(--panel-2)]">
+            <thead className="bg-panel-2">
               <tr>
                 <th className={th}>User</th>
                 <th className={th}>Answers</th>
@@ -115,7 +115,7 @@ export default function UsageSection() {
             </thead>
             <tbody>
               {data.users.map((u) => (
-                <tr key={u.user_id ?? "none"} className="border-t border-[var(--line)]">
+                <tr key={u.user_id ?? "none"} className="border-t border-line">
                   <td className="px-3 py-2">{u.username}</td>
                   <td className={td}>{u.answers}</td>
                   <Cells u={u} />
@@ -126,9 +126,9 @@ export default function UsageSection() {
         </div>
       ) : null}
       {data?.steps.length ? (
-        <div className="overflow-x-auto rounded-lg border border-[var(--line)]">
+        <div className="overflow-x-auto rounded-lg border border-line">
           <table className="w-full text-sm">
-            <thead className="bg-[var(--panel-2)]">
+            <thead className="bg-panel-2">
               <tr>
                 <th className={th}>Step</th>
                 <th className={th}>In</th>
@@ -139,7 +139,7 @@ export default function UsageSection() {
             </thead>
             <tbody>
               {data.steps.map((s) => (
-                <tr key={s.step} className="border-t border-[var(--line)]">
+                <tr key={s.step} className="border-t border-line">
                   <td className="px-3 py-2 font-mono text-[0.8rem]">{s.step}</td>
                   <Cells u={s} />
                 </tr>

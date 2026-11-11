@@ -8,6 +8,7 @@ import { errorText, timeAgo } from "@/lib/chat";
 import { saveUrl } from "@/lib/download";
 import { usageLine } from "@/lib/format";
 import type { AnswerOption, AnswerUsage, ChatImage, FeedItem } from "@/lib/types";
+import { msgAction } from "@/lib/ui";
 
 type ItemProps = { item: FeedItem; fallbackJobId: string | null };
 
@@ -34,10 +35,10 @@ export function ClarifyForm({
       questions.map((q, i) => ({ question: q.question, chosen: picks[i] || [] })),
     );
   return (
-    <div className="mt-[0.5rem] flex flex-col gap-[0.6rem]">
+    <div className="mt-2 flex flex-col gap-[0.6rem]">
       {questions.map((q, qi) => (
         <div key={qi} className="flex flex-col gap-[0.3rem]">
-          <span className="text-[0.82rem] font-semibold text-[var(--text)]">{q.question}</span>
+          <span className="text-[0.82rem] font-semibold text-text">{q.question}</span>
           <div className="flex flex-wrap gap-[0.35rem]">
             {q.options.map((opt) => {
               const on = (picks[qi] || []).includes(opt);
@@ -49,8 +50,8 @@ export function ClarifyForm({
                   onClick={() => toggle(qi, opt)}
                   className={`rounded-full border px-[0.6rem] py-[0.2rem] text-[0.78rem] cursor-pointer ${
                     on
-                      ? "border-[var(--teal)] bg-[color-mix(in_srgb,var(--teal)_18%,transparent)] text-[var(--text)]"
-                      : "border-[var(--line)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]"
+                      ? "border-teal bg-[color-mix(in_srgb,var(--teal)_18%,transparent)] text-text"
+                      : "border-line bg-transparent text-muted hover:text-text"
                   }`}
                 >
                   {opt}
@@ -65,7 +66,7 @@ export function ClarifyForm({
           type="button"
           onClick={submit}
           disabled={!anyPicked}
-          className="rounded-[0.5rem] border border-[color-mix(in_srgb,var(--teal)_45%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_14%,var(--panel-2))] px-[0.8rem] py-[0.3rem] text-[0.8rem] text-[var(--text)] hover:brightness-[1.08] disabled:cursor-not-allowed disabled:opacity-45"
+          className="rounded-lg border border-[color-mix(in_srgb,var(--teal)_45%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_14%,var(--panel-2))] px-[0.8rem] py-[0.3rem] text-[0.8rem] text-text hover:brightness-[1.08] disabled:cursor-not-allowed disabled:opacity-45"
         >
           Submit
         </button>
@@ -84,24 +85,24 @@ export function QuizCard({ item }: { item: FeedItem }) {
   return (
     <details
       open
-      className="mt-[0.6rem] rounded-[0.6rem] border border-[var(--line)] bg-[color-mix(in_srgb,var(--teal)_6%,var(--panel-2))] px-[0.7rem] py-[0.5rem] text-[0.82rem]"
+      className="mt-[0.6rem] rounded-[0.6rem] border border-line bg-[color-mix(in_srgb,var(--teal)_6%,var(--panel-2))] px-[0.7rem] py-2 text-[0.82rem]"
     >
-      <summary className="cursor-pointer font-semibold text-[var(--muted)]">Quick self-check · {quiz.length} questions</summary>
+      <summary className="cursor-pointer font-semibold text-muted">Quick self-check · {quiz.length} questions</summary>
       <div className="mt-[0.45rem] flex flex-col gap-[0.6rem]">
         {quiz.map((q, qi) => (
-          <div key={qi} className="flex flex-col gap-[0.25rem]">
-            <span className="font-semibold text-[var(--text)]">
+          <div key={qi} className="flex flex-col gap-1">
+            <span className="font-semibold text-text">
               {qi + 1}. {q.question}
             </span>
             <div className="flex flex-col gap-[0.2rem]">
               {q.options.map((opt, oi) => {
                 const picked = picks[qi] === oi;
                 const isCorrect = oi === q.correct;
-                let cls = "border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]";
+                let cls = "border-line text-muted hover:text-text";
                 if (checked && isCorrect)
-                  cls = "border-[var(--teal)] text-[var(--text)] bg-[color-mix(in_srgb,var(--teal)_14%,transparent)]";
-                else if (checked && picked) cls = "border-[var(--danger)] text-[var(--text)]";
-                else if (picked) cls = "border-[var(--teal)] text-[var(--text)]";
+                  cls = "border-teal text-text bg-[color-mix(in_srgb,var(--teal)_14%,transparent)]";
+                else if (checked && picked) cls = "border-danger text-text";
+                else if (picked) cls = "border-teal text-text";
                 return (
                   <button
                     key={oi}
@@ -123,12 +124,12 @@ export function QuizCard({ item }: { item: FeedItem }) {
             type="button"
             disabled={Object.keys(picks).length < quiz.length}
             onClick={() => setChecked(true)}
-            className="self-start rounded-[0.5rem] border border-[color-mix(in_srgb,var(--teal)_45%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_14%,var(--panel-2))] px-[0.8rem] py-[0.3rem] text-[var(--text)] hover:brightness-[1.08] disabled:cursor-not-allowed disabled:opacity-45"
+            className="self-start rounded-lg border border-[color-mix(in_srgb,var(--teal)_45%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_14%,var(--panel-2))] px-[0.8rem] py-[0.3rem] text-text hover:brightness-[1.08] disabled:cursor-not-allowed disabled:opacity-45"
           >
             Check answers
           </button>
         ) : (
-          <span className="text-[var(--muted)]">You got {score} / {quiz.length}.</span>
+          <span className="text-muted">You got {score} / {quiz.length}.</span>
         )}
       </div>
     </details>
@@ -226,8 +227,8 @@ function DownloadMenu({ jobId, text }: { jobId: string; text: string }) {
       {open ? (
         <>
           <button type="button" className="fixed inset-0 z-40 cursor-default" aria-hidden tabIndex={-1} onClick={() => setOpen(false)} />
-          <div role="menu" className="absolute left-0 bottom-full z-50 mb-1.5 w-[12rem] rounded-xl border border-[var(--line)] bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]">
-            <div className="px-2.5 pb-1 pt-0.5 text-[0.72rem] text-[var(--muted)]">Download as</div>
+          <div role="menu" className="absolute left-0 bottom-full z-50 mb-1.5 w-48 rounded-xl border border-line bg-panel p-1.5 shadow-shadow">
+            <div className="px-2.5 pb-1 pt-0.5 text-[0.72rem] text-muted">Download as</div>
             {EXPORTS.map((e) => (
               <button
                 key={e.format}
@@ -235,10 +236,10 @@ function DownloadMenu({ jobId, text }: { jobId: string; text: string }) {
                 role="menuitem"
                 disabled={busy !== null}
                 onClick={() => void pick(e.format)}
-                className="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-[0.84rem] text-[var(--text)] hover:bg-[var(--hover)] disabled:opacity-50"
+                className="flex w-full items-center rounded-lg px-2.5 py-1.5 text-left text-[0.84rem] text-text hover:bg-hover disabled:opacity-50"
               >
                 <span className="flex-1">{e.label}</span>
-                {busy === e.format ? <span className="text-[0.72rem] text-[var(--muted)]">…</span> : null}
+                {busy === e.format ? <span className="text-[0.72rem] text-muted">…</span> : null}
               </button>
             ))}
           </div>
@@ -257,7 +258,7 @@ function UsageNote({ usage }: { usage: AnswerUsage }) {
     ...(usage.estimated ? ["Stopped early — part of it is estimated"] : []),
   ].join("\n");
   return (
-    <span className="ml-auto cursor-default pl-2 text-[0.7rem] tabular-nums text-[var(--muted)]" title={title}>
+    <span className="ml-auto cursor-default pl-2 text-[0.7rem] tabular-nums text-muted" title={title}>
       {usage.estimated ? "≈ " : ""}
       {usageLine(usage)}
     </span>
@@ -276,8 +277,8 @@ function ActionIcon({
       aria-pressed={active}
       disabled={disabled}
       onClick={onClick}
-      className={`inline-flex h-[1.9rem] w-[1.9rem] items-center justify-center rounded-[0.4rem] hover:bg-[var(--panel-2)] hover:text-[var(--text)] disabled:opacity-40 ${
-        active ? "bg-[var(--panel-2)] text-[var(--text)]" : "text-[var(--muted)]"
+      className={`inline-flex h-[1.9rem] w-[1.9rem] items-center justify-center rounded-[0.4rem] hover:bg-panel-2 hover:text-text disabled:opacity-40 ${
+        active ? "bg-panel-2 text-text" : "text-muted"
       }`}
     >
       {children}
@@ -392,13 +393,13 @@ export function AnswerActions({
         {jobId ? <DownloadMenu jobId={jobId} text={text} /> : null}
         {onRetry ? <ActionIcon title="Try again" onClick={onRetry}>{Icon.retry}</ActionIcon> : null}
         {rating === "up" || sent ? (
-          <span className="ml-[0.3rem] text-[0.72rem] text-[var(--muted)]">Thanks — noted.</span>
+          <span className="ml-[0.3rem] text-[0.72rem] text-muted">Thanks — noted.</span>
         ) : null}
         {usage ? <UsageNote usage={usage} /> : null}
       </div>
       {open ? (
-        <div className="mt-[0.5rem] max-w-[32rem] rounded-[0.6rem] border border-[var(--line)] bg-[var(--panel-2)] p-[0.7rem]">
-          <div className="mb-[0.5rem] text-[0.8rem] font-medium text-[var(--text)]">What was off?</div>
+        <div className="mt-2 max-w-lg rounded-[0.6rem] border border-line bg-panel-2 p-[0.7rem]">
+          <div className="mb-2 text-[0.8rem] font-medium text-text">What was off?</div>
           <div className="flex flex-wrap gap-[0.35rem]">
             {DOWN_REASONS.map((r) => (
               <button
@@ -408,8 +409,8 @@ export function AnswerActions({
                 aria-pressed={reason === r}
                 className={`rounded-full border px-[0.7rem] py-[0.28rem] text-[0.76rem] ${
                   reason === r
-                    ? "border-[var(--teal)] bg-[var(--panel)] text-[var(--text)]"
-                    : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--text)]"
+                    ? "border-teal bg-panel text-text"
+                    : "border-line text-muted hover:text-text"
                 }`}
               >
                 {r}
@@ -421,19 +422,19 @@ export function AnswerActions({
             onChange={(e) => setDetails(e.target.value)}
             rows={2}
             placeholder="Share details (optional)"
-            className="mt-[0.5rem] w-full resize-y rounded-[0.5rem] border border-[var(--line)] bg-[var(--panel)] p-[0.5rem] text-[0.8rem] text-[var(--text)] placeholder:text-[var(--muted)]"
+            className="mt-2 w-full resize-y rounded-lg border border-line bg-panel p-2 text-[0.8rem] text-text placeholder:text-muted"
           />
-          <div className="mt-[0.5rem] flex items-center justify-end gap-[0.35rem]">
-            <button type="button" className="msg-action" onClick={() => setOpen(false)}>
+          <div className="mt-2 flex items-center justify-end gap-[0.35rem]">
+            <button type="button" className={msgAction()} onClick={() => setOpen(false)}>
               Dismiss
             </button>
-            <button type="button" className="msg-action" onClick={store}>
+            <button type="button" className={msgAction()} onClick={store}>
               Submit
             </button>
             {onRegenerate ? (
               <button
                 type="button"
-                className="msg-action !border-[var(--teal)] !text-[var(--text)] disabled:opacity-50"
+                className={msgAction("teal")}
                 onClick={tryAgainBetter}
                 disabled={!canAct}
                 title={canAct ? "Regenerate addressing your reason" : "Pick a reason first"}
@@ -459,7 +460,7 @@ export function SuggestionChips({ item, onPick }: { item: FeedItem; onPick?: (q:
           key={i}
           type="button"
           onClick={() => onPick?.(s)}
-          className="rounded-full border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.3rem] text-[0.78rem] text-[var(--muted)] hover:border-[var(--teal)] hover:text-[var(--text)]"
+          className="rounded-full border border-line bg-panel-2 px-[0.7rem] py-[0.3rem] text-[0.78rem] text-muted hover:border-teal hover:text-text"
         >
           {s}
         </button>
@@ -474,16 +475,16 @@ export function OptionCards({ item, onPick }: { item: FeedItem; onPick?: (query:
   if (item.pending || !opts.length) return null;
   const query = item.optionsQuery || "";
   return (
-    <div className="mt-[0.5rem] flex flex-col gap-[0.4rem]">
+    <div className="mt-2 flex flex-col gap-[0.4rem]">
       {opts.map((o, i) => (
         <button
           key={i}
           type="button"
           onClick={() => onPick?.(query, o)}
-          className="flex flex-col items-start gap-[0.1rem] rounded-[0.6rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.5rem] text-left hover:border-[var(--teal)] hover:bg-[color-mix(in_srgb,var(--teal)_8%,var(--panel-2))]"
+          className="flex flex-col items-start gap-[0.1rem] rounded-[0.6rem] border border-line bg-panel-2 px-[0.7rem] py-2 text-left hover:border-teal hover:bg-[color-mix(in_srgb,var(--teal)_8%,var(--panel-2))]"
         >
-          <span className="text-[0.85rem] font-semibold text-[var(--text)]">{o.title}</span>
-          {o.hint ? <span className="text-[0.76rem] text-[var(--muted)]">{o.hint}</span> : null}
+          <span className="text-[0.85rem] font-semibold text-text">{o.title}</span>
+          {o.hint ? <span className="text-[0.76rem] text-muted">{o.hint}</span> : null}
         </button>
       ))}
     </div>
@@ -528,7 +529,7 @@ export function AgentThumbs({ item, fallbackJobId }: ItemProps) {
           href={img.url}
           target="_blank"
           rel="noreferrer"
-          className="relative block max-h-[min(70vh,36rem)] max-w-[min(36rem,100%)] overflow-hidden rounded-[0.45rem] border border-[var(--line)] bg-[var(--sunken)]"
+          className="relative block max-h-[min(70vh,36rem)] max-w-[min(36rem,100%)] overflow-hidden rounded-[0.45rem] border border-line bg-sunken"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -595,7 +596,7 @@ export function ArtifactChips({ item, fallbackJobId }: ItemProps) {
         <button
           key={art.filename}
           type="button"
-          className="cursor-pointer rounded-full border border-[color-mix(in_srgb,var(--teal)_45%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_12%,var(--panel-2))] px-[0.65rem] py-[0.25rem] text-[0.75rem] text-[var(--text)] hover:brightness-[1.08]"
+          className="cursor-pointer rounded-full border border-[color-mix(in_srgb,var(--teal)_45%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_12%,var(--panel-2))] px-[0.65rem] py-1 text-[0.75rem] text-text hover:brightness-[1.08]"
           title={`Download ${art.filename}`}
           onClick={() => void download(art.filename)}
         >
@@ -614,8 +615,8 @@ function ClaimList({ title, claims }: { title: string; claims: { text: string; c
       <p className="mt-[0.45rem] mb-[0.2rem] font-semibold">{title}</p>
       <ul className="m-0 pl-[1.1rem]">
         {claims.map((c, i) => (
-          <li key={i} className="my-[0.15rem] text-[var(--text)]">
-            {c.text} <span className="text-[var(--muted)]">[{c.cites.join(", ")}]</span>
+          <li key={i} className="my-[0.15rem] text-text">
+            {c.text} <span className="text-muted">[{c.cites.join(", ")}]</span>
           </li>
         ))}
       </ul>
@@ -633,14 +634,14 @@ export function VerificationNote({ item }: { item: FeedItem }) {
     ? `✓ All ${v.checked} statements confirmed by the sources`
     : `${problems ? "⚠" : "✓"} ${v.supported} of ${v.checked} statements confirmed by the sources` +
       (problems ? ` · ${problems} not supported` : "");
-  const box = "mt-[0.6rem] mb-[0.2rem] rounded-[8px] px-[0.7rem] py-[0.4rem] text-[0.78rem] text-[var(--muted)]";
+  const box = "mt-[0.6rem] mb-[0.2rem] rounded-[8px] px-[0.7rem] py-[0.4rem] text-[0.78rem] text-muted";
   const okBorder = "border border-[color-mix(in_srgb,var(--teal)_35%,var(--line))]";
   const warnBox =
     "border border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-[color-mix(in_srgb,var(--danger)_7%,var(--panel-2))]";
   if (allGood) return <div className={`${box} ${okBorder}`}>{label}</div>;
   return (
     <details className={`${box} ${problems ? warnBox : okBorder}`} open={problems > 0}>
-      <summary className={`cursor-pointer font-semibold ${problems ? "text-[var(--text)]" : ""}`}>{label}</summary>
+      <summary className={`cursor-pointer font-semibold ${problems ? "text-text" : ""}`}>{label}</summary>
       <ClaimList title="Not supported by the cited source — treat with care:" claims={v.unsupported} />
       <ClaimList title="Only partly confirmed:" claims={v.unclear} />
     </details>
@@ -667,10 +668,10 @@ export function SourceList({ item }: { item: FeedItem }) {
   const shown = cited.length ? cited : sources;
   return (
     <details
-      className="mt-[0.6rem] mb-[0.2rem] rounded-[8px] border border-[color-mix(in_srgb,var(--teal)_35%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_6%,var(--panel-2))] px-[0.7rem] py-[0.45rem] text-[0.78rem]"
+      className="mt-[0.6rem] mb-[0.2rem] rounded-lg border border-[color-mix(in_srgb,var(--teal)_35%,var(--line))] bg-[color-mix(in_srgb,var(--teal)_6%,var(--panel-2))] px-[0.7rem] py-[0.45rem] text-[0.78rem]"
       open
     >
-      <summary className="cursor-pointer font-semibold text-[var(--muted)]">
+      <summary className="cursor-pointer font-semibold text-muted">
         Sources · {shown.length}
         {cited.length && cited.length < sources.length ? ` cited (${sources.length} found)` : ""}
       </summary>
@@ -680,19 +681,19 @@ export function SourceList({ item }: { item: FeedItem }) {
             const host = hostOf(s.url);
             const ico = faviconOf(host);
             const linkable = s.url && /^https?:\/\//i.test(s.url);
-            const td = `px-[0.5rem] py-[0.4rem] align-top ${
+            const td = `px-2 py-[0.4rem] align-top ${
               idx === 0 ? "" : "border-t border-t-[color-mix(in_srgb,var(--line)_70%,transparent)]"
             }`;
             return (
-              <tr key={s.n} className="hover:[&>td]:bg-[var(--row-alt)]">
-                <td className={`${td} w-[1.4rem] text-[var(--muted)] [font-variant-numeric:tabular-nums]`}>{s.n}</td>
+              <tr key={s.n} className="hover:[&>td]:bg-(--row-alt)">
+                <td className={`${td} w-[1.4rem] text-muted [font-variant-numeric:tabular-nums]`}>{s.n}</td>
                 <td className={td}>
                   {linkable ? (
                     <a
                       href={s.url as string}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="group inline-flex items-center gap-[0.4rem] text-[var(--teal)] no-underline"
+                      className="group inline-flex items-center gap-[0.4rem] text-teal no-underline"
                     >
                       {ico ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -704,11 +705,11 @@ export function SourceList({ item }: { item: FeedItem }) {
                     <span className="min-w-0">{s.title}</span>
                   )}
                   {s.heading_path ? (
-                    <span className="text-[var(--text)]"> › {s.heading_path.split(" > ").pop()}</span>
+                    <span className="text-text"> › {s.heading_path.split(" > ").pop()}</span>
                   ) : null}
                 </td>
-                <td className={`${td} whitespace-nowrap text-[var(--muted)]`}>{host || s.publisher || ""}</td>
-                <td className={`${td} whitespace-nowrap text-right text-[var(--muted)]`}>
+                <td className={`${td} whitespace-nowrap text-muted`}>{host || s.publisher || ""}</td>
+                <td className={`${td} whitespace-nowrap text-right text-muted`}>
                   {s.refreshing
                     ? "re-checking…"
                     : s.updated_at
@@ -731,26 +732,26 @@ export function ToolDrawer({ item }: { item: FeedItem }) {
   const tools = item.tools || [];
   if (!tools.length) return null;
   return (
-    <details className="mt-[0.35rem] border-t border-t-[var(--line)] pt-[0.3rem] text-[0.72rem] text-[var(--muted)]">
-      <summary className="cursor-pointer select-none font-medium text-[var(--teal)]">
+    <details className="mt-[0.35rem] border-t border-t-line pt-[0.3rem] text-[0.72rem] text-muted">
+      <summary className="cursor-pointer select-none font-medium text-teal">
         {tools.length} tool{tools.length === 1 ? "" : "s"} used
       </summary>
       <ul className="m-0 mt-[0.45rem] flex list-none flex-col gap-[0.45rem] p-0">
         {tools.map((step) => (
           <li
             key={step.id}
-            className={`rounded-[0.55rem] border bg-[var(--sunken)] px-[0.55rem] py-[0.45rem] ${
-              step.error ? "border-[color-mix(in_srgb,var(--danger)_45%,var(--line))]" : "border-[var(--line)]"
+            className={`rounded-[0.55rem] border bg-sunken px-[0.55rem] py-[0.45rem] ${
+              step.error ? "border-[color-mix(in_srgb,var(--danger)_45%,var(--line))]" : "border-line"
             }`}
           >
-            <strong className="mb-[0.15rem] block text-[var(--text)]">{step.tool}</strong>
-            {step.args ? <span className="mb-[0.25rem] block text-[var(--muted)]">{step.args}</span> : null}
+            <strong className="mb-[0.15rem] block text-text">{step.tool}</strong>
+            {step.args ? <span className="mb-1 block text-muted">{step.args}</span> : null}
             {step.result ? (
-              <pre className="m-0 max-h-[10rem] overflow-auto whitespace-pre-wrap break-words text-[0.72rem] leading-[1.4] text-[var(--text)] [font-family:var(--font-mono)]">
+              <pre className="m-0 max-h-40 overflow-auto whitespace-pre-wrap wrap-break-word text-[0.72rem] leading-[1.4] text-text [font-family:var(--font-mono)]">
                 {step.result}
               </pre>
             ) : (
-              <em className="mb-[0.25rem] block text-[var(--muted)]">running…</em>
+              <em className="mb-1 block text-muted">running…</em>
             )}
           </li>
         ))}

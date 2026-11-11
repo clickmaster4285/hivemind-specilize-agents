@@ -83,5 +83,8 @@ Each one weighs the options and records the user's decision. Edit one only to ad
 - **Keep docs short:**
   - When a section of BACKLOG grows past about a screen, the detail belongs in a guide and BACKLOG keeps a link.
   - A doc past about 500 lines is a sign it holds two topics.
+- **Styles** (frontend): Tailwind utilities in the component. Sets used in many places (buttons, the diagram card)
+  live in `frontend/src/lib/ui.ts`. Colours are theme names (`text-muted`, `bg-panel`), mapped from the tokens in
+  `frontend/src/app/globals.css`. A new colour is a token there plus one `@theme` line; no new classes in globals.css.
 - **Links** are relative (`[SECURITY.md](SECURITY.md)`, code as `../src/...`). Code comments refer to docs as
   `doc/NAME.md`, so **rename or move a doc only together with a search for its old name**.

@@ -39,7 +39,7 @@ export default function ChatView() {
   const memory = useMemo(() => chatMemory(feed, historyBudget), [feed, historyBudget]);
 
   return (
-    <div className="chat-view">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <MessageFeed feed={feed} running={app.chat.running} activeJobId={app.chat.activeJobId} {...feedActions} />
 
       <Composer

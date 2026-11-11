@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 
 import { errorText, toggleIn } from "@/lib/chat";
 import type { Specialist, SpecialistInput, SpecialistOptions } from "@/lib/types";
+import { btn, iconBtn } from "@/lib/ui";
 
 const emptyForm: SpecialistInput = {
   name: "",
@@ -39,11 +40,11 @@ type Props = {
 
 // Inline Tailwind building blocks (shared classes — icon-btn, btn — stay global utilities).
 const field =
-  "w-full rounded-[0.55rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.55rem] font-[inherit] text-[var(--text)] outline-none resize-y";
-const labelCol = "flex flex-col gap-1 text-[0.82rem] text-[var(--muted)]";
-const checkRow = "flex items-center gap-[0.45rem] text-[var(--text)]";
+  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-[0.55rem] font-[inherit] text-text outline-none resize-y";
+const labelCol = "flex flex-col gap-1 text-[0.82rem] text-muted";
+const checkRow = "flex items-center gap-[0.45rem] text-text";
 const fieldset =
-  "m-0 grid gap-x-[0.8rem] gap-y-[0.35rem] rounded-[0.65rem] border border-[var(--line)] px-[0.7rem] py-[0.6rem] [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]";
+  "m-0 grid gap-x-[0.8rem] gap-y-[0.35rem] rounded-[0.65rem] border border-line px-[0.7rem] py-[0.6rem] [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]";
 
 /** Create or edit a specialist: covers line, instructions, allowed tools, knowledge collections. */
 export default function SpecialistModal({ specialist, options, onSave, onDelete, onClose }: Props) {
@@ -73,11 +74,11 @@ export default function SpecialistModal({ specialist, options, onSave, onDelete,
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-[var(--backdrop)] p-4 backdrop-blur-[4px]"
+      className="fixed inset-0 z-50 grid place-items-center bg-backdrop p-4 backdrop-blur-[4px]"
       onClick={onClose}
     >
       <form
-        className="flex w-[min(560px,100%)] flex-col gap-3 rounded-2xl border border-[var(--line)] bg-[var(--panel)] px-[1.1rem] pt-4 pb-[1.1rem] shadow-[var(--shadow)]"
+        className="flex w-[min(560px,100%)] flex-col gap-3 rounded-2xl border border-line bg-panel px-[1.1rem] pt-4 pb-[1.1rem] shadow-shadow"
         onClick={(e) => e.stopPropagation()}
         onSubmit={save}
       >
@@ -85,7 +86,7 @@ export default function SpecialistModal({ specialist, options, onSave, onDelete,
           <h3 className="m-0 text-[1.15rem] [font-family:var(--font-display)]">
             {id ? form.name || "Specialist" : "New specialist"}
           </h3>
-          <button type="button" className="icon-btn" onClick={onClose}>
+          <button type="button" className={iconBtn()} onClick={onClose}>
             ×
           </button>
         </header>
@@ -113,7 +114,7 @@ export default function SpecialistModal({ specialist, options, onSave, onDelete,
           />
         </label>
         <fieldset className={fieldset}>
-          <legend className="px-[0.3rem] text-[0.85rem] text-[var(--muted)]">Tools it may use</legend>
+          <legend className="px-[0.3rem] text-[0.85rem] text-muted">Tools it may use</legend>
           {options.tools.map((tool) => (
             <label key={tool.name} className={checkRow} title={tool.description}>
               <input
@@ -126,7 +127,7 @@ export default function SpecialistModal({ specialist, options, onSave, onDelete,
           ))}
         </fieldset>
         <fieldset className={fieldset}>
-          <legend className="px-[0.3rem] text-[0.85rem] text-[var(--muted)]">Knowledge collections searched first</legend>
+          <legend className="px-[0.3rem] text-[0.85rem] text-muted">Knowledge collections searched first</legend>
           {options.collections.map((c) => (
             <label key={c} className={checkRow}>
               <input
@@ -141,7 +142,7 @@ export default function SpecialistModal({ specialist, options, onSave, onDelete,
         <label className={labelCol}>
           Colour
           <input
-            className="h-9 w-16 cursor-pointer rounded-[0.55rem] border border-[var(--line)] bg-[var(--panel-2)]"
+            className="h-9 w-16 cursor-pointer rounded-[0.55rem] border border-line bg-panel-2"
             type="color"
             value={form.accent}
             onChange={(e) => set({ accent: e.target.value })}
@@ -153,17 +154,17 @@ export default function SpecialistModal({ specialist, options, onSave, onDelete,
         </label>
         <footer className="flex items-center justify-between gap-3">
           {id ? (
-            <button type="button" className="btn danger ghost" onClick={() => void remove()}>
+            <button type="button" className={btn("danger", "ghost")} onClick={() => void remove()}>
               Delete
             </button>
           ) : (
             <span />
           )}
           <div className="ml-auto flex gap-2">
-            <button type="button" className="btn ghost" onClick={onClose}>
+            <button type="button" className={btn("ghost")} onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn primary">
+            <button type="submit" className={btn("primary")}>
               Save specialist
             </button>
           </div>

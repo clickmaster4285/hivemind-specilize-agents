@@ -11,9 +11,10 @@ import {
   setSignupSettings,
 } from "@/lib/api";
 import type { Invite, ModuleInfo } from "@/lib/types";
+import { btn } from "@/lib/ui";
 
 const field =
-  "w-full rounded-[0.55rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.7rem] py-[0.5rem] font-[inherit] text-sm text-[var(--text)] outline-none";
+  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-2 font-[inherit] text-sm text-text outline-none";
 // how long the copy note stays on the button
 const COPIED_MS = 1500;
 
@@ -105,14 +106,14 @@ export default function InvitesPanel() {
   }
 
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] p-3">
+    <section className="flex flex-col gap-2 rounded-lg border border-line bg-panel-2 p-3">
       <div className="flex items-center justify-between gap-3">
         <h5 className="m-0 text-sm font-semibold">Sign-up and invites</h5>
-        <button type="button" className="btn ghost sm" onClick={() => setMaking((v) => !v)}>
+        <button type="button" className={btn("ghost", "sm")} onClick={() => setMaking((v) => !v)}>
           {making ? "Cancel" : "Invite someone"}
         </button>
       </div>
-      <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
+      <label className="flex items-center gap-2 text-xs text-muted">
         <input
           type="checkbox"
           checked={open ?? false}
@@ -145,15 +146,15 @@ export default function InvitesPanel() {
               </label>
             ))}
           </div>
-          <button type="submit" className="btn primary sm self-start">
+          <button type="submit" className={`${btn("primary", "sm")} self-start`}>
             Make invite link
           </button>
         </form>
       ) : null}
 
       {made ? (
-        <div className="flex flex-col gap-1.5 rounded-md border border-[var(--line)] p-2 text-xs">
-          <span className="text-[var(--muted)]">
+        <div className="flex flex-col gap-1.5 rounded-md border border-line p-2 text-xs">
+          <span className="text-muted">
             Share this link — it is shown only now, works once and runs out on {made.until}:
           </span>
           <div className="flex items-center gap-2">
@@ -164,7 +165,7 @@ export default function InvitesPanel() {
               value={made.link}
               onFocus={(e) => e.target.select()}
             />
-            <button type="button" className="btn ghost sm shrink-0" onClick={() => void copy()}>
+            <button type="button" className={`${btn("ghost", "sm")} shrink-0`} onClick={() => void copy()}>
               {copied ?? "Copy"}
             </button>
           </div>
@@ -175,18 +176,18 @@ export default function InvitesPanel() {
         <ul className="flex flex-col gap-1 text-xs">
           {invites.map((i) => (
             <li key={i.id} className="flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-[var(--muted)]">
+              <span className="min-w-0 truncate text-muted">
                 {i.email ?? "anyone with the link"} · by {i.created_by ?? "?"} · until{" "}
                 {new Date(i.expires_at).toLocaleDateString()}
               </span>
-              <button type="button" className="btn ghost sm shrink-0" onClick={() => void revoke(i)}>
+              <button type="button" className={`${btn("ghost", "sm")} shrink-0`} onClick={() => void revoke(i)}>
                 Revoke
               </button>
             </li>
           ))}
         </ul>
       ) : null}
-      {error ? <p className="m-0 text-xs text-[var(--danger)]">{error}</p> : null}
+      {error ? <p className="m-0 text-xs text-danger">{error}</p> : null}
     </section>
   );
 }

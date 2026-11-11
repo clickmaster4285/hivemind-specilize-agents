@@ -58,9 +58,9 @@ export default function SkillMenu({ menu }: { menu: ReturnType<typeof useSkillMe
     <div
       role="listbox"
       aria-label="Skills"
-      className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-[18rem] overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--panel)] p-1.5 shadow-[var(--shadow)]"
+      className="absolute bottom-full left-0 right-0 z-50 mb-2 max-h-72 overflow-y-auto rounded-xl border border-line bg-panel p-1.5 shadow-shadow"
     >
-      <div className="px-2.5 pb-1 pt-1 text-[0.7rem] font-medium uppercase tracking-[0.05em] text-[var(--muted)]">
+      <div className="px-2.5 pb-1 pt-1 text-[0.7rem] font-medium uppercase tracking-wider text-muted">
         Skills
       </div>
       {menu.matches.map((skill, i) => (
@@ -75,16 +75,16 @@ export default function SkillMenu({ menu }: { menu: ReturnType<typeof useSkillMe
             menu.pick(skill);
           }}
           className={`flex w-full flex-col items-start gap-[0.1rem] rounded-lg px-2.5 py-1.5 text-left ${
-            i === menu.active ? "bg-[var(--hover)]" : "hover:bg-[var(--hover)]"
+            i === menu.active ? "bg-hover" : "hover:bg-hover"
           }`}
         >
-          <span className="text-[0.85rem] text-[var(--text)]">
-            <span className="font-semibold">{skill.title}</span> <span className="text-[var(--muted)]">/{skill.name}</span>
-            <span className="ml-1.5 text-[0.68rem] text-[var(--muted)]">
+          <span className="text-[0.85rem] text-text">
+            <span className="font-semibold">{skill.title}</span> <span className="text-muted">/{skill.name}</span>
+            <span className="ml-1.5 text-[0.68rem] text-muted">
               {skill.id === null ? "· built-in" : skill.team ? "· team" : "· yours"}
             </span>
           </span>
-          <span className="line-clamp-1 text-[0.74rem] text-[var(--muted)]">{skill.description}</span>
+          <span className="line-clamp-1 text-[0.74rem] text-muted">{skill.description}</span>
         </button>
       ))}
     </div>

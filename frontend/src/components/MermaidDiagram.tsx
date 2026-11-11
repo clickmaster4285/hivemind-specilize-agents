@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useState } from "react";
 
 import SvgPanZoom from "./SvgPanZoom";
+import { btn, diagram } from "@/lib/ui";
 
 type Props = { code: string };
 
@@ -144,9 +145,9 @@ export default function MermaidDiagram({ code }: Props) {
   const codeVisible = showCode || Boolean(error);
 
   return (
-    <div className="mermaid-card">
+    <div className={diagram.card}>
       {error ? (
-        <div className="mermaid-error">
+        <div className={diagram.error}>
           The diagram could not be drawn: {error.split("\n")[0]}. Ask me to fix it, or paste the code into{" "}
           <a href="https://mermaid.live" target="_blank" rel="noreferrer">
             mermaid.live
@@ -156,35 +157,35 @@ export default function MermaidDiagram({ code }: Props) {
       ) : svg ? (
         <SvgPanZoom svg={svg} />
       ) : (
-        <div className="mermaid-loading">Drawing…</div>
+        <div className={diagram.loading}>Drawing…</div>
       )}
-      <div className="mermaid-actions">
+      <div className={diagram.actions}>
         {error && (
-          <button type="button" className="btn sm" onClick={() => askToFix(error)}>
+          <button type="button" className={btn("sm")} onClick={() => askToFix(error)}>
             Fix diagram
           </button>
         )}
-        <button type="button" className="btn ghost sm" disabled={!svg} onClick={() => openFullSize(svg)}>
+        <button type="button" className={btn("ghost", "sm")} disabled={!svg} onClick={() => openFullSize(svg)}>
           Open full size
         </button>
-        <button type="button" className="btn ghost sm" disabled={!svg}
+        <button type="button" className={btn("ghost", "sm")} disabled={!svg}
           onClick={() => download("diagram.svg", new Blob([svg], { type: "image/svg+xml" }))}>
           Download SVG
         </button>
-        <button type="button" className="btn ghost sm" disabled={!svg}
+        <button type="button" className={btn("ghost", "sm")} disabled={!svg}
           onClick={() => svgToPng(svg).then((b) => download("diagram.png", b)).catch((e) => setError(String(e)))}>
           Download PNG
         </button>
-        <button type="button" className="btn ghost sm" onClick={() => void copy()}>
+        <button type="button" className={btn("ghost", "sm")} onClick={() => void copy()}>
           {copied ? "Copied" : "Copy code"}
         </button>
         {!error && (
-          <button type="button" className="btn ghost sm" onClick={() => setShowCode((v) => !v)}>
+          <button type="button" className={btn("ghost", "sm")} onClick={() => setShowCode((v) => !v)}>
             {showCode ? "Hide code" : "Show code"}
           </button>
         )}
       </div>
-      {codeVisible && <pre className="md-pre mermaid-code">{clean}</pre>}
+      {codeVisible && <pre className={diagram.code}>{clean}</pre>}
     </div>
   );
 }

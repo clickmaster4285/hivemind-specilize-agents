@@ -13,12 +13,13 @@ import type { ModelsApi } from "@/hooks/useModels";
 import type { SkillsApi } from "@/hooks/useSkills";
 import type { SpecialistsApi } from "@/hooks/useSpecialists";
 import type { AuthUser, Specialist } from "@/lib/types";
+import { btn } from "@/lib/ui";
 
 // Shared Tailwind class strings (kept here so the styling stays with the component, not in global CSS).
-const panel = "rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 flex flex-col gap-3";
+const panel = "rounded-xl border border-line bg-panel p-5 flex flex-col gap-3";
 const heading = "text-base font-semibold [font-family:var(--font-display)]";
-const hint = "text-xs leading-relaxed text-[var(--muted)]";
-const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2.5";
+const hint = "text-xs leading-relaxed text-muted";
+const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-line bg-panel-2 px-3 py-2.5";
 
 type TabId = "users" | "servers" | "usage" | "models" | "agents" | "skills";
 
@@ -61,7 +62,7 @@ export default function SettingsBody({
   return (
     <div className="mx-auto w-full max-w-4xl p-6">
       {/* Tab bar */}
-      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-[var(--line)]">
+      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-line">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -70,8 +71,8 @@ export default function SettingsBody({
             aria-current={tab === t.id ? "page" : undefined}
             className={`-mb-px shrink-0 border-b-2 px-4 py-2 text-sm transition-colors ${
               tab === t.id
-                ? "border-[var(--copper)] text-[var(--text)]"
-                : "border-transparent text-[var(--muted)] hover:text-[var(--text)]"
+                ? "border-copper text-text"
+                : "border-transparent text-muted hover:text-text"
             }`}
           >
             {t.label}
@@ -105,7 +106,7 @@ export default function SettingsBody({
         <section className={panel}>
           <div className="flex items-center justify-between gap-3">
             <h4 className={heading}>Models</h4>
-            <button type="button" className="btn ghost sm" onClick={() => void models.refresh(true)}>
+            <button type="button" className={btn("ghost", "sm")} onClick={() => void models.refresh(true)}>
               Sync
             </button>
           </div>
@@ -114,7 +115,7 @@ export default function SettingsBody({
               <li key={m.name} className={rowCard}>
                 <div className="min-w-0">
                   <strong className="block truncate text-sm">{m.name}</strong>
-                  <small className="text-xs text-[var(--muted)]">
+                  <small className="text-xs text-muted">
                     {m.role}
                     {m.vision ? " · vision" : ""}
                     {m.image_gen ? " · image generation" : ""}
@@ -134,7 +135,7 @@ export default function SettingsBody({
           <div className="flex items-center justify-between gap-3">
             <h4 className={heading}>Agents</h4>
             {isAdmin ? (
-              <button type="button" className="btn ghost sm" onClick={() => setEditing(null)}>
+              <button type="button" className={btn("ghost", "sm")} onClick={() => setEditing(null)}>
                 New agent
               </button>
             ) : null}
@@ -153,10 +154,10 @@ export default function SettingsBody({
                       {s.name}
                       {s.enabled ? "" : " (off)"}
                     </strong>
-                    <small className="block truncate text-xs text-[var(--muted)]">{s.covers}</small>
+                    <small className="block truncate text-xs text-muted">{s.covers}</small>
                   </span>
                 </span>
-                <button type="button" className="btn ghost sm" onClick={() => setEditing(s)}>
+                <button type="button" className={btn("ghost", "sm")} onClick={() => setEditing(s)}>
                   {isAdmin ? "Edit" : "View"}
                 </button>
               </li>
@@ -165,7 +166,7 @@ export default function SettingsBody({
           {isAdmin ? (
             <button
               type="button"
-              className="btn ghost full"
+              className={btn("ghost", "full")}
               onClick={() => {
                 if (confirm("Restore the default IT, Development and Marketing agents?")) void specialists.reset();
               }}
