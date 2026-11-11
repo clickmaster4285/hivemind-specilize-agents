@@ -8,6 +8,7 @@ pair; each refresh token works once.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import secrets
 import uuid
@@ -47,6 +48,20 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, password_hash: str) -> bool:
     return pwd_context.verify(password, password_hash)
+
+
+@functools.cache
+def _no_account_hash() -> str:
+    return hash_password(secrets.token_urlsafe(REFRESH_TOKEN_BYTES))
+
+
+def check_credentials(user: User | None, password: str) -> bool:
+    """The password check of a sign-in. With no matching account a hash is still checked, so a wrong name
+    takes as long as a wrong password and the answer does not tell which usernames exist (L16 S2)."""
+    if user is None:
+        verify_password(password, _no_account_hash())
+        return False
+    return verify_password(password, user.password_hash)
 
 
 def check_secret(config: Config) -> None:

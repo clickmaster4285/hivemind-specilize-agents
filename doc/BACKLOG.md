@@ -365,7 +365,8 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
       `HttpOnly` + `SameSite=Strict` (`Secure` is set by itself if HTTPS is added later). Kept: the API listens on
       127.0.0.1 only — the LAN reaches it through the UI's `/api` rewrite (port 3000); port 8787 is closed to
       the LAN. Revisit with a domain + Let's Encrypt if the app leaves the trusted LAN
-- [ ] **S2 abuse limits (ISSUES_LOG O36) — limits approved by the user 2026-11-11:**
+- [x] **S2 abuse limits (ISSUES_LOG O36) — done 2026-11-11** (limits approved by the user the same day;
+      `src/core/abuse.py`, `web/limits.py`, `frontend/server.mjs`, `tests/test_abuse_limits.py`):
       - **Client address:** every request comes from the Next.js rewrite on 127.0.0.1, so the address is read
         from `X-Forwarded-For`, trusted only when the direct peer is 127.0.0.1 (check first that the rewrite
         sends it). Assumption (user): one user per PC, so one address = one person
@@ -384,6 +385,11 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
       - **Storage:** failed logins in a database table (an API restart does not reset an attacker's count);
         request rates in memory (the API is one process)
       - **Logging:** each lock → a warning in `logs/api.log` (S6 shows them to admins later)
+      - **Built as:** Next's rewrite adds no `X-Forwarded-For` and passes on a forged one (checked with its
+        own proxy code), so the UI now runs a small custom server (`npm run dev` → `node server.mjs`) that
+        overwrites the header with the socket address. Every failed sign-in is logged (INFO) with account and
+        address. The cross-site write check became plain ASGI too: a `@app.middleware` turned the body
+        cap's 413 into a 400
 - [ ] **S2b unlock + CAPTCHA (next after S2, user 2026-11-11):** an admin "unlock now" button on the user form
       (until then a lock ends by itself after 15 min); a CAPTCHA on the login page after repeated failures —
       must be self-hosted (no outside service; the app runs on the LAN). Concrete design proposed before building
@@ -510,6 +516,7 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-11 | **L16 S2 abuse limits** | Sign-in: per account 5 free failures, back-off 1–30 s, 10 in 15 min → 15-min lock; per address 20 in 15 min → 15-min block; unknown names counted and timed like accounts (table `login_failures`). Requests: 120/min per user (burst 60), 60/min per address signed out; 30 MB body cap (413). Real client address via `frontend/server.mjs`. 788 tests |
 | 2026-11-10 | **L20 O34 see what runs** | Brain refresh logs `n/total` + every file; `./start.sh --status` snapshot and `./start.sh --follow` live tagged output (signal stops every watcher — checked). Status showed the embedding model on the CPU → O35 |
 | 2026-11-10 | **L20 O26 worker entry point** | `worker_main.py` imports the current modules, checks `DEVICE_KEY`, hides the database password, leaves running jobs alone; +1 offline test |
 | 2026-11-10 | **L20 O35 embedding on the CPU** | Not a fault: `embed.py` asks for `num_gpu: 0`; chat 6.5 GB + desktop leave no room anyway; query embedding 0.09 s on the CPU. User kept it; `--status` wording fixed |

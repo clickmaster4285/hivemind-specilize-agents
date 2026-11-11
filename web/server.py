@@ -18,6 +18,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from src.core.auth import bootstrap_admin, check_secret, same_origin
 from src.core.crypto import check_key
@@ -26,6 +27,7 @@ from src.core.db import init_db
 from src.jobs.worker import start_inprocess_worker
 from src.llm.model_registry import sync_models_from_ollama
 from web.brain_routes import router as brain_router
+from web.limits import RequestLimits
 from web.routers import auth, history, jobs, models, servers, skills, specialists, system, usage, users
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -75,12 +77,25 @@ app = FastAPI(title="MulteAgent API", version="0.4.0", lifespan=lifespan)
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 
-@app.middleware("http")
-async def refuse_cross_site_writes(request: Request, call_next):
-    """CSRF guard on top of SameSite cookies: a write sent by another site's page is refused."""
-    if request.method not in SAFE_METHODS and not same_origin(request):
-        return JSONResponse({"detail": "Cross-site request refused"}, status_code=403)
-    return await call_next(request)
+class CrossSiteGuard:
+    """CSRF guard on top of SameSite cookies: a write sent by another site's page is refused.
+
+    Plain ASGI on purpose, like every middleware here: a `@app.middleware` (BaseHTTPMiddleware) wraps an
+    error raised while a body streams in — the body cap's 413 (web/limits.py) — into a 400."""
+
+    def __init__(self, inner: ASGIApp):
+        self.inner = inner
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["method"] not in SAFE_METHODS and not same_origin(Request(scope)):
+            await JSONResponse({"detail": "Cross-site request refused"}, status_code=403)(scope, receive, send)
+            return
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(CrossSiteGuard)
+# added last = runs first: a flood or an oversized body is refused before anything else looks at it
+app.add_middleware(RequestLimits)
 
 # One router per domain (web/routers/*). brain_router carries its own /api/brain prefix.
 for module in (system, auth, users, specialists, skills, servers, models, jobs, history, usage):

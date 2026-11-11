@@ -3,14 +3,26 @@ current user, and SSO status."""
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.core.abuse import (
+    TooManyAttempts,
+    account_key,
+    address_key,
+    check_login,
+    clear_account,
+    client_address,
+    record_failure,
+    wait_text,
+)
 from src.core.auth import (
     REFRESH_COOKIE,
+    check_credentials,
     clear_session_cookies,
     end_session,
     get_current_user,
@@ -19,7 +31,6 @@ from src.core.auth import (
     refresh_session,
     set_session_cookies,
     start_session,
-    verify_password,
 )
 from src.core.config import Config
 from src.core.models_db import User, utcnow
@@ -63,8 +74,18 @@ def login(payload: LoginPayload, request: Request, response: Response,
     user = db.scalars(
         select(User).where((User.username == ident) | (func.lower(User.email) == ident.lower()))
     ).first()
-    if user is None or not verify_password(payload.password, user.password_hash):
+    # counted per account (not per spelling: username and email are one account) and per address (L16 S2)
+    account = account_key(user.id if user else None, ident)
+    address = address_key(client_address(request.scope))
+    try:
+        check_login(db, account, address)
+    except TooManyAttempts as exc:
+        raise HTTPException(status_code=429, detail=f"Too many attempts — try again in {wait_text(exc.retry_after)}",
+                            headers={"Retry-After": str(math.ceil(exc.retry_after.total_seconds()))}) from exc
+    if not check_credentials(user, payload.password):
+        record_failure(db, account, address)
         raise HTTPException(status_code=401, detail="Invalid username/email or password")
+    clear_account(db, account)
     if user.status == "disabled":
         raise HTTPException(status_code=403, detail="This account is disabled. Ask an admin to re-enable it.")
     user.last_login_at = utcnow()  # so the admin can see who is actually active

@@ -81,3 +81,13 @@ def device_store(monkeypatch):
     monkeypatch.setattr(server_vault, "_scope", scope)
     yield engine
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def request_counts():
+    """Each test starts with no API calls counted (L16 S2 rate limits live in memory for the whole run)."""
+    from web import limits
+
+    limits.reset()
+    yield
+    limits.reset()

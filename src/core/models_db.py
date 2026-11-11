@@ -83,6 +83,18 @@ class RefreshToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class LoginFailure(Base):
+    """One failed sign-in, counted against a key (BACKLOG L16 S2, src/core/abuse.py): the account
+    (`user:<id>`, or `name:<what was typed>` when no account matched) and the caller's address
+    (`addr:<ip>`). Rows older than the counting window are deleted on the next failure."""
+
+    __tablename__ = "login_failures"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    key: Mapped[str] = mapped_column(String(300), index=True)
+    failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
 class Job(Base):
     __tablename__ = "jobs"
 
