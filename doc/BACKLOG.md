@@ -365,8 +365,28 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
       `HttpOnly` + `SameSite=Strict` (`Secure` is set by itself if HTTPS is added later). Kept: the API listens on
       127.0.0.1 only — the LAN reaches it through the UI's `/api` rewrite (port 3000); port 8787 is closed to
       the LAN. Revisit with a domain + Let's Encrypt if the app leaves the trusted LAN
-- [ ] **S2 abuse limits:** login throttle per account and per IP (back-off, then a short lock), per-user API rate
-      limit, request body cap (CORS already gone — S1)
+- [ ] **S2 abuse limits (ISSUES_LOG O36) — limits approved by the user 2026-11-11:**
+      - **Client address:** every request comes from the Next.js rewrite on 127.0.0.1, so the address is read
+        from `X-Forwarded-For`, trusted only when the direct peer is 127.0.0.1 (check first that the rewrite
+        sends it). Assumption (user): one user per PC, so one address = one person
+      - **Login per account:** 5 failures free; then back-off 1 s, 2 s, 4 s, 8 s … capped at 30 s; 10 failures
+        within 15 min → account locked 15 min. A successful login clears the count
+      - **Login per address:** 20 failures within 15 min → logins from that address blocked 15 min (catches one
+        PC trying many usernames)
+      - **Unknown usernames:** counted like real accounts; same message and timing (does not reveal which
+        usernames exist)
+      - **Requests per signed-in user:** 120/min average, burst 60 (a page load is ~10–20 calls).
+        `daily_job_quota` (50 model jobs/day) stays as is
+      - **Requests without sign-in, per address:** 60/min (login page, SSO status)
+      - **Request body cap:** 30 MB for any request (largest real upload: a 25 MB artifact file + form
+        overhead), checked from `Content-Length` and again while the body streams in → 413
+      - **Answer:** 429 + `Retry-After`; the login page shows "Too many attempts — try again in N min"
+      - **Storage:** failed logins in a database table (an API restart does not reset an attacker's count);
+        request rates in memory (the API is one process)
+      - **Logging:** each lock → a warning in `logs/api.log` (S6 shows them to admins later)
+- [ ] **S2b unlock + CAPTCHA (next after S2, user 2026-11-11):** an admin "unlock now" button on the user form
+      (until then a lock ends by itself after 15 min); a CAPTCHA on the login page after repeated failures —
+      must be self-hosted (no outside service; the app runs on the LAN). Concrete design proposed before building
 - [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with
       Pillow (drops hidden payloads and metadata, pixel limit against decompression bombs), virus scan (ClamAV)
       on uploaded files; skill uploads size-capped
