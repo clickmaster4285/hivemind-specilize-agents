@@ -100,6 +100,19 @@ export default function UserForm({ users, user, onDone }: Props) {
     }
   }
 
+  async function unlock() {
+    if (!user) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await users.unlock(user.id);
+      onDone();
+    } catch (err) {
+      setError(errorText(err));
+      setBusy(false);
+    }
+  }
+
   async function deactivate() {
     const question = pending
       ? `Reject the sign-up of ${user?.username}? The request is deleted.`
@@ -128,6 +141,17 @@ export default function UserForm({ users, user, onDone }: Props) {
           {creating ? "New user" : user.username}
         </h4>
       </header>
+      {user?.locked_until ? (
+        <p className="m-0 flex items-center justify-between gap-3 rounded-lg border border-[var(--danger)] px-3 py-2 text-xs">
+          <span>
+            Locked after {user.failed_logins} failed passwords — can sign in again at{" "}
+            {new Date(user.locked_until).toLocaleTimeString()}.
+          </span>
+          <button type="button" className="btn ghost sm shrink-0" disabled={busy} onClick={() => void unlock()}>
+            Unlock now
+          </button>
+        </p>
+      ) : null}
       {pending ? (
         <p className="m-0 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs text-[var(--muted)]">
           Signed up {user.invited_by ? `with ${user.invited_by}'s invite` : "on the sign-up page"}

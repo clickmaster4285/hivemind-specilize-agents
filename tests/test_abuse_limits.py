@@ -32,7 +32,7 @@ from src.core.models_db import LoginFailure, User
 from web import limits, server
 
 # ~150 sign-ins: at the real bcrypt cost that alone takes half a minute
-pytestmark = pytest.mark.usefixtures("cheap_hashing")
+pytestmark = pytest.mark.usefixtures("cheap_hashing", "captchas_solved")
 
 PASSWORD = "longenough"
 WRONG = "not-the-password"

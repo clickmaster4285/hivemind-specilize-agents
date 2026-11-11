@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 class LoginPayload(BaseModel):
     username: str
     password: str
+    captcha_id: str | None = None      # needed after a few failures (L16 S2b)
+    captcha_answer: str | None = None
 
 
 class UserCreatePayload(BaseModel):
@@ -44,6 +46,8 @@ class SignupPayload(BaseModel):
     password: str
     phone: str | None = None
     invite: str | None = None          # the token from an invite link
+    captcha_id: str | None = None      # always needed (L16 S2b)
+    captcha_answer: str | None = None
 
 
 class InvitePayload(BaseModel):

@@ -17,7 +17,7 @@ from src.core.models_db import USER_PENDING, User, UserInvite
 from src.core.signup import INVITE_LIFETIME, SIGNUP_WINDOW, SIGNUPS_PER_ADDRESS
 from web import server
 
-pytestmark = pytest.mark.usefixtures("cheap_hashing")
+pytestmark = pytest.mark.usefixtures("cheap_hashing", "captchas_solved")
 
 ADMIN_PASSWORD = "admin-password"
 PASSWORD = "longenough"

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useWindowEvent } from "@/hooks/useWindowEvent";
-import { login, logout, me, SESSION_EXPIRED_EVENT } from "@/lib/api";
+import { ApiError, login, logout, me, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import { errorText } from "@/lib/chat";
-import type { AuthUser } from "@/lib/types";
+import type { AuthUser, CaptchaAnswer } from "@/lib/types";
 
 type AuthEvents = {
   /** After sign-in or a restored session: load the user's data (fresh = just signed in). The user is
@@ -21,6 +21,8 @@ type AuthEvents = {
 export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // after a few failed passwords the API wants a CAPTCHA with every try (BACKLOG L16 S2b)
+  const [captchaRequired, setCaptchaRequired] = useState(false);
 
   // the session cookies (unreadable to scripts) may still be valid: ask who is signed in
   useEffect(() => {
@@ -40,13 +42,15 @@ export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
   });
 
   const signIn = useCallback(
-    async (username: string, password: string) => {
+    async (username: string, password: string, captcha?: CaptchaAnswer) => {
       setError(null);
       try {
-        const u = await login(username.trim(), password);
+        const u = await login(username.trim(), password, captcha);
+        setCaptchaRequired(false);
         setUser(u);
         await onSignedIn(true, u);
       } catch (err) {
+        if (err instanceof ApiError && err.captchaRequired) setCaptchaRequired(true);
         setError(errorText(err));
       }
     },
@@ -60,5 +64,5 @@ export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
     await logout().catch(() => undefined);
   }, [onSignedOut]);
 
-  return { user, error, signIn, signOut };
+  return { user, error, captchaRequired, signIn, signOut };
 }

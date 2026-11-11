@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import BlockedComputers from "@/components/chat/BlockedComputers";
 import InvitesPanel from "@/components/chat/InvitesPanel";
 import UserForm from "@/components/chat/UserForm";
 import type { UsersApi } from "@/hooks/useUsers";
@@ -67,6 +68,7 @@ export default function UsersSection({ users }: { users: UsersApi }) {
       ) : null}
 
       <InvitesPanel />
+      <BlockedComputers />
 
       {accounts.length ? (
         <ul className="flex flex-col gap-2">
@@ -83,6 +85,14 @@ export default function UsersSection({ users }: { users: UsersApi }) {
                   {u.status === "disabled" ? (
                     <span className="rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[0.65rem] font-normal text-[var(--muted)]">
                       disabled
+                    </span>
+                  ) : null}
+                  {u.locked_until ? (
+                    <span
+                      className="rounded-full border border-[var(--danger)] px-1.5 py-0.5 text-[0.65rem] font-normal text-[var(--danger)]"
+                      title={`${u.failed_logins} failed passwords — waits until ${new Date(u.locked_until).toLocaleTimeString()}`}
+                    >
+                      locked
                     </span>
                   ) : null}
                 </strong>

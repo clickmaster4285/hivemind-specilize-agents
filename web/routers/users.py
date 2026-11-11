@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.core import modules, signup
+from src.core import abuse, modules, signup
+from src.core.abuse import ADDRESS_KEY, Lock, account_key
 from src.core.accounts import AccountError, check_password, clean_email, clean_text, clean_username
 from src.core.auth import get_db, hash_password, may_use, require_admin, user_modules
 from src.core.models_db import USER_ACTIVE, USER_DISABLED, USER_PENDING, Job, User, UserInvite
@@ -18,10 +19,13 @@ from web.schemas import InvitePayload, SignupSettingsPayload, UserCreatePayload,
 router = APIRouter(prefix="/api/auth/users", tags=["users"])
 
 
-def _user_public(user: User, query_count: int | None = None, names: dict[int, str] | None = None) -> dict[str, Any]:
+def _user_public(user: User, query_count: int | None = None, names: dict[int, str] | None = None,
+                 locked: dict[str, Lock] | None = None) -> dict[str, Any]:
     """The account fields an admin may see. Never includes the password hash. `query_count` = how many
     (non-deleted) questions the user has asked, passed in by the caller to avoid an N+1 query; `names`
-    (id → username) names the admin who invited a sign-up, likewise."""
+    (id → username) names the admin who invited a sign-up, likewise; `locked` (abuse.locks by key) says
+    whether the account must wait before its next sign-in (L16 S2b)."""
+    lock = (locked or {}).get(account_key(user.id, user.username))
     return {
         "id": user.id,
         "username": user.username,
@@ -38,6 +42,8 @@ def _user_public(user: User, query_count: int | None = None, names: dict[int, st
         "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
         "signup_address": user.signup_address,
         "invited_by": (names or {}).get(user.invited_by) if user.invited_by else None,
+        "locked_until": lock.until.isoformat() if lock else None,
+        "failed_logins": lock.failures if lock else 0,
     }
 
 
@@ -80,7 +86,8 @@ def list_users(_admin: User = Depends(require_admin), db: Session = Depends(get_
         ).all()
     )
     names = {u.id: u.username for u in users}
-    return [_user_public(u, counts.get(u.id, 0), names) for u in users]
+    locked = {lock.key: lock for lock in abuse.locks(db)}
+    return [_user_public(u, counts.get(u.id, 0), names, locked) for u in users]
 
 
 @router.post("", status_code=201)
@@ -228,3 +235,31 @@ def revoke_invite(invite_id: int, _admin: User = Depends(require_admin), db: Ses
     db.delete(invite)
     db.commit()
     return {"ok": True}
+
+
+# ── locks after failed sign-ins (BACKLOG L16 S2b) ────────────────────────────────────────────────────
+@router.get("/locks")
+def list_locks(_admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Who must wait before the next sign-in: accounts (with their username) and computers."""
+    found = abuse.locks(db)
+    accounts = {int(lock.key.removeprefix(abuse.USER_KEY)): lock for lock in found if lock.key.startswith(abuse.USER_KEY)}
+    names = dict(db.execute(select(User.id, User.username).where(User.id.in_(accounts))).all()) if accounts else {}
+    return {
+        "accounts": [{"user_id": uid, "username": names.get(uid), "failures": lock.failures,
+                      "until": lock.until.isoformat()} for uid, lock in accounts.items()],
+        "addresses": [{"address": lock.key.removeprefix(ADDRESS_KEY), "failures": lock.failures,
+                       "until": lock.until.isoformat()} for lock in found if lock.key.startswith(ADDRESS_KEY)],
+    }
+
+
+@router.delete("/{user_id}/lock")
+def unlock_user(user_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"unlocked": abuse.unlock(db, account_key(user.id, user.username), by=admin.username)}
+
+
+@router.delete("/locks/address/{address}")
+def unlock_address(address: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
+    return {"unlocked": abuse.unlock(db, abuse.address_key(address), by=admin.username)}

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.core import captcha
 from src.core.abuse import (
     TooManyAttempts,
     account_key,
@@ -17,6 +18,7 @@ from src.core.abuse import (
     check_login,
     clear_account,
     client_address,
+    needs_captcha,
     record_failure,
     wait_text,
 )
@@ -67,6 +69,23 @@ def sso_status() -> dict[str, Any]:
     }
 
 
+# a 400/401 carrying this header: the next try needs a CAPTCHA (GET /api/auth/captcha) — L16 S2b
+CAPTCHA_HEADER = "X-Captcha"
+CAPTCHA_ASKED = {CAPTCHA_HEADER: "required"}
+
+
+def _captcha_refused(captcha_id: str | None) -> HTTPException:
+    detail = "The characters did not match — type the ones in the new picture" if captcha_id else \
+        "Type the characters in the picture"
+    return HTTPException(status_code=400, detail=detail, headers=CAPTCHA_ASKED)
+
+
+@router.get("/captcha")
+def new_captcha() -> dict[str, str]:
+    """A CAPTCHA for the login or sign-up form: its id and the picture (a data URL). Works once, 5 min."""
+    return captcha.store.new()
+
+
 @router.post("/login")
 def login(payload: LoginPayload, request: Request, response: Response,
           db: Session = Depends(get_db)) -> dict[str, Any]:
@@ -84,9 +103,13 @@ def login(payload: LoginPayload, request: Request, response: Response,
     except TooManyAttempts as exc:
         raise HTTPException(status_code=429, detail=f"Too many attempts — try again in {wait_text(exc.retry_after)}",
                             headers={"Retry-After": str(math.ceil(exc.retry_after.total_seconds()))}) from exc
+    if needs_captcha(db, account, address) and not captcha.store.check(payload.captcha_id, payload.captcha_answer):
+        # the password is not checked and the try is not counted: no one locks an account without a person
+        raise _captcha_refused(payload.captcha_id)
     if not check_credentials(user, payload.password):
         record_failure(db, account, address)
-        raise HTTPException(status_code=401, detail="Invalid username/email or password")
+        raise HTTPException(status_code=401, detail="Invalid username/email or password",
+                            headers=CAPTCHA_ASKED if needs_captcha(db, account, address) else None)
     clear_account(db, account)
     if user.status == USER_PENDING:
         raise HTTPException(status_code=403, detail="Your account is waiting for an admin's approval.")
@@ -131,7 +154,9 @@ def signup_info(invite: str | None = None, db: Session = Depends(get_db)) -> dic
 
 @router.post("/signup", status_code=201)
 def signup(payload: SignupPayload, request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
-    """Self sign-up (BACKLOG L16 S7): the new account waits for an admin's approval."""
+    """Self sign-up (BACKLOG L16 S7): the new account waits for an admin's approval. Always needs a CAPTCHA."""
+    if not captcha.store.check(payload.captcha_id, payload.captcha_answer):
+        raise _captcha_refused(payload.captcha_id)
     try:
         user = sign_up(db, username=payload.username, email=payload.email, phone=payload.phone,
                        password=payload.password, invite_token=payload.invite,

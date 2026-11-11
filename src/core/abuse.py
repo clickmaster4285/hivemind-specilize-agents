@@ -43,6 +43,10 @@ ACCOUNT_LOCK_FAILURES = 10
 ADDRESS_BLOCK_FAILURES = 20
 # as long as the window: a lock ends exactly when the failures that caused it are forgotten
 LOGIN_LOCK = LOGIN_WINDOW
+# from this many failures (account or address) a login also needs a CAPTCHA (src/core/captcha.py; S2b,
+# approved 2026-11-11): before the back-off starts, so a typo or two never sees it, and an account cannot
+# be locked on purpose without a person solving images
+LOGIN_CAPTCHA_AFTER = 3
 # the longest identifier an account can have (the email column); a longer name matches nothing anyway
 KEY_IDENT_CHARS = 255
 
@@ -77,12 +81,15 @@ def _plain(address: str) -> str:
     return str(getattr(ip, "ipv4_mapped", None) or ip)
 
 
+USER_KEY, NAME_KEY, ADDRESS_KEY = "user:", "name:", "addr:"
+
+
 def account_key(user_id: int | None, typed: str) -> str:
-    return f"user:{user_id}" if user_id is not None else f"name:{typed.strip().lower()[:KEY_IDENT_CHARS]}"
+    return f"{USER_KEY}{user_id}" if user_id is not None else f"{NAME_KEY}{typed.strip().lower()[:KEY_IDENT_CHARS]}"
 
 
 def address_key(address: str) -> str:
-    return f"addr:{address}"
+    return f"{ADDRESS_KEY}{address}"
 
 
 class TooManyAttempts(Exception):
@@ -147,6 +154,43 @@ def record_failure(db: Session, account: str, address: str, now: datetime | None
                     account_failures, address)
     if address_failures == ADDRESS_BLOCK_FAILURES:
         log.warning("sign-in blocked for %s: address %s after %d failures", LOGIN_LOCK, address, address_failures)
+
+
+def needs_captcha(db: Session, account: str, address: str, now: datetime | None = None) -> bool:
+    now = now or utcnow()
+    return any(_recent(db, key, now)[0] >= LOGIN_CAPTCHA_AFTER for key in (account, address))
+
+
+@dataclass
+class Lock:
+    key: str
+    failures: int
+    until: datetime
+
+
+def locks(db: Session, now: datetime | None = None) -> list[Lock]:
+    """Every account and address that must wait now (back-off or lock), longest wait first."""
+    now = now or utcnow()
+    rows = db.execute(
+        select(LoginFailure.key, func.count(LoginFailure.id), func.max(LoginFailure.failed_at))
+        .where(LoginFailure.failed_at > now - LOGIN_WINDOW).group_by(LoginFailure.key)
+    ).all()
+    found = []
+    for key, count, latest in rows:
+        rule = address_wait if key.startswith(ADDRESS_KEY) else account_wait
+        until = as_utc(latest) + rule(count)
+        if until > now:
+            found.append(Lock(key, count, until))
+    return sorted(found, key=lambda lock: lock.until, reverse=True)
+
+
+def unlock(db: Session, key: str, by: str) -> bool:
+    """An admin ends a lock at once: the key's failures are forgotten. False when there were none."""
+    removed = db.execute(delete(LoginFailure).where(LoginFailure.key == key)).rowcount
+    db.commit()
+    if removed:
+        log.warning("sign-in unlocked by %s: %s (%d failures forgotten)", by, key, removed)
+    return bool(removed)
 
 
 def clear_account(db: Session, account: str) -> None:

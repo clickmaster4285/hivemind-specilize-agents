@@ -136,6 +136,9 @@ export type ManagedUser = {
   /** self sign-up: the address it came from, and the admin whose invite was used */
   signup_address: string | null;
   invited_by: string | null;
+  /** after failed passwords: until when the account must wait (null = it may sign in) */
+  locked_until: string | null;
+  failed_logins: number;
 };
 
 /** What the admin fills in to create an account. */
@@ -170,6 +173,16 @@ export type SignupInput = {
   password: string;
   phone?: string | null;
   invite?: string | null;
+} & Partial<CaptchaAnswer>;
+
+/** A CAPTCHA picture (a data URL) and the id its answer is sent back with. */
+export type CaptchaChallenge = { id: string; image: string };
+export type CaptchaAnswer = { captcha_id: string; captcha_answer: string };
+
+/** Who must wait before the next sign-in (Settings → Users). */
+export type Locks = {
+  accounts: { user_id: number; username: string | null; failures: number; until: string }[];
+  addresses: { address: string; failures: number; until: string }[];
 };
 
 /** What the sign-up form may offer: open sign-up, and the invite behind a link (null = no link given). */

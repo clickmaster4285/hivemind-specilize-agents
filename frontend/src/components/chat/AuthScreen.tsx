@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
+
+import Captcha from "@/components/chat/Captcha";
 
 import { signUp, signupInfo } from "@/lib/api";
-import type { Health, SignupInfo } from "@/lib/types";
+import type { CaptchaAnswer, Health, SignupInfo } from "@/lib/types";
 
 type Props = {
   health: Health | null;
   healthError: string | null;
   error: string | null;
-  onSignIn: (username: string, password: string) => void | Promise<void>;
+  /** the API wants a CAPTCHA with the next sign-in (after a few failed passwords) */
+  captchaRequired: boolean;
+  onSignIn: (username: string, password: string, captcha?: CaptchaAnswer) => void | Promise<void>;
 };
 
 type Mode = "signin" | "signup";
@@ -29,7 +33,7 @@ const errorBox =
 const noteBox = "m-0 rounded-[0.7rem] border border-[var(--line)] bg-[var(--panel-2)] px-[0.9rem] py-[0.7rem] text-sm";
 
 /** The sign-in card shown when nobody is signed in; it turns into the sign-up form (BACKLOG L16 S7). */
-export default function AuthScreen({ health, healthError, error, onSignIn }: Props) {
+export default function AuthScreen({ health, healthError, error, captchaRequired, onSignIn }: Props) {
   // the API address and the invite depend on the page's address: empty on the server, filled in the
   // browser (rendering them on the server gave different markup → React hydration error)
   const apiOrigin = useSyncExternalStore(noSubscribe, apiAddress, () => "");
@@ -46,6 +50,9 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
   const [signupError, setSignupError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [captcha, setCaptcha] = useState<CaptchaAnswer | null>(null);
+  const [captchaRound, setCaptchaRound] = useState(0);     // a CAPTCHA works once: new picture per try
+  const onCaptcha = useCallback((answer: CaptchaAnswer | null) => setCaptcha(answer), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -72,9 +79,12 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
     setRepeat("");
   }
 
-  function submitSignIn(event: FormEvent) {
+  async function submitSignIn(event: FormEvent) {
     event.preventDefault();
-    void onSignIn(username, password);
+    setBusy(true);
+    await onSignIn(username, password, captchaRequired && captcha ? captcha : undefined);
+    setBusy(false);
+    setCaptchaRound((n) => n + 1);       // still here = it failed; its CAPTCHA (if any) is used up
   }
 
   async function submitSignUp(event: FormEvent) {
@@ -92,6 +102,7 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
         phone: phone.trim() || null,
         password,
         invite: inviteUsable ? invite : null,
+        ...captcha,
       });
       // the invite is spent: take it off the address so a reload does not offer it again
       if (invite) window.history.replaceState(null, "", window.location.pathname);
@@ -99,6 +110,7 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
       setNotice("Account created. An admin must approve it before you can sign in.");
     } catch (err) {
       setSignupError(err instanceof Error ? err.message : String(err));
+      setCaptchaRound((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -198,6 +210,7 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
           </label>
         ) : null}
 
+        {signingUp || captchaRequired ? <Captcha round={captchaRound} onChange={onCaptcha} /> : null}
         {shownError ? <p className={errorBox}>{shownError}</p> : null}
         {signingUp ? null : (
           <div className={`status ${health?.llm_reachable ? "ok" : "bad"}`}>
@@ -212,7 +225,7 @@ export default function AuthScreen({ health, healthError, error, onSignIn }: Pro
           </div>
         )}
         <button type="submit" className="btn primary full" disabled={busy || (signingUp && !mayCreate)}>
-          {signingUp ? (busy ? "Creating…" : "Create account") : "Sign in"}
+          {signingUp ? (busy ? "Creating…" : "Create account") : busy ? "Signing in…" : "Sign in"}
         </button>
         {signingUp ? (
           <button type="button" className="btn ghost full" onClick={() => switchTo("signin")}>

@@ -390,7 +390,7 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
         overwrites the header with the socket address. Every failed sign-in is logged (INFO) with account and
         address. The cross-site write check became plain ASGI too: a `@app.middleware` turned the body
         cap's 413 into a 400
-- [ ] **S2b unlock + CAPTCHA (ISSUES_LOG O39) — plan proposed 2026-11-11, waiting for the user's approval:**
+- [ ] **S2b unlock + CAPTCHA (ISSUES_LOG O39) — plan approved by the user 2026-11-11 (check and tune after the build):**
       - **Why both:** after S2 a lock can only run out (15 min), and 10 wrong passwords lock *any* account, so
         someone can lock a colleague out on purpose. A CAPTCHA before that point makes each further try need a
         person; the unlock button undoes a lock at once
@@ -417,7 +417,7 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
         API asks for it, always in the sign-up form
       - **Tests (offline):** an answer works once and runs out; login asks after 3 failures; sign-up refuses
         without one; unlock clears an account and an address; members cannot unlock
-      - **Numbers to approve:** 6 characters, valid 5 min, login CAPTCHA from the 3rd failure
+      - **Approved numbers:** 6 characters, valid 5 min, login CAPTCHA from the 3rd failure
 - [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with
       Pillow (drops hidden payloads and metadata, pixel limit against decompression bombs), virus scan (ClamAV)
       on uploaded files; skill uploads size-capped

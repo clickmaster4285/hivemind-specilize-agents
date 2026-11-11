@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { createUser, deactivateUser, listUsers, updateUser } from "@/lib/api";
+import { createUser, deactivateUser, listUsers, unlockUser, updateUser } from "@/lib/api";
 import type { ManagedUser, UserCreateInput, UserUpdateInput } from "@/lib/types";
 
 /**
@@ -54,7 +54,16 @@ export function useUsers(active: boolean) {
     [load],
   );
 
-  return { users, create, update, deactivate };
+  // end a lock after failed passwords at once (BACKLOG L16 S2b)
+  const unlock = useCallback(
+    async (id: number) => {
+      await unlockUser(id);
+      await load();
+    },
+    [load],
+  );
+
+  return { users, create, update, deactivate, unlock };
 }
 
 export type UsersApi = ReturnType<typeof useUsers>;

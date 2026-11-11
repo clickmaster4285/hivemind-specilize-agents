@@ -18,6 +18,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         health={app.health.health}
         healthError={app.health.error}
         error={app.auth.error}
+        captchaRequired={app.auth.captchaRequired}
         onSignIn={app.auth.signIn}
       />
     );

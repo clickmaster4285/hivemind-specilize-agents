@@ -107,3 +107,35 @@ def cheap_hashing(monkeypatch):
     auth._no_account_hash.cache_clear()
     yield
     auth._no_account_hash.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def open_captchas():
+    """Each test starts with no CAPTCHA waiting (L16 S2b keeps them in memory)."""
+    from src.core import captcha
+
+    captcha.store.reset()
+    yield
+    captcha.store.reset()
+
+
+@pytest.fixture
+def solved_captcha():
+    """Makes a fresh CAPTCHA with its answer, as a login or sign-up body carries them (read from the
+    store, as a person reads the picture). Made in-process: no HTTP call counts against the rate limits."""
+    from src.core import captcha
+
+    def solve() -> dict[str, str]:
+        made = captcha.store.new()
+        return {"captcha_id": made["id"], "captcha_answer": captcha.store._open[made["id"]][0]}
+
+    return solve
+
+
+@pytest.fixture
+def captchas_solved(monkeypatch):
+    """For tests about something else (throttling, sign-up rules): every CAPTCHA counts as solved by a
+    person. What the CAPTCHA itself does is tested in tests/test_captcha.py."""
+    from src.core import captcha
+
+    monkeypatch.setattr(captcha.store, "check", lambda captcha_id, answer: True)

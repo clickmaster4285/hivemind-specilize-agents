@@ -1,10 +1,13 @@
 import type {
   AuthUser,
+  CaptchaAnswer,
+  CaptchaChallenge,
   CatalogSkill,
   JobEvent,
   Health,
   Invite,
   Job,
+  Locks,
   ManagedUser,
   ModuleInfo,
   ModelInfo,
@@ -60,6 +63,21 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   return response;
 }
 
+// a 400/401 with this header: the next try needs a CAPTCHA (web/routers/auth.py, BACKLOG L16 S2b)
+const CAPTCHA_HEADER = "X-Captcha";
+
+/** An error answer from the API; `captchaRequired` = show a CAPTCHA before the next try. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly captchaRequired: boolean,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function readError(response: Response): Promise<string> {
   try {
     const data = await response.json();
@@ -85,10 +103,13 @@ async function request<T>(path: string, init?: RequestInit, opts?: { timeoutMs?:
   const timer = controller ? window.setTimeout(() => controller.abort(), opts!.timeoutMs) : null;
   try {
     const response = await apiFetch(path, { ...init, signal: controller?.signal });
-    if (!response.ok) throw new Error(await readError(response));
+    if (!response.ok) {
+      throw new ApiError(await readError(response), response.status, response.headers.has(CAPTCHA_HEADER));
+    }
     if (response.status === 204) return undefined as T;
     return response.json();
   } catch (err) {
+    if (err instanceof ApiError) throw err;
     if (controller?.signal.aborted) {
       throw new Error("the server did not answer in time — check the address, that port is open, and the login");
     }
@@ -98,12 +119,18 @@ async function request<T>(path: string, init?: RequestInit, opts?: { timeoutMs?:
   }
 }
 
-export async function login(username: string, password: string) {
+/** Sign in; after a few failures the API also wants a solved CAPTCHA (ApiError.captchaRequired). */
+export async function login(username: string, password: string, captcha?: CaptchaAnswer) {
   const data = await request<{ user: AuthUser }>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, password, ...captcha }),
   });
   return data.user;
+}
+
+/** A CAPTCHA picture for the login or sign-up form; it works once, for a few minutes. */
+export async function getCaptcha(): Promise<CaptchaChallenge> {
+  return request("/api/auth/captcha");
 }
 
 /** Sign out: the server revokes the session and clears its cookies. */
@@ -169,6 +196,19 @@ export async function createInvite(payload: { email?: string | null; modules?: s
 
 export async function revokeInvite(id: number): Promise<void> {
   await request(`/api/auth/users/invites/${id}`, { method: "DELETE" });
+}
+
+/** Accounts and computers that must wait before their next sign-in (failed passwords). */
+export async function listLocks(): Promise<Locks> {
+  return request("/api/auth/users/locks");
+}
+
+export async function unlockUser(id: number): Promise<{ unlocked: boolean }> {
+  return request(`/api/auth/users/${id}/lock`, { method: "DELETE" });
+}
+
+export async function unlockAddress(address: string): Promise<{ unlocked: boolean }> {
+  return request(`/api/auth/users/locks/address/${encodeURIComponent(address)}`, { method: "DELETE" });
 }
 
 export async function getHealth(): Promise<Health> {
