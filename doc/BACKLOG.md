@@ -39,6 +39,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user) |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only--built-2026-11-11-issues_log-o42) | Styles in Tailwind only | built 2026-11-11 | visual check (user) |
+| [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
 
 ---
 
@@ -541,3 +542,9 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] Every class in `globals.css` moved into Tailwind utilities in its component; shared ones (buttons) in one module
 - [x] `globals.css` keeps only the tokens, the theme mapping and base styles (scrollbars, page height and background)
 - [ ] The user looks over the app in both themes (chat, answers with tables/code/diagrams, settings, login)
+
+### L23. Frontend components in feature folders — ✅ done 2026-11-11 (ISSUES_LOG O43)
+
+- [x] `components/` by feature: `app` (shell), `auth` (login, CAPTCHA), `chat` (feed, composer), `answer` (markdown,
+      diagrams), `settings` (+ `users/`, `skills/`); file names unchanged
+- [x] Every import, code comment and doc path updated; tsc, eslint and the UI log clean

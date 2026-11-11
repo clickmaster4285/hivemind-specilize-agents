@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 
-import BlockedComputers from "@/components/chat/BlockedComputers";
-import InvitesPanel from "@/components/chat/InvitesPanel";
-import UserForm from "@/components/chat/UserForm";
+import BlockedComputers from "@/components/settings/users/BlockedComputers";
+import InvitesPanel from "@/components/settings/users/InvitesPanel";
+import UserForm from "@/components/settings/users/UserForm";
 import type { UsersApi } from "@/hooks/useUsers";
 import type { ManagedUser } from "@/lib/types";
 import { btn } from "@/lib/ui";

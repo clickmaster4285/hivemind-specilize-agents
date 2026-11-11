@@ -228,8 +228,8 @@ LAN browser ─► UI :3000 (frontend/server.mjs → Next.js) ──rewrite /api
 | Request rate + body cap | `web/limits.py` |
 | Cross-site write check | `web/server.py` (`CrossSiteGuard`) |
 | Real client address on the UI side | `frontend/server.mjs` |
-| CAPTCHA | `src/core/captcha.py`, `frontend/src/components/chat/Captcha.tsx` |
-| Sign-up, invites | `src/core/signup.py`, `src/core/accounts.py`, `frontend/src/components/chat/AuthScreen.tsx`, `InvitesPanel.tsx` |
+| CAPTCHA | `src/core/captcha.py`, `frontend/src/components/auth/Captcha.tsx` |
+| Sign-up, invites | `src/core/signup.py`, `src/core/accounts.py`, `frontend/src/components/auth/AuthScreen.tsx`, `InvitesPanel.tsx` |
 | Admin pages | `web/routers/users.py`, `UsersSection.tsx`, `UserForm.tsx`, `BlockedComputers.tsx` |
 | Tests | `tests/test_sessions.py`, `tests/test_abuse_limits.py`, `tests/test_captcha.py`, `tests/test_signup.py` |
 

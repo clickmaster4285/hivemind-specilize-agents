@@ -2,7 +2,7 @@
 
 import { useRef, useState, type ReactNode } from "react";
 
-import SkillModal from "@/components/chat/SkillModal";
+import SkillModal from "@/components/settings/skills/SkillModal";
 import type { SkillsApi } from "@/hooks/useSkills";
 import type { SpecialistsApi } from "@/hooks/useSpecialists";
 import { downloadSkill, listSkillCatalog } from "@/lib/api";

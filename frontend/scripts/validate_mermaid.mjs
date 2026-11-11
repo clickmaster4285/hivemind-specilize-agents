@@ -23,7 +23,7 @@ try {
 const mermaid = (await import("mermaid")).default;
 mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "neutral" });
 
-// Keep in lockstep with sanitizeMermaid() in src/components/MermaidDiagram.tsx.
+// Keep in lockstep with sanitizeMermaid() in src/components/answer/MermaidDiagram.tsx.
 function sanitizeMermaid(code) {
   return code
     .split("\n")

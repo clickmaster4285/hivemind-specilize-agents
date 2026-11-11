@@ -2,9 +2,9 @@
 
 import { Fragment, memo, useEffect, useRef, useState, type CSSProperties } from "react";
 
-import LiveStatus from "@/components/LiveStatus";
-import MarkdownBody from "@/components/MarkdownBody";
-import MessageAvatar from "@/components/MessageAvatar";
+import LiveStatus from "@/components/chat/LiveStatus";
+import MarkdownBody from "@/components/answer/MarkdownBody";
+import MessageAvatar from "@/components/chat/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
 import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, SourceList, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";

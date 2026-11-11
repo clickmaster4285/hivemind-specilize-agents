@@ -6,8 +6,8 @@ import ReactMarkdown from "react-markdown";
 // tables, strikethrough, task lists: without it a | table | shows as raw text
 import remarkGfm from "remark-gfm";
 
-import MermaidDiagram from "./MermaidDiagram";
-import NetworkDiagram from "./NetworkDiagram";
+import MermaidDiagram from "@/components/answer/MermaidDiagram";
+import NetworkDiagram from "@/components/answer/NetworkDiagram";
 import { mdPre } from "@/lib/ui";
 
 /** Answer typography: a reading size and leading for long answers; headings in the body face (Syne stays for

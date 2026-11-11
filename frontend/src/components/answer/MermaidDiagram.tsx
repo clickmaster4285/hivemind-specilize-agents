@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 
-import SvgPanZoom from "./SvgPanZoom";
+import SvgPanZoom from "@/components/answer/SvgPanZoom";
 import { btn, diagram } from "@/lib/ui";
 
 type Props = { code: string };

@@ -83,6 +83,14 @@ Each one weighs the options and records the user's decision. Edit one only to ad
 - **Keep docs short:**
   - When a section of BACKLOG grows past about a screen, the detail belongs in a guide and BACKLOG keeps a link.
   - A doc past about 500 lines is a sign it holds two topics.
+- **Frontend folders** (`frontend/src/components/`), one per feature; a new component goes in the folder of the
+  feature it belongs to, imported as `@/components/<folder>/<Name>`:
+  - `app`: the shell: provider, layout, navbar, sidebar, theme toggle.
+  - `auth`: the login and sign-up screen, the CAPTCHA.
+  - `chat`: the chat page: feed, messages, composer, command card.
+  - `answer`: how an answer is drawn: markdown, Mermaid and network diagrams, pan and zoom.
+  - `settings`: the Settings page and its sections; `settings/users/` (users, invites, blocked computers) and
+    `settings/skills/`.
 - **Styles** (frontend): Tailwind utilities in the component. Sets used in many places (buttons, the diagram card)
   live in `frontend/src/lib/ui.ts`. Colours are theme names (`text-muted`, `bg-panel`), mapped from the tokens in
   `frontend/src/app/globals.css`. A new colour is a token there plus one `@theme` line; no new classes in globals.css.

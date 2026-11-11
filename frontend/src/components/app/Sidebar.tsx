@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 
 import { useApp } from "@/components/app/AppProvider";
-import ChatSidebar from "@/components/chat/ChatSidebar";
+import ChatSidebar from "@/components/app/ChatSidebar";
 import type { ChatThread } from "@/lib/threads";
 
 /** The persistent left rail. Reads shared state from the provider; opening a chat from the settings

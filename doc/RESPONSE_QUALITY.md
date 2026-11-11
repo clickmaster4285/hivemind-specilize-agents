@@ -34,7 +34,7 @@ Full detail in [HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md). In short: a prompt beco
 (`src/jobs/jobs.py`) → the **worker** (`src/jobs/worker.py`) claims it → `assistant.decide()`
 (`src/llm/assistant.py`) makes **one Ollama call** that either streams a direct answer or picks a
 tool; web/brain tools add fetch + read + synth; events stream to the UI and render as the live steps
-(`frontend/src/components/LiveStatus.tsx`).
+(`frontend/src/components/chat/LiveStatus.tsx`).
 
 Facts from the code that shape this work:
 
@@ -422,7 +422,7 @@ Format: **Symptom** → **Cause** → **Fix** · *Lesson*. Newest at the bottom.
 - **Idea (user):** "a big icons library, so instead of always making a diagram we can simply use those
   icons to denote things — in a mermaid diagram, in the chat, in docs." Chosen scope: **both** tracks.
 - **Constraint found first:** the Mermaid PNG/SVG export depends on `htmlLabels: false`
-  ([MermaidDiagram.tsx](../frontend/src/components/MermaidDiagram.tsx)) — labels are plain SVG text so
+  ([MermaidDiagram.tsx](../frontend/src/components/answer/MermaidDiagram.tsx)) — labels are plain SVG text so
   `svgToPng` can draw them onto a canvas. FontAwesome `fa:` icons need `htmlLabels: true` (HTML `<i>`),
   and HTML-in-SVG (`foreignObject`) does **not** render when the SVG is drawn into a canvas → flipping
   the flag would silently blank the exported images. So FA-in-flowchart was rejected.

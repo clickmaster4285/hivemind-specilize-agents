@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
 
-import Captcha from "@/components/chat/Captcha";
+import Captcha from "@/components/auth/Captcha";
 
 import { signUp, signupInfo } from "@/lib/api";
 import type { CaptchaAnswer, Health, SignupInfo } from "@/lib/types";

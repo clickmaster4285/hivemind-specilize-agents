@@ -6,7 +6,7 @@ import { makeDrawIcon, neededPacks } from "@/lib/deviceIcons";
 import { buildGraphSvg, graphIconNames, parseGraphSpec } from "@/lib/graphdiagram";
 import { buildNetworkSvg, iconNames, looksCompleteJson, parseNetSpec } from "@/lib/netdiagram";
 
-import SvgPanZoom from "./SvgPanZoom";
+import SvgPanZoom from "@/components/answer/SvgPanZoom";
 import { btn, diagram } from "@/lib/ui";
 
 /* Renders a ```netdiagram block (hub-and-spoke: sites → HQ) as a designed network infographic.

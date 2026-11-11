@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { useApp } from "@/components/app/AppProvider";
 import Navbar from "@/components/app/Navbar";
 import Sidebar from "@/components/app/Sidebar";
-import AuthScreen from "@/components/chat/AuthScreen";
+import AuthScreen from "@/components/auth/AuthScreen";
 
 /** The persistent shell: sidebar + navbar stay mounted; only `children` (the page) changes.
  *  Before sign-in, the whole screen is the login. */

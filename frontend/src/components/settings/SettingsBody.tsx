@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 
-import ServersSection from "@/components/chat/ServersSection";
-import SkillsSection from "@/components/chat/SkillsSection";
-import SpecialistModal from "@/components/chat/SpecialistModal";
-import UsageSection from "@/components/chat/UsageSection";
-import UsersSection from "@/components/chat/UsersSection";
+import ServersSection from "@/components/settings/ServersSection";
+import SkillsSection from "@/components/settings/skills/SkillsSection";
+import SpecialistModal from "@/components/settings/SpecialistModal";
+import UsageSection from "@/components/settings/UsageSection";
+import UsersSection from "@/components/settings/users/UsersSection";
 import { useServers } from "@/hooks/useServers";
 import { useUsers } from "@/hooks/useUsers";
 import type { ModelsApi } from "@/hooks/useModels";

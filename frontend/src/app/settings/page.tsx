@@ -1,7 +1,7 @@
 "use client";
 
 import { useApp } from "@/components/app/AppProvider";
-import SettingsBody from "@/components/chat/SettingsBody";
+import SettingsBody from "@/components/settings/SettingsBody";
 
 /** The /settings page. The sidebar and navbar come from the shared shell; this is just the content. */
 export default function SettingsPage() {
