@@ -1,7 +1,7 @@
 """Create or update local user accounts from the command line (admin-provisioned sign-up).
 
-Open self-serve registration is off, so accounts are made either from the admin Users panel in the
-app or with this command. Use it to seed the initial IT users. Passwords are stored bcrypt-hashed;
+Accounts are made from the admin Users panel, by self sign-up (waiting for an admin's approval,
+BACKLOG L16 S7), or with this command. Use it to seed the initial IT users. Passwords are stored bcrypt-hashed;
 the plaintext is read from ``--password``, the ``SEED_USER_PASSWORD`` env var, or an interactive
 prompt, and is never printed or logged.
 
@@ -24,12 +24,11 @@ import sys
 
 from sqlalchemy import func, select
 
+from src.core.accounts import MIN_PASSWORD_LEN, MIN_USERNAME_LEN
 from src.core.auth import hash_password
 from src.core.config import Config
 from src.core.db import init_db, session_scope
 from src.core.models_db import User
-
-MIN_PASSWORD_LEN = 8
 
 
 def _resolve_password(arg: str | None) -> str | None:
@@ -54,8 +53,8 @@ def seed_user(
 ) -> tuple[str, int]:
     """Create the user, or update an existing one. Returns ("created"|"updated", user_id)."""
     username = username.strip()
-    if len(username) < 3:
-        raise ValueError("username must be at least 3 characters")
+    if len(username) < MIN_USERNAME_LEN:
+        raise ValueError(f"username must be at least {MIN_USERNAME_LEN} characters")
     team = (team.strip() or None) if team else None
     email = (email.strip() or None) if email else None
     if email is not None and "@" not in email:

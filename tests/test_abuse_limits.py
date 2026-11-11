@@ -7,12 +7,11 @@ from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
-from passlib.context import CryptContext
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from src.core import abuse, auth
+from src.core import abuse
 from src.core.abuse import (
     ACCOUNT_LOCK_FAILURES,
     ADDRESS_BLOCK_FAILURES,
@@ -32,20 +31,13 @@ from src.core.db import Base
 from src.core.models_db import LoginFailure, User
 from web import limits, server
 
+# ~150 sign-ins: at the real bcrypt cost that alone takes half a minute
+pytestmark = pytest.mark.usefixtures("cheap_hashing")
+
 PASSWORD = "longenough"
 WRONG = "not-the-password"
 PROXY = ("127.0.0.1", 50000)           # the UI's Node server, the only trusted proxy
 LAN_PC = "192.168.88.20"
-TEST_BCRYPT_ROUNDS = 4                 # bcrypt's minimum cost
-
-
-@pytest.fixture(autouse=True)
-def cheap_hashing(monkeypatch):
-    """These tests sign in ~150 times; at the real bcrypt cost that alone takes half a minute."""
-    monkeypatch.setattr(auth, "pwd_context", CryptContext(schemes=["bcrypt"], bcrypt__rounds=TEST_BCRYPT_ROUNDS))
-    auth._no_account_hash.cache_clear()
-    yield
-    auth._no_account_hash.cache_clear()
 
 
 @pytest.fixture

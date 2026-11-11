@@ -1,4 +1,5 @@
-"""Admin-only account management: list, create, edit and deactivate users (query analytics per user)."""
+"""Admin-only account management: list, create, edit and deactivate users (query analytics per user);
+approve or reject sign-ups, invite links and the open sign-up switch (BACKLOG L16 S7)."""
 
 from __future__ import annotations
 
@@ -8,17 +9,19 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.core import modules
+from src.core import modules, signup
+from src.core.accounts import AccountError, check_password, clean_email, clean_text, clean_username
 from src.core.auth import get_db, hash_password, may_use, require_admin, user_modules
-from src.core.models_db import Job, User
-from web.schemas import UserCreatePayload, UserUpdatePayload
+from src.core.models_db import USER_ACTIVE, USER_DISABLED, USER_PENDING, Job, User, UserInvite
+from web.schemas import InvitePayload, SignupSettingsPayload, UserCreatePayload, UserUpdatePayload
 
 router = APIRouter(prefix="/api/auth/users", tags=["users"])
 
 
-def _user_public(user: User, query_count: int | None = None) -> dict[str, Any]:
+def _user_public(user: User, query_count: int | None = None, names: dict[int, str] | None = None) -> dict[str, Any]:
     """The account fields an admin may see. Never includes the password hash. `query_count` = how many
-    (non-deleted) questions the user has asked, passed in by the caller to avoid an N+1 query."""
+    (non-deleted) questions the user has asked, passed in by the caller to avoid an N+1 query; `names`
+    (id → username) names the admin who invited a sign-up, likewise."""
     return {
         "id": user.id,
         "username": user.username,
@@ -33,6 +36,8 @@ def _user_public(user: User, query_count: int | None = None) -> dict[str, Any]:
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "updated_at": user.updated_at.isoformat() if user.updated_at else None,
         "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+        "signup_address": user.signup_address,
+        "invited_by": (names or {}).get(user.invited_by) if user.invited_by else None,
     }
 
 
@@ -41,6 +46,14 @@ def _modules_json(ids: list[str]) -> str:
         return modules.dump(ids)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _checked(rule, *args, **kwargs):
+    """Run an account rule (src/core/accounts.py); a broken rule becomes its HTTP answer."""
+    try:
+        return rule(*args, **kwargs)
+    except AccountError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
 
 
 @router.get("/modules")
@@ -53,7 +66,7 @@ def list_modules(_admin: User = Depends(require_admin)) -> list[dict[str, Any]]:
 def _ensure_an_admin_remains(db: Session) -> None:
     """Refuse a change (after flushing it) that would leave no active admin — avoids locking everyone out."""
     db.flush()
-    if db.scalar(select(func.count()).select_from(User).where(User.role == "admin", User.status == "active")) == 0:
+    if db.scalar(select(func.count()).select_from(User).where(User.role == "admin", User.status == USER_ACTIVE)) == 0:
         raise HTTPException(status_code=400, detail="At least one active admin must remain")
 
 
@@ -66,7 +79,8 @@ def list_users(_admin: User = Depends(require_admin), db: Session = Depends(get_
             select(Job.user_id, func.count()).where(Job.deleted_at.is_(None)).group_by(Job.user_id)
         ).all()
     )
-    return [_user_public(u, counts.get(u.id, 0)) for u in users]
+    names = {u.id: u.username for u in users}
+    return [_user_public(u, counts.get(u.id, 0), names) for u in users]
 
 
 @router.post("", status_code=201)
@@ -75,28 +89,19 @@ def create_user(
     _admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Admin provisions an account (the self-serve /register route stays disabled). The new user can then
+    """Admin provisions an account (active at once; self sign-ups wait in the list instead). The new user can
     sign in and chat — their queries land in the jobs table under their own user_id, so per-user and (via
     the team tag) per-group query analytics work from first login. Rejects duplicate usernames."""
-    username = payload.username.strip()
-    if len(username) < 3:
-        raise HTTPException(status_code=422, detail="Username must be at least 3 characters")
-    if len(payload.password) < 8:
-        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
-    if db.scalar(select(User).where(User.username == username)) is not None:
-        raise HTTPException(status_code=409, detail="That username is already taken")
-    email = (payload.email.strip() or None) if payload.email else None
-    if email is not None and "@" not in email:
-        raise HTTPException(status_code=422, detail="That does not look like an email address")
-    if email is not None and db.scalar(select(User).where(func.lower(User.email) == email.lower())) is not None:
-        raise HTTPException(status_code=409, detail="That email is already in use")
+    username = _checked(clean_username, db, payload.username)
+    _checked(check_password, payload.password)
+    email = _checked(clean_email, db, payload.email)
     user = User(
         username=username,
         password_hash=hash_password(payload.password),
         role=payload.role,
-        team=(payload.team.strip() or None) if payload.team else None,
+        team=clean_text(payload.team),
         email=email,
-        phone=(payload.phone.strip() or None) if payload.phone else None,
+        phone=clean_text(payload.phone),
     )
     if payload.modules is not None:
         user.modules_json = _modules_json(payload.modules)
@@ -120,7 +125,7 @@ def update_user(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == admin.id:
-        if payload.status == "disabled":
+        if payload.status == USER_DISABLED:
             raise HTTPException(status_code=400, detail="You cannot disable your own account")
         if payload.role == "member":
             raise HTTPException(status_code=400, detail="You cannot remove your own admin role")
@@ -132,21 +137,13 @@ def update_user(
     if payload.team is not None:
         user.team = payload.team.strip() or None
     if payload.email is not None:
-        email = payload.email.strip() or None
-        if email is not None and "@" not in email:
-            raise HTTPException(status_code=422, detail="That does not look like an email address")
-        if email is not None and db.scalar(
-            select(User).where(func.lower(User.email) == email.lower(), User.id != user.id)
-        ) is not None:
-            raise HTTPException(status_code=409, detail="That email is already in use")
-        user.email = email
+        user.email = _checked(clean_email, db, payload.email, owner_id=user.id)
     if payload.phone is not None:
         user.phone = payload.phone.strip() or None
     if payload.daily_job_quota is not None:
         user.daily_job_quota = max(0, payload.daily_job_quota)
     if payload.password is not None:
-        if len(payload.password) < 8:
-            raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+        _checked(check_password, payload.password)
         user.password_hash = hash_password(payload.password)
     if payload.modules is not None:
         user.modules_json = _modules_json(payload.modules)
@@ -168,14 +165,66 @@ def deactivate_user(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """"Delete" = deactivate: the account can no longer sign in, but its chats and queries are kept
-    (that search data is the point of having accounts). Re-enable with PATCH status=active."""
+    (that search data is the point of having accounts). Re-enable with PATCH status=active.
+    A sign-up still waiting for approval is rejected instead: deleted (it has no chats yet)."""
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
-    user.status = "disabled"
+    if user.status == USER_PENDING:
+        public = {**_user_public(user), "status": "rejected"}
+        db.delete(user)
+        db.commit()
+        return public
+    user.status = USER_DISABLED
     _ensure_an_admin_remains(db)
     db.commit()
     db.refresh(user)
     return _user_public(user)
+
+
+# ── sign-up: the open switch and invite links (BACKLOG L16 S7) ─────────────────────────────────────────
+@router.get("/signup-settings")
+def get_signup_settings(_admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
+    return {"open": signup.open_signup(db)}
+
+
+@router.put("/signup-settings")
+def put_signup_settings(payload: SignupSettingsPayload, _admin: User = Depends(require_admin),
+                        db: Session = Depends(get_db)) -> dict[str, Any]:
+    signup.set_open_signup(db, payload.open)
+    return {"open": signup.open_signup(db)}
+
+
+def _invite_public(invite: UserInvite, names: dict[int, str]) -> dict[str, Any]:
+    return {"id": invite.id, "email": invite.email, "modules": modules.parse(invite.modules_json),
+            "created_by": names.get(invite.created_by), "created_at": invite.created_at.isoformat(),
+            "expires_at": invite.expires_at.isoformat()}
+
+
+@router.get("/invites")
+def list_invites(_admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """The invite links not yet used and not expired (the links themselves cannot be shown again)."""
+    invites = signup.open_invites(db)
+    names = dict(db.execute(select(User.id, User.username).where(User.id.in_({i.created_by for i in invites}))).all())
+    return [_invite_public(i, names) for i in invites]
+
+
+@router.post("/invites", status_code=201)
+def create_invite(payload: InvitePayload, admin: User = Depends(require_admin),
+                  db: Session = Depends(get_db)) -> dict[str, Any]:
+    """A new invite link's token — shown this once; the page turns it into the link to share."""
+    modules_json = _modules_json(payload.modules) if payload.modules is not None else None
+    token, invite = signup.create_invite(db, admin, email=payload.email, modules_json=modules_json)
+    return {**_invite_public(invite, {admin.id: admin.username}), "token": token}
+
+
+@router.delete("/invites/{invite_id}")
+def revoke_invite(invite_id: int, _admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
+    invite = db.get(UserInvite, invite_id)
+    if invite is None:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    db.delete(invite)
+    db.commit()
+    return {"ok": True}

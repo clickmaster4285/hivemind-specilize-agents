@@ -400,10 +400,29 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
       HSTS over HTTPS; links in answers limited to http(s)/mailto; downloads sent as attachments
 - [ ] **S5 encryption at rest (AES-256-GCM):** for secrets the app stores — decided per item (see questions)
 - [ ] **S6 security log:** failed logins, locks, refresh-token reuse, rejected uploads — visible to admins
-- [ ] **S7 self sign-up (ISSUES_LOG O38, asked 2026-11-11):** users create their own account; also asked: Clerk,
-      OAuth 2.0. Open decisions (user): who may sign up (anyone on the LAN / an allowed email domain / invite
-      link) and whether a new account waits for an admin's approval; "Sign in with Google/Microsoft" needs HTTPS
-      (or localhost) redirect addresses, which the plain-http LAN (S1b) does not have
+- [x] **S7 self sign-up (ISSUES_LOG O38) — done 2026-11-11** (design approved by the user the same day;
+      `src/core/signup.py`, `src/core/accounts.py`, `GET/POST /api/auth/signup`, `/api/auth/users/invites`,
+      `/api/auth/users/signup-settings`, `AuthScreen` sign-up mode, `InvitesPanel`, `tests/test_signup.py`):
+      - "Create account" on the login page: username, email, phone, password
+      - Two ways in: **open sign-up** for anyone who can open the page (the LAN), and an **invite link** an
+        admin creates and shares
+      - New accounts **wait for an admin's approval** (status `pending`) and can use nothing until approved
+        (Settings → Users)
+      - Protected by the S2 limits; the S2b CAPTCHA covers sign-up too
+      - Google / Microsoft sign-in (OAuth 2.0 / OpenID Connect): **later**, once there is HTTPS (their
+        sign-in only returns to https:// or localhost addresses). Clerk not used (accounts would live on
+        an outside service; needs internet)
+      - **Approved details:** phone optional; username ≥ 3, password ≥ 8, email valid and unused (as the
+        admin's user form). Sign-in while pending → "waiting for an admin's approval". Admin switch "open
+        sign-up" in Settings (on by default). Invite: optional email + modules, one use, **7 days**; works
+        when open sign-up is off; **an invited account waits for approval too** (its modules apply on
+        approval). At most **5 sign-ups per address per day**. Approve = active; reject = deleted. Table
+        `user_invites` (token hash only), status value `pending`
+      - **Built as:** the account rules (username, password, email) are one module now, shared by the admin
+        form, `seed_users` and sign-up. Settings → Users: "Waiting for approval" (count) → Review opens the
+        user form with Approve / Reject; "Sign-up and invites": the open switch, Invite someone (email +
+        modules) → the link is shown once. On plain http the browser has no clipboard API, so Copy selects
+        the link for Ctrl+C. `POST /api/auth/register` (always 403) removed
 
 ### L17. NVR camera list — in progress 2026-11-04 (fixes ISSUES_LOG O17; before L16 S2, user's order)
 
@@ -523,6 +542,7 @@ the machine it runs on (here: the MulteAgent server itself), so it needs its own
 
 | Date | Item | Notes |
 |------|------|-------|
+| 2026-11-11 | **L16 S7 self sign-up** | "Create account" on the login page (username, email, phone optional, password); open sign-up (admin switch, on by default) and one-use invite links (7 days, optional email + modules); every new account waits for an admin (status `pending`); 5 sign-ups per address per day; approve / reject in Settings → Users. Tables `user_invites`, `app_settings`. 801 tests |
 | 2026-11-11 | **L20 O37 assistant eval set** | `data/assistant/eval.yaml` lost in the move (ignored by `data/*`, never committed); rebuilt with 34 cases for today's tools and skills; folder now tracked |
 | 2026-11-11 | **L16 S2 abuse limits** | Sign-in: per account 5 free failures, back-off 1–30 s, 10 in 15 min → 15-min lock; per address 20 in 15 min → 15-min block; unknown names counted and timed like accounts (table `login_failures`). Requests: 120/min per user (burst 60), 60/min per address signed out; 30 MB body cap (413). Real client address via `frontend/server.mjs`. 788 tests |
 | 2026-11-10 | **L20 O34 see what runs** | Brain refresh logs `n/total` + every file; `./start.sh --status` snapshot and `./start.sh --follow` live tagged output (signal stops every watcher — checked). Status showed the embedding model on the CPU → O35 |

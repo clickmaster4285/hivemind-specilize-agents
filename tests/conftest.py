@@ -91,3 +91,19 @@ def request_counts():
     limits.reset()
     yield
     limits.reset()
+
+
+TEST_BCRYPT_ROUNDS = 4                    # bcrypt's minimum cost
+
+
+@pytest.fixture
+def cheap_hashing(monkeypatch):
+    """bcrypt at its lowest cost, for tests that sign in or create accounts many times."""
+    from passlib.context import CryptContext
+
+    from src.core import auth
+
+    monkeypatch.setattr(auth, "pwd_context", CryptContext(schemes=["bcrypt"], bcrypt__rounds=TEST_BCRYPT_ROUNDS))
+    auth._no_account_hash.cache_clear()
+    yield
+    auth._no_account_hash.cache_clear()

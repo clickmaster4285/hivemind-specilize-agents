@@ -23,6 +23,22 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def as_utc(value: datetime) -> datetime:
+    """SQLite hands timestamps back without their zone; they were stored in UTC."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+# the longest text form of an IP address (IPv6 with an embedded IPv4, RFC 4291 §2.2)
+ADDRESS_CHARS = 45
+# a login_failures key: a short prefix ("name:") + at most abuse.KEY_IDENT_CHARS (255) typed characters
+LOGIN_KEY_CHARS = 300
+
+# account status: only an active account may sign in; a pending one waits for an admin (BACKLOG L16 S7)
+USER_ACTIVE = "active"
+USER_DISABLED = "disabled"
+USER_PENDING = "pending"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -34,12 +50,15 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     daily_job_quota: Mapped[int] = mapped_column(Integer, default=50)
-    status: Mapped[str] = mapped_column(String(20), default="active")  # active | disabled (disabled can't sign in)
+    status: Mapped[str] = mapped_column(String(20), default=USER_ACTIVE)  # USER_ACTIVE | USER_DISABLED | USER_PENDING
     # the modules (src/core/modules.py) a member may use, set by an admin; admins have all (auth.may_use)
     modules_json: Mapped[str] = mapped_column(Text, default=DEFAULT_MODULES_JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # self sign-up (L16 S7): the address it came from (sign-ups per address per day) and the inviting admin
+    signup_address: Mapped[str | None] = mapped_column(String(ADDRESS_CHARS), nullable=True, index=True)
+    invited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
     jobs: Mapped[list[Job]] = relationship(back_populates="user")
 
@@ -83,6 +102,32 @@ class RefreshToken(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class UserInvite(Base):
+    """An admin's invite link (BACKLOG L16 S7): works once, until `expires_at`; only the token's SHA-256 is
+    kept. The account made with it still waits for approval; its modules apply then. With an `email`, the
+    sign-up must use that address."""
+
+    __tablename__ = "user_invites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    modules_json: Mapped[str] = mapped_column(Text, default=DEFAULT_MODULES_JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AppSetting(Base):
+    """A setting an admin changes in the app (e.g. whether open sign-up is on); one row per key."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
 class LoginFailure(Base):
     """One failed sign-in, counted against a key (BACKLOG L16 S2, src/core/abuse.py): the account
     (`user:<id>`, or `name:<what was typed>` when no account matched) and the caller's address
@@ -91,7 +136,7 @@ class LoginFailure(Base):
     __tablename__ = "login_failures"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    key: Mapped[str] = mapped_column(String(300), index=True)
+    key: Mapped[str] = mapped_column(String(LOGIN_KEY_CHARS), index=True)
     failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 

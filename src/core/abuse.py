@@ -20,12 +20,12 @@ import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from src.core.models_db import LoginFailure, utcnow
+from src.core.models_db import LoginFailure, as_utc, utcnow
 
 log = logging.getLogger(__name__)
 
@@ -111,18 +111,13 @@ def address_wait(failures: int) -> timedelta:
     return LOGIN_LOCK if failures >= ADDRESS_BLOCK_FAILURES else timedelta(0)
 
 
-def _aware(value: datetime) -> datetime:
-    """SQLite hands timestamps back without their zone; they were stored in UTC."""
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-
-
 def _recent(db: Session, key: str, now: datetime) -> tuple[int, datetime | None]:
     """(failures within the window, the latest one)."""
     count, latest = db.execute(
         select(func.count(LoginFailure.id), func.max(LoginFailure.failed_at))
         .where(LoginFailure.key == key, LoginFailure.failed_at > now - LOGIN_WINDOW)
     ).one()
-    return count, (_aware(latest) if latest is not None else None)
+    return count, (as_utc(latest) if latest is not None else None)
 
 
 def check_login(db: Session, account: str, address: str, now: datetime | None = None) -> None:

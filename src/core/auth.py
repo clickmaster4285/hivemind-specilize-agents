@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from src.core import modules
 from src.core.config import DEV_JWT_SECRET, Config
 from src.core.db import get_session, session_scope
-from src.core.models_db import RefreshToken, User, utcnow
+from src.core.models_db import USER_ACTIVE, RefreshToken, User, as_utc, utcnow
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -97,18 +97,13 @@ def _unauthorized(detail: str) -> HTTPException:
     return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
 
 
-def _digest(token: str) -> str:
+def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
-
-
-def _aware(value: datetime) -> datetime:
-    """SQLite hands timestamps back without their zone; they were stored in UTC."""
-    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def _issue_refresh(db: Session, user_id: int, family: str, config: Config) -> str:
     token = secrets.token_urlsafe(REFRESH_TOKEN_BYTES)
-    db.add(RefreshToken(user_id=user_id, family=family, token_hash=_digest(token),
+    db.add(RefreshToken(user_id=user_id, family=family, token_hash=token_digest(token),
                         expires_at=utcnow() + timedelta(days=config.refresh_token_days)))
     return token
 
@@ -132,13 +127,13 @@ def refresh_session(db: Session, token: str, config: Config | None = None) -> tu
     """Spend a refresh token: (user, new access token, new refresh token — None when the same token came
     back within REFRESH_REUSE_GRACE, whose successor the browser already holds)."""
     config = config or Config.from_env()
-    row = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == _digest(token)))
+    row = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_digest(token)))
     now = utcnow()
-    if row is None or row.revoked_at is not None or _aware(row.expires_at) <= now:
+    if row is None or row.revoked_at is not None or as_utc(row.expires_at) <= now:
         raise _unauthorized("Session expired — sign in again")
     user = db.get(User, row.user_id)
-    reused = row.used_at is not None and now - _aware(row.used_at) > REFRESH_REUSE_GRACE
-    if user is None or user.status == "disabled" or reused:
+    reused = row.used_at is not None and now - as_utc(row.used_at) > REFRESH_REUSE_GRACE
+    if user is None or user.status != USER_ACTIVE or reused:
         _revoke_family(db, row.family)
         db.commit()
         raise _unauthorized("Session ended — sign in again")
@@ -152,7 +147,7 @@ def refresh_session(db: Session, token: str, config: Config | None = None) -> tu
 
 def end_session(db: Session, token: str) -> None:
     """Sign out: the refresh token's family is revoked, so its access tokens stop working at once too."""
-    row = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == _digest(token)))
+    row = db.scalar(select(RefreshToken).where(RefreshToken.token_hash == token_digest(token)))
     if row is not None:
         _revoke_family(db, row.family)
         db.commit()
@@ -214,8 +209,8 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user = db.get(User, int(payload["sub"]))
     if user is None:
         raise _unauthorized("User not found")
-    if user.status == "disabled":
-        raise _unauthorized("This account is disabled")
+    if user.status != USER_ACTIVE:
+        raise _unauthorized("This account is not active")
     revoked = db.scalar(select(RefreshToken.id).where(RefreshToken.family == payload["sid"],
                                                       RefreshToken.revoked_at.is_not(None)).limit(1))
     if revoked is not None:

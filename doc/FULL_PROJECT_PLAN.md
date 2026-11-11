@@ -266,7 +266,7 @@ Shared team server + unrestricted shell = high risk. Add later only with hard sa
 
 **Current testing policy:** only the bootstrap admin is used.  
 Default: `admin` / `admin123`.  
-`POST /api/auth/register` is **disabled** until the user module is built later.
+Self sign-up (`POST /api/auth/signup`, BACKLOG L16 S7): new accounts wait for an admin's approval.
 
 ---
 

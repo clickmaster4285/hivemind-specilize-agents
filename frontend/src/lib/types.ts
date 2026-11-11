@@ -102,7 +102,8 @@ export type Health = {
   context?: { window: number; history_budget: number };
 };
 
-export type UserStatus = "active" | "disabled";
+/** pending = a self sign-up waiting for an admin's approval (cannot sign in yet) */
+export type UserStatus = "active" | "disabled" | "pending";
 
 export type AuthUser = {
   id: number;
@@ -132,6 +133,9 @@ export type ManagedUser = {
   created_at: string | null;
   updated_at: string | null;
   last_login_at: string | null;
+  /** self sign-up: the address it came from, and the admin whose invite was used */
+  signup_address: string | null;
+  invited_by: string | null;
 };
 
 /** What the admin fills in to create an account. */
@@ -154,9 +158,36 @@ export type UserUpdateInput = {
   email?: string | null;
   phone?: string | null;
   daily_job_quota?: number | null;
-  status?: UserStatus;
+  status?: "active" | "disabled";
   password?: string;
   modules?: string[];
+};
+
+/** What someone fills in to create their own account (it then waits for an admin). */
+export type SignupInput = {
+  username: string;
+  email: string;
+  password: string;
+  phone?: string | null;
+  invite?: string | null;
+};
+
+/** What the sign-up form may offer: open sign-up, and the invite behind a link (null = no link given). */
+export type SignupInfo = {
+  open: boolean;
+  invite: { email: string | null; expires_at: string } | null;
+  invite_valid: boolean | null;
+};
+
+/** An invite link not yet used (the link itself is shown only when it is made: `token`). */
+export type Invite = {
+  id: number;
+  email: string | null;
+  modules: string[];
+  created_by: string | null;
+  created_at: string;
+  expires_at: string;
+  token?: string;
 };
 
 /** A module an admin can give a member (Settings → Users → user form). */

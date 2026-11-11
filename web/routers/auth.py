@@ -1,5 +1,5 @@
-"""Authentication: sign in / refresh / sign out (cookie sessions), the disabled self-serve register, the
-current user, and SSO status."""
+"""Authentication: sign in / refresh / sign out (cookie sessions), self sign-up (accounts wait for an
+admin), the current user, and SSO status."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from src.core.abuse import (
     record_failure,
     wait_text,
 )
+from src.core.accounts import AccountError
 from src.core.auth import (
     REFRESH_COOKIE,
     check_credentials,
@@ -33,8 +34,9 @@ from src.core.auth import (
     start_session,
 )
 from src.core.config import Config
-from src.core.models_db import User, utcnow
-from web.schemas import LoginPayload
+from src.core.models_db import USER_ACTIVE, USER_PENDING, User, utcnow
+from src.core.signup import open_signup, sign_up, usable_invite
+from web.schemas import LoginPayload, SignupPayload
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -86,7 +88,9 @@ def login(payload: LoginPayload, request: Request, response: Response,
         record_failure(db, account, address)
         raise HTTPException(status_code=401, detail="Invalid username/email or password")
     clear_account(db, account)
-    if user.status == "disabled":
+    if user.status == USER_PENDING:
+        raise HTTPException(status_code=403, detail="Your account is waiting for an admin's approval.")
+    if user.status != USER_ACTIVE:
         raise HTTPException(status_code=403, detail="This account is disabled. Ask an admin to re-enable it.")
     user.last_login_at = utcnow()  # so the admin can see who is actually active
     access, refresh = start_session(db, user)
@@ -114,13 +118,27 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)) 
     return {"ok": True}
 
 
-@router.post("/register")
-def register_disabled() -> dict[str, Any]:
-    """Public self-serve registration stays off: accounts are created by an admin (POST /api/auth/users)."""
-    raise HTTPException(
-        status_code=403,
-        detail="Open registration is disabled. Ask an admin to create your account.",
-    )
+@router.get("/signup")
+def signup_info(invite: str | None = None, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """What the sign-up form may offer: whether open sign-up is on, and the invite behind a link."""
+    found = usable_invite(db, invite)
+    return {
+        "open": open_signup(db),
+        "invite": {"email": found.email, "expires_at": found.expires_at.isoformat()} if found else None,
+        "invite_valid": None if not invite else found is not None,
+    }
+
+
+@router.post("/signup", status_code=201)
+def signup(payload: SignupPayload, request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Self sign-up (BACKLOG L16 S7): the new account waits for an admin's approval."""
+    try:
+        user = sign_up(db, username=payload.username, email=payload.email, phone=payload.phone,
+                       password=payload.password, invite_token=payload.invite,
+                       address=client_address(request.scope))
+    except AccountError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    return {"username": user.username, "status": user.status}
 
 
 @router.get("/me")

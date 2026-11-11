@@ -3,6 +3,7 @@ import type {
   CatalogSkill,
   JobEvent,
   Health,
+  Invite,
   Job,
   ManagedUser,
   ModuleInfo,
@@ -11,6 +12,8 @@ import type {
   ServerInfo,
   ServerLoginInput,
   ServerMode,
+  SignupInfo,
+  SignupInput,
   Skill,
   SkillCategory,
   SkillInput,
@@ -112,7 +115,17 @@ export async function me(): Promise<AuthUser> {
   return request("/api/auth/me");
 }
 
-/** Accounts (admin only). Self-serve registration stays disabled — admins create users here. */
+/** Self sign-up: what the form may offer (open sign-up, an invite link's email). */
+export async function signupInfo(invite: string | null): Promise<SignupInfo> {
+  return request(`/api/auth/signup${invite ? `?invite=${encodeURIComponent(invite)}` : ""}`);
+}
+
+/** Create an own account; it waits for an admin's approval before it can sign in. */
+export async function signUp(payload: SignupInput): Promise<{ username: string; status: string }> {
+  return request("/api/auth/signup", { method: "POST", body: JSON.stringify(payload) });
+}
+
+/** Accounts (admin only): created here, or by sign-up (then waiting for approval). */
 export async function listUsers(): Promise<ManagedUser[]> {
   return request("/api/auth/users");
 }
@@ -130,9 +143,32 @@ export async function updateUser(id: number, payload: UserUpdateInput): Promise<
   return request(`/api/auth/users/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
-/** "Delete" = deactivate: the account can no longer sign in, but its chats/queries are kept. */
+/** "Delete" = deactivate: the account can no longer sign in, but its chats/queries are kept.
+ *  For a sign-up still waiting for approval it rejects it: the request is deleted. */
 export async function deactivateUser(id: number): Promise<ManagedUser> {
   return request(`/api/auth/users/${id}`, { method: "DELETE" });
+}
+
+/** Whether anyone who can open the page may sign up (else only with an invite link). */
+export async function getSignupSettings(): Promise<{ open: boolean }> {
+  return request("/api/auth/users/signup-settings");
+}
+
+export async function setSignupSettings(open: boolean): Promise<{ open: boolean }> {
+  return request("/api/auth/users/signup-settings", { method: "PUT", body: JSON.stringify({ open }) });
+}
+
+export async function listInvites(): Promise<Invite[]> {
+  return request("/api/auth/users/invites");
+}
+
+/** A new invite link; its `token` is returned this once. */
+export async function createInvite(payload: { email?: string | null; modules?: string[] }): Promise<Invite> {
+  return request("/api/auth/users/invites", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export async function revokeInvite(id: number): Promise<void> {
+  await request(`/api/auth/users/invites/${id}`, { method: "DELETE" });
 }
 
 export async function getHealth(): Promise<Health> {

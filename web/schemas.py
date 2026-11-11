@@ -37,6 +37,24 @@ class UserUpdatePayload(BaseModel):
     modules: list[str] | None = None   # the full new list of module ids (src/core/modules.py)
 
 
+class SignupPayload(BaseModel):
+    """Self sign-up (BACKLOG L16 S7): the account waits for an admin's approval."""
+    username: str
+    email: str
+    password: str
+    phone: str | None = None
+    invite: str | None = None          # the token from an invite link
+
+
+class InvitePayload(BaseModel):
+    email: str | None = None           # when given, the sign-up must use this email
+    modules: list[str] | None = None   # given on approval; None = the defaults for a new member
+
+
+class SignupSettingsPayload(BaseModel):
+    open: bool                         # anyone who can open the page may sign up (else invite links only)
+
+
 # ── specialists ────────────────────────────────────────────────────────────
 class SpecialistPayload(BaseModel):
     name: str

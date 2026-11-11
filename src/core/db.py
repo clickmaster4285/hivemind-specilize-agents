@@ -84,7 +84,7 @@ def _postgres_ddl(ddl: str) -> str:
 
 
 def init_db(config: Config | None = None) -> None:
-    from src.core import models_db  # noqa: F401
+    from src.core import models_db
 
     engine = get_engine(config)
     Base.metadata.create_all(bind=engine)
@@ -95,6 +95,8 @@ def init_db(config: Config | None = None) -> None:
     _ensure_column(engine, "users", "status", "status VARCHAR(20) DEFAULT 'active'")
     _ensure_column(engine, "users", "updated_at", "updated_at DATETIME")
     _ensure_column(engine, "users", "last_login_at", "last_login_at DATETIME")
+    _ensure_column(engine, "users", "signup_address", f"signup_address VARCHAR({models_db.ADDRESS_CHARS})")
+    _ensure_column(engine, "users", "invited_by", "invited_by INTEGER REFERENCES users(id)")
     from src.core.modules import DEFAULT_MODULES_JSON
 
     _ensure_column(engine, "users", "modules_json", f"modules_json TEXT DEFAULT '{DEFAULT_MODULES_JSON}'")

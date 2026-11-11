@@ -64,7 +64,10 @@ export default function UserForm({ users, user, onDone }: Props) {
   const toggle = (id: string, on: boolean) =>
     setGranted((g) => (on ? [...(g ?? []), id] : (g ?? []).filter((m) => m !== id)));
 
-  async function save(event: FormEvent) {
+  // a sign-up waiting for approval: saving keeps it waiting; Approve saves and activates it
+  const pending = user?.status === "pending";
+
+  async function save(event: FormEvent, approve = false) {
     event.preventDefault();
     setBusy(true);
     setError(null);
@@ -86,7 +89,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           team: team.trim(),
           email: email.trim(),
           phone: phone.trim(),
-          status,
+          ...(approve ? { status: "active" as const } : status !== "pending" ? { status } : {}),
           ...(password ? { password } : {}),
         });
       }
@@ -98,7 +101,10 @@ export default function UserForm({ users, user, onDone }: Props) {
   }
 
   async function deactivate() {
-    if (!user || !confirm(`Deactivate ${user.username}? They can no longer sign in, but their chats and queries are kept.`)) {
+    const question = pending
+      ? `Reject the sign-up of ${user?.username}? The request is deleted.`
+      : `Deactivate ${user?.username}? They can no longer sign in, but their chats and queries are kept.`;
+    if (!user || !confirm(question)) {
       return;
     }
     setBusy(true);
@@ -122,6 +128,13 @@ export default function UserForm({ users, user, onDone }: Props) {
           {creating ? "New user" : user.username}
         </h4>
       </header>
+      {pending ? (
+        <p className="m-0 rounded-lg border border-[var(--line)] bg-[var(--panel-2)] px-3 py-2 text-xs text-[var(--muted)]">
+          Signed up {user.invited_by ? `with ${user.invited_by}'s invite` : "on the sign-up page"}
+          {user.signup_address ? ` from ${user.signup_address}` : ""} — waiting for your approval. Check the details and
+          modules, then approve or reject.
+        </p>
+      ) : null}
 
       {user ? (
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 rounded-xl border border-[var(--line)] px-4 py-2.5 text-xs text-[var(--muted)]">
@@ -169,7 +182,7 @@ export default function UserForm({ users, user, onDone }: Props) {
               <option value="admin">Admin</option>
             </select>
           </label>
-          {creating ? null : (
+          {creating || pending ? null : (
             <label className={label}>
               Status
               <select className={field} value={status} onChange={(e) => setStatus(e.target.value as UserStatus)}>
@@ -264,7 +277,7 @@ export default function UserForm({ users, user, onDone }: Props) {
       <div className="flex items-center justify-between gap-3">
         {user ? (
           <button type="button" className="btn ghost sm" onClick={deactivate} disabled={busy || user.status === "disabled"}>
-            {user.status === "disabled" ? "Already disabled" : "Deactivate"}
+            {pending ? "Reject" : user.status === "disabled" ? "Already disabled" : "Deactivate"}
           </button>
         ) : (
           <span />
@@ -273,9 +286,14 @@ export default function UserForm({ users, user, onDone }: Props) {
           <button type="button" className="btn ghost sm" onClick={onDone} disabled={busy}>
             Cancel
           </button>
-          <button type="submit" className="btn primary sm" disabled={busy}>
+          <button type="submit" className={`btn sm ${pending ? "ghost" : "primary"}`} disabled={busy}>
             {busy ? "Saving…" : creating ? "Create user" : "Save"}
           </button>
+          {pending ? (
+            <button type="button" className="btn primary sm" disabled={busy} onClick={(e) => void save(e, true)}>
+              Approve
+            </button>
+          ) : null}
         </div>
       </div>
     </form>
