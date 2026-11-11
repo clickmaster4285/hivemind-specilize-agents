@@ -390,9 +390,34 @@ and encrypting a token JS cannot read adds nothing — S5 starts when the app fi
         overwrites the header with the socket address. Every failed sign-in is logged (INFO) with account and
         address. The cross-site write check became plain ASGI too: a `@app.middleware` turned the body
         cap's 413 into a 400
-- [ ] **S2b unlock + CAPTCHA (next after S2, user 2026-11-11):** an admin "unlock now" button on the user form
-      (until then a lock ends by itself after 15 min); a CAPTCHA on the login page after repeated failures —
-      must be self-hosted (no outside service; the app runs on the LAN). Concrete design proposed before building
+- [ ] **S2b unlock + CAPTCHA (ISSUES_LOG O39) — plan proposed 2026-11-11, waiting for the user's approval:**
+      - **Why both:** after S2 a lock can only run out (15 min), and 10 wrong passwords lock *any* account, so
+        someone can lock a colleague out on purpose. A CAPTCHA before that point makes each further try need a
+        person; the unlock button undoes a lock at once
+      - **Unlock (admin):** Settings → Users shows a "locked" badge on a locked account (until when, how many
+        failures) and an **Unlock now** button in its form; a **Blocked computers** list (address, until when)
+        with Unlock. Unlock deletes that key's rows in `login_failures`. Routes: `GET /api/auth/users/locks`,
+        `DELETE /api/auth/users/{id}/lock`, `DELETE /api/auth/users/locks/address/{address}`. Each unlock is
+        logged (who, what) for S6
+      - **CAPTCHA kind — image text, drawn by the API with Pillow** (already installed; its own font, no
+        files): 6 characters from an alphabet without look-alikes (no 0/O, 1/I/l), each turned and shifted,
+        with noise lines and dots; the answer is not case-sensitive. "New image" button. Nothing leaves the LAN
+      - **Not chosen:** proof-of-work CAPTCHAs (Altcha, mCaptcha, Friendly Captcha): the browser's
+        `crypto.subtle` exists only on https or localhost pages, not on the plain-http LAN address, and they
+        cost a script CPU time, not a person — S2 already limits the rate. Google reCAPTCHA / hCaptcha /
+        Cloudflare Turnstile: outside services (send visitors' data out, need internet)
+      - **When it is asked:** **sign-up always**; **login after 3 failures** (account or address, within the
+        15-min window) — before the S2 back-off starts at 5, so a normal typo or two never sees it
+      - **How it works:** `GET /api/auth/captcha` → `{id, image}` (a PNG as a data URL). The answer is kept in
+        memory (one API process) for 5 min and can be checked **once** (right or wrong, then it is gone); at most
+        a fixed number open at a time (oldest dropped), so it cannot fill memory. Login / sign-up send
+        `captcha_id` + `captcha_answer`. A login that needs one and lacks it (or has it wrong) → 400 with
+        `captcha_required: true`; the password is not checked and the try is not counted
+      - **Frontend:** a small `Captcha` part in the login card (image, answer box, New image), shown when the
+        API asks for it, always in the sign-up form
+      - **Tests (offline):** an answer works once and runs out; login asks after 3 failures; sign-up refuses
+        without one; unlock clears an account and an address; members cannot unlock
+      - **Numbers to approve:** 6 characters, valid 5 min, login CAPTCHA from the 3rd failure
 - [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with
       Pillow (drops hidden payloads and metadata, pixel limit against decompression bombs), virus scan (ClamAV)
       on uploaded files; skill uploads size-capped
