@@ -182,6 +182,7 @@ def run_chat(
     job_id: str | None = None,
     about: bool = False,
     web_search: bool = False,
+    web_news: bool = False,
     deep: bool = False,
     options: bool = False,
     should_continue: Callable[[], bool] | None = None,
@@ -190,6 +191,7 @@ def run_chat(
 ) -> ChatResult:
     """about=True: a question about MulteAgent itself, answered from live facts with no brain search.
     web_search=True: the user asked to search the internet — SearXNG + the top pages (src/web_search.py).
+    web_news=True: a question about recent events — the search takes SearXNG's news results first.
 
     The answer streams into src/live.py (shown in the browser as it is written); the Stop button
     (live.stop / should_continue) ends the model call mid-answer and keeps what was written so far.
@@ -333,6 +335,7 @@ def run_chat(
                     on_progress, {"type": "status", "agent_id": "assistant", "message": message}
                 ),
                 conversation_block=prior,
+                news=web_news,
             )
             output = text
             role = "Web search"

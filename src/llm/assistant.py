@@ -71,10 +71,14 @@ TOOLS: tuple[Tool, ...] = (
          "factual, technical or how-to questions where citing current, authoritative sources makes the answer "
          "trustworthy — e.g. 'how to configure a firewall', 'best practices for securing nginx', 'compare X vs Y', "
          "specs, security guidance — and for anything recent (news, prices, releases, today's events) or that may "
-         "be newer than your training (a product or game you know only as upcoming). Not for "
+         "have changed since your training (people or companies in the news, a product, game or version you know "
+         "only as upcoming). Not for "
          "greetings, opinions, or creative writing, and not when the user wants the result as a file "
          "(create_document).",
-         {"query": "search words"}, ("query",), lambda c: bool(c.web_search_url)),
+         {"query": "search words",
+          "news": "'yes' when the question is about news or recent events (something that happened in the last "
+                  "days, weeks or months — a scandal, an announcement, a launch, an election); empty otherwise"},
+         ("query",), lambda c: bool(c.web_search_url)),
     Tool("get_weather", "weather", "Current weather and a 3-day forecast for a place.",
          {"place": "city name; empty = the user's own city"}),
     Tool("network_scan", "network_scan",
@@ -203,14 +207,20 @@ TOOLS: tuple[Tool, ...] = (
 )
 BY_NAME = {t.name: t for t in TOOLS}
 
+
+def wants_news(args: dict[str, Any]) -> bool:
+    """web_search's `news` argument (the schema asks for 'yes'): search the news too (ISSUES_LOG O47)."""
+    return str(args.get("news") or "").strip().lower() == "yes"
+
 SYSTEM = """{identity}
 
 Current date and time: {now}.
 
 You do NOT know by heart: what your knowledge base contains, today's facts (weather, prices, news),
-or the local network. Nor anything newer than your training: a game, phone, software version or event
-you know only as upcoming or expected may be out by now (compare with the date above), so search before
-giving its facts or numbers. For those, call the tool. For a substantive factual, technical or how-to question,
+or the local network. Nor anything that may have changed since your training: news and events, people
+and companies in the news, products, games and software (versions, release dates, sizes, prices), laws,
+rankings and statistics. If your answer would rest on such a fact, or you know the thing only as upcoming
+or expected (compare with the date above), call web_search first. For those, call the tool. For a substantive factual, technical or how-to question,
 prefer to cite sources rather than answer from memory: use search_knowledge_base when it is about your
 knowledge-base documents, otherwise web_search (it answers with source links). Use a tool also for an
 action (network scan), a file, a picture or a diagram: when the user asks for a diagram, flowchart or

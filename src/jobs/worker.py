@@ -21,7 +21,7 @@ from src.servers.server_ops import run_server_diagnose, run_server_operate
 from src.servers.host_check import run_host_check
 from src.servers.netdev import run_network_device
 from src.servers.nvr import run_nvr_cameras
-from src.llm.assistant import decide, speaker
+from src.llm.assistant import decide, speaker, wants_news
 from src.llm.skills import Skill
 from src.llm.skills import apply as apply_skill
 from src.llm.skills import for_job as skill_for_job
@@ -352,6 +352,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                 job_id=job_id,
                 about=intent == "about",
                 web_search=intent == "web_search",
+                web_news=intent == "web_search" and wants_news(tool_args),
                 specialist=specialist,
                 refine=refine,
             )

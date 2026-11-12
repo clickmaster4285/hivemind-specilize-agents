@@ -153,6 +153,13 @@ interval has passed (fetch → extract → chunk → embed; unchanged pages are 
 
 Only when asked. Local SearXNG (`127.0.0.1:8888`) → the top pages are read → an answer with links.
 
+**News questions** (O47): the model calls `web_search` with `news: "yes"` when the question is about recent
+events. The search then takes SearXNG's general and news results in turn: the general ones bring the big
+outlets, which are often paywalled or refuse page readers (only their snippet is used); the news ones bring
+smaller outlets that can be read and carry the facts. If the news engines fail (often: on 2026-11-12 only
+Bing News answered; Google News, Brave News and Reuters did not), the general results answer alone. A
+question sent to web search by the phrase nudge (`pre_route`) has no `news` flag and gets general results.
+
 ### C) Images — `src/images/image_client.py` → image service (`src/images/image_service.py`)
 
 The API itself never loads torch. It starts the separate **image service** (SDXL) on the first image

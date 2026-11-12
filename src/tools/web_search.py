@@ -15,6 +15,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from itertools import zip_longest
 from urllib.parse import urlsplit
 
 import requests
@@ -72,20 +73,35 @@ class Passage:
     text: str
 
 
-def search(query: str, config: Config) -> list[Hit]:
-    if not config.web_search_url:
-        raise WebSearchError("web search is not set up (WEB_SEARCH_URL in .env)")
+def _results(query: str, config: Config, category: str | None = None) -> list[dict]:
+    """SearXNG's raw results; category None = its default (general) results."""
+    params = {"q": query, "format": "json", "safesearch": 1} | ({"categories": category} if category else {})
     try:
-        resp = requests.get(f"{config.web_search_url}/search",
-                            params={"q": query, "format": "json", "safesearch": 1}, timeout=SEARCH_TIMEOUT)
+        resp = requests.get(f"{config.web_search_url}/search", params=params, timeout=SEARCH_TIMEOUT)
         resp.raise_for_status()
-        data = resp.json()
+        return resp.json().get("results") or []
     except requests.ConnectionError as exc:
         raise WebSearchError("the web search service is not running (docker compose up -d searxng)") from exc
     except (requests.RequestException, ValueError) as exc:
         raise WebSearchError(f"web search failed: {exc}") from exc
+
+
+def search(query: str, config: Config, *, news: bool = False) -> list[Hit]:
+    """news=True (a question about recent events): the general and the news results taken in turn. The general
+    ones bring the big outlets, which are often paywalled or refuse page readers (then only their snippet is
+    used); the news ones smaller outlets that can be read and carry the facts (compared live, ISSUES_LOG O47)."""
+    if not config.web_search_url:
+        raise WebSearchError("web search is not set up (WEB_SEARCH_URL in .env)")
+    results = _results(query, config)
+    if news:
+        try:
+            fresh = _results(query, config, "news")
+        except WebSearchError as exc:                # the news engines fail often; general results still answer
+            logger.info("news search failed, general results only: %s", exc)
+            fresh = []
+        results = [r for pair in zip_longest(results, fresh) for r in pair if r is not None]
     hits, seen = [], set()
-    for r in data.get("results") or []:
+    for r in results:
         url = str(r.get("url") or "")
         if not url.startswith(("http://", "https://")) or url in seen:
             continue
@@ -183,11 +199,12 @@ def answer_from_web(
     now: str,
     status: Callable[[str], None] = lambda message: None,
     conversation_block: str = "",
+    news: bool = False,
 ) -> tuple[str, list[dict]]:
-    """→ (answer with [n] citations, sources for the UI)."""
+    """→ (answer with [n] citations, sources for the UI). news=True: news results too (see search)."""
     t0 = time.perf_counter()
-    status("Searching the web…")
-    hits = search(question, config)
+    status("Searching the news…" if news else "Searching the web…")
+    hits = search(question, config, news=news)
     t_search = time.perf_counter()
     if not hits:
         return "The web search found nothing for this question. Try other words.", []

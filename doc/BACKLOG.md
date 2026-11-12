@@ -36,7 +36,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
 | [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
 | [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
-| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user) |
+| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 weak web answer |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
@@ -535,6 +535,16 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
       says a game, product or release the model knows only as upcoming may be out (search first); `MATH_RULE`
       (`src/llm/diagram_rules.py`) forbids LaTeX in the direct and web answers; the message is an eval case.
       Left: the eval rerun; the user decides on a `calculate` tool for arithmetic
+- [ ] **Weak web answer (O47):** a news question (Jensen Huang) got the right tool but a thin answer. Fix per problem:
+  - [x] News questions search news too (3) — done 2026-11-12: the model sets web_search's `news`; general and news
+        results taken in turn ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)
+  - [ ] No talk of its own mechanics (1): WEB_SYSTEM speaks of "sources", says nothing about "passages"
+        or the search, no closing note about the sources
+  - [ ] Allegations attributed (4): a claim about a real person says who reports it ("according to …")
+  - [ ] Substance (2): read more of each page or more pages, within a measured time limit (user decides: slower)
+  - [ ] Honest dates (5): the page's published date when the search gives one, otherwise no date (not the fetch date)
+  - [ ] Title once (6): the UI hides a section heading that repeats the title
+  - [ ] Chat title follows the topic (7): retitle when the topic changes (to discuss)
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)
 

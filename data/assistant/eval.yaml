@@ -33,6 +33,9 @@ cases:
     tool: [search_knowledge_base, web_search]
   - text: "how much time it will take to download gta 6 , on a 100mb/s pkg"   # real chat, answered from memory (O46)
     tool: web_search
+  - text: "tell me about the controvery of jensen huang and chiness spy ?"   # real chat, news after training (O46, O47)
+    tool: web_search
+    expect: {news: "yes"}
   - text: "What's the weather in Lahore this week?"
     tool: get_weather
     expect: {place: "Lahore"}
