@@ -34,6 +34,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 EVAL_FILE = ROOT / "data" / "assistant" / "eval.yaml"
+# a missed case shows the start of the model's own reply: enough to tell "asked in prose" from
+# "answered from memory", short enough to keep one miss on two lines
+REPLY_PREVIEW_CHARS = 160
 
 
 @dataclass(frozen=True)
@@ -60,14 +63,16 @@ MARKET_ARG = ("two-letter country code of the market the user named (PK for Paki
 TOOLS: tuple[Tool, ...] = (
     Tool("search_knowledge_base", "kb",
          "Search MulteAgent's own trusted documents ({sources}) and answer with citations. Use when the question "
-         "is specifically about those documents' topics.",
+         "is specifically about those documents' topics. Not for the latest version, release or news of "
+         "something — the documents are a snapshot; use web_search for those.",
          {"query": "the question"}, ("query",), lambda c: c.brain_enabled),
     Tool("web_search", "web_search",
          "Search the internet and answer WITH SOURCE LINKS. Prefer this over your own memory for substantive "
          "factual, technical or how-to questions where citing current, authoritative sources makes the answer "
          "trustworthy — e.g. 'how to configure a firewall', 'best practices for securing nginx', 'compare X vs Y', "
          "specs, security guidance — and for anything recent (news, prices, releases, today's events). Not for "
-         "greetings, opinions, or creative writing.",
+         "greetings, opinions, or creative writing, and not when the user wants the result as a file "
+         "(create_document).",
          {"query": "search words"}, ("query",), lambda c: bool(c.web_search_url)),
     Tool("get_weather", "weather", "Current weather and a 3-day forecast for a place.",
          {"place": "city name; empty = the user's own city"}),
@@ -84,7 +89,9 @@ TOOLS: tuple[Tool, ...] = (
          "Actually check security now: open ports and the services/versions behind them, HTTPS certificates, "
          "risky services (RDP, Telnet, databases, SMB), and for this PC its Windows Firewall, Remote Desktop and "
          "SMBv1. Returns findings with risk and fixes. Use for 'is this PC/server secure', 'which ports are open "
-         "on X', 'find risky ports' — not for just listing devices (network_scan).",
+         "on X', 'find risky ports' — not for just listing devices (network_scan), and not for the user's own "
+         "Linux server ('my server', 'my web server', a server from Settings → Devices): server_audit logs in "
+         "and checks its firewall from the inside.",
          {"target": "an IP (192.168.1.10), a network (192.168.1.0/24), 'this pc', or empty = the whole local network"},
          (), lambda c: c.security_scan_enabled),
     Tool("server_audit", "server_audit",
@@ -175,7 +182,8 @@ TOOLS: tuple[Tool, ...] = (
           "market": MARKET_ARG}, ("request",)),
     Tool("create_document", "doc_gen",
          "Create a downloadable Word, PDF, PowerPoint or Excel file for the user to save on their own computer. "
-         "This is NOT for creating files on a server — to create or write a file on a Linux server, use "
+         "Use whenever the user asks for the result as a file (a PDF, a spreadsheet, 'into Excel', a deck), even "
+         "when its content needs facts or prices — the file is made with them. This is NOT for creating files on a server — to create or write a file on a Linux server, use "
          "operate_server instead.",
          {"format": "docx, pdf, pptx, xlsx, html, md or txt", "request": "what the file should contain",
           "source": "'previous_answer' when the user wants an answer already given in this chat turned into the "
@@ -202,8 +210,10 @@ You do NOT know by heart: what your knowledge base contains, today's facts (weat
 or the local network. For those, call the tool. For a substantive factual, technical or how-to question,
 prefer to cite sources rather than answer from memory: use search_knowledge_base when it is about your
 knowledge-base documents, otherwise web_search (it answers with source links). Use a tool also for an
-action (network scan), a file, a picture or a diagram. Keep greetings, chit-chat, opinions and creative
-writing direct (no tool).
+action (network scan), a file, a picture or a diagram: when the user asks for a diagram, flowchart or
+schematic itself, call draw_diagram. Keep greetings, chit-chat, opinions and short creative writing
+(a story, a poem, a few slogans) direct (no tool); a full blog post, article or other marketing piece
+goes to write_content.
 Never say you ran a command, created or changed a file, or did anything on a server, computer or network
 unless a tool actually did it and returned a result. If you do not have the tool for what is asked, say so
 plainly and what the user should do — do not pretend to have done it or invent command output.
@@ -212,8 +222,8 @@ story → write it), reply in the user's language (English or Hinglish), never p
 in the answer, and never output TOOL lines or XML tags.
 Match the answer's depth to the question. For a substantive or how-to question, structure it for clarity:
 short headings, bullet or numbered steps, a Markdown table for comparisons or structured data, and a
-Mermaid diagram (a ```mermaid fenced code block) for an architecture, flow, process or hierarchy — use
-each only where it genuinely helps. A simple question gets a sentence or two. Never force a table or
+Mermaid diagram (a ```mermaid fenced code block) to illustrate an architecture, flow, process or
+hierarchy inside an answer — use each only where it genuinely helps. A simple question gets a sentence or two. Never force a table or
 diagram where plain prose is clearer.
 To denote a component, status or step lightly, use a relevant emoji inline — 🖥️ server, 🗄️ database,
 📁 file, ⚙️ process, 🌐 network, 🔒 security, 📦 package, ✅/⚠️/❌ status, → flow. Prefer a few apt icons
@@ -396,6 +406,23 @@ def _should_web_search(query: str, config: Config, specialist: "Specialist | Non
     return bool(_WEB_Q.match(q) or _WEB_KW.search(q))
 
 
+def pre_route(query: str, config: Config, specialist: Specialist | None, *,
+              clarify_ok: bool = True) -> Decision | None:
+    """The checks that run before the model sees the tools; None = let the model choose.
+    decide() and evaluate() share it, so the eval measures the path real chats take."""
+    if _should_web_search(query, config, specialist):
+        logger.info("assistant: routing a factual question to web_search (nudge)")
+        return Decision(False, "web_search", "web_search", {"query": query})
+    # A decision/recommendation/setup request that's under-specified: ask multiple-choice questions first
+    # (the model is unreliable at calling a tool for this, so a dedicated call makes the choices reliably).
+    if clarify_ok and _might_need_clarify(query):
+        questions = _ask_clarifying(query, config, config.model_fast or config.llm_model)
+        if questions:
+            logger.info("assistant: asking %d clarifying questions", len(questions))
+            return Decision(False, "clarify", "ask_clarification", {"questions": questions})
+    return None
+
+
 def decide(
     query: str,
     *,
@@ -420,17 +447,9 @@ def decide(
     started = time.perf_counter()
     opened = {"done": False}
 
-    if _should_web_search(query, config, specialist):
-        logger.info("assistant: routing a factual question to web_search (nudge)")
-        return Decision(False, "web_search", "web_search", {"query": query})
-
-    # A decision/recommendation/setup request that's under-specified: ask multiple-choice questions first
-    # (the model is unreliable at calling a tool for this, so a dedicated call makes the choices reliably).
-    if clarify_ok and _might_need_clarify(query):
-        questions = _ask_clarifying(query, config, model)
-        if questions:
-            logger.info("assistant: asking %d clarifying questions", len(questions))
-            return Decision(False, "clarify", "ask_clarification", {"questions": questions})
+    routed = pre_route(query, config, specialist, clarify_ok=clarify_ok)
+    if routed is not None:
+        return routed
 
     def on_delta(text: str) -> None:
         if not opened["done"]:                      # the bubble appears with the first word
@@ -528,11 +547,16 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
         skill = built_in.get(case.get("skill", ""))
         if skill is not None:
             sp = skills.apply(skill, next((c for c in choices if c.id == skill.specialist), sp))
-        _, calls = client.chat_tools(messages=messages_for(case["text"], config, None, model, sp),
-                                     tools=tool_schemas(config, sp.tools if sp else None), model=model,
-                                     temperature=0.0)
-        got = calls[0]["name"] if calls else None
-        rows.append({**case, "got": got, "specialist": sp.id if sp else None, "args": calls[0]["arguments"] if calls else {},
+        routed = pre_route(case["text"], config, sp)
+        if routed is not None:
+            got, args, reply = routed.tool, routed.args, ""
+        else:
+            reply, calls = client.chat_tools(messages=messages_for(case["text"], config, None, model, sp),
+                                             tools=tool_schemas(config, sp.tools if sp else None), model=model,
+                                             temperature=0.0)
+            got, args = (calls[0]["name"], calls[0]["arguments"]) if calls else (None, {})
+        rows.append({**case, "got": got, "specialist": sp.id if sp else None, "args": args,
+                     "pre_routed": routed is not None, "reply": (reply or "").strip(),
                      "seconds": round(time.perf_counter() - t, 1)})
     for r in rows:
         allowed = r.get("tool")
@@ -556,7 +580,9 @@ def main(argv: list[str] | None = None) -> int:
     for r in result["rows"]:
         if not r["ok"]:
             print(f"  want {r.get('tool')!s:22} got {r['got']!s:22} | {r['text'][:70]}"
-                  + (f" | want {r['expect']} got {r['args']}" if r.get("expect") else ""))
+                  + (f" | want {r['expect']} got {r['args']}" if r.get("expect") else "")
+                  + (" | pre-routed" if r["pre_routed"] else "")
+                  + (f"\n      replied: {' '.join(r['reply'].split())[:REPLY_PREVIEW_CHARS]}" if r["reply"] else ""))
     return 0
 
 

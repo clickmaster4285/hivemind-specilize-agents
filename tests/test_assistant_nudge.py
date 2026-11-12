@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.llm.assistant import _should_web_search
+from src.llm.assistant import _should_web_search, pre_route
 
 CFG = SimpleNamespace(web_search_url="http://127.0.0.1:8888")
 
@@ -53,3 +53,14 @@ def test_off_when_searxng_not_configured():
 def test_off_when_specialist_lacks_the_tool():
     sp = SimpleNamespace(tools=["search_knowledge_base"])
     assert _should_web_search("how to configure a firewall from scratch", CFG, sp) is False
+
+
+def test_pre_route_sends_a_factual_question_to_web_search():
+    # decide() and the eval share pre_route, so the eval scores this path as real chats take it (O44)
+    routed = pre_route(FACTUAL[0], CFG, None)
+    assert (routed.tool, routed.intent, routed.args) == ("web_search", "web_search", {"query": FACTUAL[0]})
+
+
+def test_pre_route_leaves_other_messages_to_the_model():
+    # clarify_ok=False: no clarify call (that one would need the model); DIRECT has no web question
+    assert all(pre_route(q, CFG, None, clarify_ok=False) is None for q in DIRECT)

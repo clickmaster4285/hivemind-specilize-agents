@@ -265,6 +265,25 @@ the skill export).
 **Answers** (`frontend/src/components/answer/MarkdownBody.tsx`): `urlTransform` is react-markdown's own filter
 (it drops `javascript:`, `data:` …) minus the chat schemes `irc:` / `xmpp:` it would let through.
 
+**Checking it** (after a restart; results seen 2026-11-11):
+
+1. **Headers are there:** `curl -sI http://localhost:3000/` and `curl -sI http://localhost:3000/api/auth/me`. The
+   page shows the CSP + 4 headers; the API reply its own CSP (`default-src 'none' … sandbox`) + 3 headers.
+2. **No violations in normal use:** F12 → Console while using chat, diagrams, Download PNG, settings, login.
+   A blocked thing shows as a red "Refused to …" line. The goal is none.
+3. **An injected script does not run:** in the Console on the app run
+   `document.body.insertAdjacentHTML('beforeend', '<img src=x onerror="alert(1)">')`. No alert, and a red
+   line "Executing inline event handler violates … script-src". (On a page with no policy the alert shows.)
+4. **No framing:** a local HTML file with `<iframe src="http://192.168.88.36:3000/">` stays empty; the
+   Console says "violates … frame-ancestors 'none'".
+5. **Policy quality:** paste the CSP value from step 1 into Google's CSP Evaluator. Expected: the script
+   rules pass (nonce + `strict-dynamic`); `style-src 'unsafe-inline'` is flagged, an accepted limit (Part 4).
+6. **A scanner:** OWASP ZAP baseline (passive, changes nothing):
+   `docker run --rm --network host ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://192.168.88.36:3000`.
+   It counts PASS / WARN / FAIL. Write the counts here to compare later scans against.
+
+The per-request cost is in `logs/ui.log` (`proxy.ts: 4ms` on each page).
+
 ### 2.8 Files
 
 | Part | File |
