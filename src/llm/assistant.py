@@ -26,7 +26,7 @@ import yaml
 from src.jobs import live
 from src.core.config import ROOT, Config
 from src.core.conversation import split_summary
-from src.llm.diagram_rules import DIAGRAM_RULES, NETDIAGRAM_RULES
+from src.llm.diagram_rules import DIAGRAM_RULES, MATH_RULE, NETDIAGRAM_RULES
 
 if TYPE_CHECKING:
     from src.llm.specialists import Specialist
@@ -70,7 +70,8 @@ TOOLS: tuple[Tool, ...] = (
          "Search the internet and answer WITH SOURCE LINKS. Prefer this over your own memory for substantive "
          "factual, technical or how-to questions where citing current, authoritative sources makes the answer "
          "trustworthy — e.g. 'how to configure a firewall', 'best practices for securing nginx', 'compare X vs Y', "
-         "specs, security guidance — and for anything recent (news, prices, releases, today's events). Not for "
+         "specs, security guidance — and for anything recent (news, prices, releases, today's events) or that may "
+         "be newer than your training (a product or game you know only as upcoming). Not for "
          "greetings, opinions, or creative writing, and not when the user wants the result as a file "
          "(create_document).",
          {"query": "search words"}, ("query",), lambda c: bool(c.web_search_url)),
@@ -207,7 +208,9 @@ SYSTEM = """{identity}
 Current date and time: {now}.
 
 You do NOT know by heart: what your knowledge base contains, today's facts (weather, prices, news),
-or the local network. For those, call the tool. For a substantive factual, technical or how-to question,
+or the local network. Nor anything newer than your training: a game, phone, software version or event
+you know only as upcoming or expected may be out by now (compare with the date above), so search before
+giving its facts or numbers. For those, call the tool. For a substantive factual, technical or how-to question,
 prefer to cite sources rather than answer from memory: use search_knowledge_base when it is about your
 knowledge-base documents, otherwise web_search (it answers with source links). Use a tool also for an
 action (network scan), a file, a picture or a diagram: when the user asks for a diagram, flowchart or
@@ -228,7 +231,7 @@ diagram where plain prose is clearer.
 To denote a component, status or step lightly, use a relevant emoji inline — 🖥️ server, 🗄️ database,
 📁 file, ⚙️ process, 🌐 network, 🔒 security, 📦 package, ✅/⚠️/❌ status, → flow. Prefer a few apt icons
 over a diagram when a diagram would be overkill.
-""" + DIAGRAM_RULES
+""" + MATH_RULE + "\n" + DIAGRAM_RULES
 
 _sources_cache: dict[str, Any] = {"at": 0.0, "text": ""}
 _sources_lock = threading.Lock()

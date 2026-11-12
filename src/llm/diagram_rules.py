@@ -11,6 +11,10 @@ The text contains no ``{`` / ``}`` so it is safe to concatenate into a ``str.for
 
 from __future__ import annotations
 
+# The chat renders Markdown without a math extension, so LaTeX shows as raw `$ \frac{…} $` (ISSUES_LOG O46).
+MATH_RULE = """Write formulas and calculations as plain text with ordinary symbols (2 GB × 8 = 16 Gb, 16 Gb ÷ 4 Gb/s
+= 4 s), never LaTeX (no $…$, \\frac or \\text): the chat cannot display it."""
+
 DIAGRAM_RULES = """When you DO draw a Mermaid diagram, keep it SIMPLE and VALID — a broken or cluttered diagram is worse
 than none:
 - Small: at most ~7 nodes, one direction (`flowchart LR` or `flowchart TD`). No legend box, no

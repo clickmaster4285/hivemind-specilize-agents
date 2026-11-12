@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 import requests
 
 from src.core.config import Config
-from src.llm.diagram_rules import DIAGRAM_RULES, NETDIAGRAM_RULES
+from src.llm.diagram_rules import DIAGRAM_RULES, MATH_RULE, NETDIAGRAM_RULES
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,8 @@ Rules:
 - When the question is about how something works, the parts of something, an architecture, a process or a
   data flow, INCLUDE a small Mermaid diagram (a ```mermaid fenced block) — it is the clearest way to show
   structure, and it is grounded in the cited passages. Skip it only for a plain fact or an unstructured
-  list.""" + "\n\n" + DIAGRAM_RULES
+  list.
+- """ + MATH_RULE + "\n\n" + DIAGRAM_RULES
 
 
 class WebSearchError(RuntimeError):

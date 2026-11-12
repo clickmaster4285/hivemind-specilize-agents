@@ -31,6 +31,8 @@ cases:
     tool: web_search
   - text: "How do I configure a VLAN on a MikroTik router? Give me the steps with sources"
     tool: [search_knowledge_base, web_search]
+  - text: "how much time it will take to download gta 6 , on a 100mb/s pkg"   # real chat, answered from memory (O46)
+    tool: web_search
   - text: "What's the weather in Lahore this week?"
     tool: get_weather
     expect: {place: "Lahore"}
