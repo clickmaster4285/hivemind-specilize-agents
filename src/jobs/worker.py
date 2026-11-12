@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from typing import Any
 
 from src.agentic.runtime import run_agentic
@@ -138,8 +139,24 @@ def process_job(job_id: str, config: Config | None = None) -> None:
         payload = json.loads(job.payload_json or "{}")
         model_plan = json.loads(job.model_plan_json or "{}")
 
+    started = time.monotonic()
     with job_usage(job_id, user_id):          # every model call of this job is counted (BACKLOG L11)
         _run_job(job_id, config, mode=mode, query=query, user_id=user_id, payload=payload, model_plan=model_plan)
+    _log_timing(config, job_id, mode, time.monotonic() - started)
+
+
+def _log_timing(config: Config, job_id: str, mode: str, seconds: float) -> None:
+    """One `job_timing` line per job, on every path (ISSUES_LOG O48): the wall time, then the model time per step
+    from the usage rows. Steps can run side by side (the extras after an answer), so their sum may exceed the
+    total; the time not in any step is the tool's own work (searching, reading pages, scanning …)."""
+    try:
+        with session_scope(config) as session:
+            totals = job_totals(session, job_id)
+    except Exception as exc:  # noqa: BLE001 — a log line is never a reason to fail a job
+        log.debug("job timing not read: %s", exc)
+        totals = None
+    steps = ", ".join(f"{s['step']} {s['seconds']}s" for s in totals["steps"]) if totals else "none"
+    log.info("job_timing job=%s mode=%s total=%.1fs model steps: %s", job_id, mode, seconds, steps)
 
 
 def _append_usage(session, job_id: str) -> None:

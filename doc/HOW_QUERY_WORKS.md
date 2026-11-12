@@ -174,6 +174,21 @@ No tool needed: the model's direct answer from step 5. With attached images → 
 
 ---
 
+### Where the time went (O48)
+
+Every job writes one line to `logs/api.log` when it ends, whatever path it took:
+
+```
+job_timing job=<id> mode=chat total=41.2s model steps: assistant 3.1s, chat_runner 25.2s, suggestions 4.0s
+```
+
+`total` is the wall time; each step is the model time of one part of the app (from the `llm_usage` rows the
+UI also sums). The extras after an answer run side by side, so the steps can add up to more than the total.
+Time in no step is the tool's own work. A web search adds its own split just before it:
+`web_timing search=… read=… synth=…` (SearXNG, reading the pages, the model writing). Find them with
+`grep job_timing logs/api.log`. The API and UI logs are kept across restarts (`start.sh` appends; a log over
+20 MB becomes `api.log.1` at the next start).
+
 ## Layer 7 — Shared pieces
 
 | Piece | File | Role |

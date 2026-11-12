@@ -35,6 +35,9 @@ POLL_SECONDS=2
 STOP_WAIT_SECONDS=15
 # compose prints one line per service plus the error itself; this many lines show the cause without the pull progress
 COMPOSE_ERROR_LINES=5
+# the API and UI logs are appended across restarts; at a start, one bigger than this is moved to <name>.log.1
+# (one old file kept): room for many days of chats, still small enough to open in an editor
+LOG_ROTATE_BYTES=$((20 * 1024 * 1024))
 # --follow first shows this many recent lines per part, so what is happening has some context
 FOLLOW_CONTEXT_LINES=5
 # --follow parts and their tag colours (ANSI): one colour per kind — host processes, containers, the model
@@ -76,8 +79,12 @@ wait_until() {  # wait_until <seconds> <what> <command...>
 # Start a command in its own process group so --stop can end it with all its children (npm -> next -> node)
 start_bg() {  # start_bg <name> <dir> <command...>
     local name="$1" dir="$2"; shift 2
+    local log="$LOGS/$name.log"
     mkdir -p "$LOGS"
-    (cd "$dir" && setsid nohup "$@" >"$LOGS/$name.log" 2>&1 & echo $! >"$LOGS/$name.pid")
+    # appended, so a restart keeps the earlier lines (ISSUES_LOG O48); a big log becomes <name>.log.1 first
+    if [[ -f "$log" ]] && (( $(stat -c %s "$log") > LOG_ROTATE_BYTES )); then mv -f "$log" "$log.1"; fi
+    printf '\n===== %s  %s started =====\n' "$(date '+%F %T')" "$name" >>"$log"
+    (cd "$dir" && setsid nohup "$@" >>"$log" 2>&1 & echo $! >"$LOGS/$name.pid")
 }
 
 # ── stopping (ISSUES_LOG O40): found by port, not only by PID file ───────────────────────────────────
