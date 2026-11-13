@@ -153,6 +153,10 @@ class Config:
     # Follow-up suggestions: clickable "ask this next" chips under each substantive answer
     suggestions_enabled: bool = True
     suggestions_count: int = 3
+    # Prompt filter (src/llm/prompt_filter.py, BACKLOG L16 S8): secrets masked, oversize refused, optional model check
+    prompt_filter_enabled: bool = True
+    prompt_filter_llm: bool = False
+    prompt_filter_max_chars: int = 100_000
     # Quiz: a short multiple-choice self-check under educational answers
     quiz_enabled: bool = True
     quiz_count: int = 4
@@ -281,6 +285,9 @@ class Config:
             suggestions_enabled=_bool("SUGGESTIONS_ENABLED", True),
             suggestions_count=max(2, min(5, int(os.getenv("SUGGESTIONS_COUNT", "3")))),
             quiz_enabled=_bool("QUIZ_ENABLED", True),
+            prompt_filter_enabled=_bool("PROMPT_FILTER_ENABLED", True),
+            prompt_filter_llm=_bool("PROMPT_FILTER_LLM", False),
+            prompt_filter_max_chars=max(1000, int(os.getenv("PROMPT_FILTER_MAX_CHARS", "100000"))),
             quiz_count=max(2, min(6, int(os.getenv("QUIZ_COUNT", "4")))),
             web_images_enabled=_bool("WEB_IMAGES_ENABLED", True),
             web_images_count=max(1, min(8, int(os.getenv("WEB_IMAGES_COUNT", "4")))),

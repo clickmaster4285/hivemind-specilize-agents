@@ -147,6 +147,22 @@ answer, a chat title or a file, the browser itself refuses to run it.
 - **Links in answers:** only `http(s)`, `mailto` and the app's own addresses become links. `javascript:`
   and other tricks are dropped.
 
+### 1.8 What a message may carry (S8)
+
+Every message is checked once, when you send it, before any model sees it.
+
+- **Secrets are hidden.** API keys (`sk-…`, `AKIA…`, `ghp_…`, Google, Slack), private keys, login tokens and
+  the value in `PASSWORD=…`, `api_key: …` become `[REDACTED]`. The hidden text is never saved in the chat
+  history, never reaches the model and never goes out in a web search. The name stays (`POSTGRES_PASSWORD=
+  [REDACTED]`), so the assistant still knows what was there. Earlier messages of the chat are checked again
+  when they come back with a new one.
+- **Fake turn markers are hidden.** Text such as `<|im_start|>system` could make the model think a new system
+  message starts. It is masked the same way.
+- **Very long messages are refused** (over 100,000 characters): attach them as a file.
+- **Optional model check** (off): a long pasted message is also read by the fast model, which refuses text that
+  tries to make the assistant ignore or reveal its instructions. There is no list of "attack phrases": such a
+  list refuses normal requests ("you are now my tutor") and questions about prompt injection itself.
+
 
 ## Part 2 — Technical reference
 
@@ -297,7 +313,8 @@ The per-request cost is in `logs/ui.log` (`proxy.ts: 4ms` on each page).
 | CAPTCHA | `src/core/captcha.py`, `frontend/src/components/auth/Captcha.tsx` |
 | Sign-up, invites | `src/core/signup.py`, `src/core/accounts.py`, `frontend/src/components/auth/AuthScreen.tsx`, `InvitesPanel.tsx` |
 | Admin pages | `web/routers/users.py`, `UsersSection.tsx`, `UserForm.tsx`, `BlockedComputers.tsx` |
-| Tests | `tests/test_sessions.py`, `tests/test_abuse_limits.py`, `tests/test_captcha.py`, `tests/test_signup.py`, `tests/test_security_headers.py` |
+| Message filter | `src/llm/prompt_filter.py`, called in `create_job` (`src/jobs/jobs.py`) |
+| Tests | `tests/test_prompt_filter.py`, `tests/test_sessions.py`, `tests/test_abuse_limits.py`, `tests/test_captcha.py`, `tests/test_signup.py`, `tests/test_security_headers.py` |
 
 ---
 
@@ -324,6 +341,8 @@ Every number is a named constant; changing one is a one-line edit plus an API re
 | invite 7 days | `INVITE_LIFETIME` | `src/core/signup.py` |
 | 5 sign-ups per PC per day | `SIGNUPS_PER_ADDRESS`, `SIGNUP_WINDOW` | 〃 |
 | open sign-up on by default | `OPEN_SIGNUP_DEFAULT` | 〃 |
+| message filter on, model check off, 100,000 characters | `PROMPT_FILTER_ENABLED`, `PROMPT_FILTER_LLM`, `PROMPT_FILTER_MAX_CHARS` (`.env`) | `src/core/config.py` |
+| model check from 2,000 characters, reads 6,000 | `LLM_CHECK_MIN_CHARS`, `LLM_CHECK_CHARS` | `src/llm/prompt_filter.py` |
 
 ---
 
@@ -335,6 +354,9 @@ Every number is a named constant; changing one is a one-line edit plus an API re
 - **Two Google addresses are allowed** (fonts, site icons). Each one tells Google that the app was opened, or
   which sites an answer cites. Serving the fonts from the app and dropping the icons would close that (a
   decision for you).
+- **The message filter knows secret formats, not every secret.** A password typed in plain words ("my
+  password is hunter2") is not recognised; `password=hunter2` is. A failed model check lets the message
+  through: hiding secrets and the size limit still apply.
 - **Plain http on the LAN.** Traffic, passwords included, can be read by someone sniffing the LAN (S1b decision).
 - **The CAPTCHA is a speed bump, not a wall.** Good text-recognition software could read some pictures.
   Together with the S2 limits, that is a fair trade on an office LAN. If automated tries get through, raise

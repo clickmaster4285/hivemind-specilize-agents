@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -15,8 +16,11 @@ from src.core.config import Config
 from src.core.conversation import normalize_conversation
 from src.jobs.history_store import touch_thread
 from src.llm.intent_router import classify_query
+from src.llm.prompt_filter import BLOCK, MASK, check_prompt, mask_text
 from src.llm.model_registry import force_vision_model, resolve_model_plan
 from src.core.models_db import Job, JobEvent, User
+
+log = logging.getLogger(__name__)
 
 
 ACTIVE = ("queued", "running")
@@ -131,6 +135,14 @@ def create_job(
     query_text = query.strip() or ("What's in this image?" if has_images else "")
     if not query_text:
         raise ValueError("query is required")
+    # before routing or saving, before any model sees it: secrets masked, attacks refused (BACKLOG L16 S8)
+    checked = check_prompt(query_text, config)
+    if checked.action == BLOCK:
+        log.warning("prompt filter: message from user %s refused: %s", user.id, checked.reason)
+        raise ValueError(f"Message refused: {checked.reason}.")
+    if checked.action == MASK:
+        log.info("prompt filter: user %s: %s", user.id, checked.reason)
+    query_text = checked.text
     if force_intent in {"edit", "img2img", "image_edit", "inpaint", "image_inpaint"} and not has_images:
         raise ValueError("Edit/inpaint requires an attached image.")
     if force_intent in {"vision", "describe"} and not has_images:
@@ -159,6 +171,8 @@ def create_job(
             strength=strength_f,
         )
     conversation = normalize_conversation(payload.get("conversation"))
+    # earlier turns come back from the browser as typed: masked too, as they are saved with this job
+    conversation = [{**t, "content": mask_text(t["content"])[0]} for t in conversation]
     enriched_payload = {
         **payload_clean,
         "requested_mode": requested_mode,
