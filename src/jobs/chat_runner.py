@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from src.tools.about import about_system, identity_line
 from src.llm.assistant import speaker
-from src.brain.answer import answer_question, current_time_text
+from src.brain.answer import GroundedAnswer, answer_question, current_time_text
 from src.brain.db import BrainDBError
 from src.brain.embed import EmbedError
 from src.core.config import Config
@@ -291,6 +291,18 @@ def run_chat(
             prior = f"{prior}\n\n{note}" if prior else note
         user_msg = f"{prior}\n\n## Current message\n{query}" if prior else query
         extra: dict[str, Any] = {}
+
+        def web_answer() -> tuple[str, dict[str, Any]]:
+            """SearXNG + the top pages → (answer, extra): the Web path, and a knowledge-base miss (O50)."""
+            text, sources = answer_from_web(
+                query, config, chat=chat, model=model, now=current_time_text(),
+                status=lambda message: _emit(
+                    on_progress, {"type": "status", "agent_id": "assistant", "message": message}
+                ),
+                conversation_block=prior, news=web_news, search_query=web_query,
+            )
+            return text, {"grounded": bool(sources), "sources": sources}
+
         if deep:
             from src.tools.deep_research import deep_research
 
@@ -327,34 +339,38 @@ def run_chat(
                 output = chat(system=system, user=user_msg, model=model)   # fall back to a normal answer
                 role = "Direct reply"
         elif use_web:
-            text, sources = answer_from_web(
-                query,
-                config,
-                chat=chat,
-                model=model,
-                now=current_time_text(),
-                status=lambda message: _emit(
-                    on_progress, {"type": "status", "agent_id": "assistant", "message": message}
-                ),
-                conversation_block=prior,
-                news=web_news,
-                search_query=web_query,
-            )
-            output = text
+            output, extra = web_answer()
             role = "Web search"
-            extra = {"grounded": bool(sources), "sources": sources}
         elif use_brain:
             _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Searching the knowledge base…"})
             try:
-                answer = answer_question(
-                    query, config=config, account_id=account_id, job_id=job_id, model=model,
-                    conversation=history, conversation_block=prior, chat=chat,
-                    collections=specialist.collections if specialist else None,
-                    specialist_block=specialist.prompt_block() if specialist else "",
-                )
-                output = answer.text
-                role = "Knowledge base" if answer.grounded else "General knowledge"
-                extra = {"grounded": answer.grounded, "sources": answer.sources_payload()}
+                def kb_answer(general_fallback: bool) -> GroundedAnswer:
+                    return answer_question(
+                        query, config=config, account_id=account_id, job_id=job_id, model=model,
+                        conversation=history, conversation_block=prior, chat=chat,
+                        collections=specialist.collections if specialist else None,
+                        specialist_block=specialist.prompt_block() if specialist else "",
+                        general_fallback=general_fallback,
+                    )
+
+                # a knowledge-base miss tries the web before the model's memory: news questions that reached
+                # this path were answered from memory, unsourced (ISSUES_LOG O50)
+                web_ok = bool(config.web_search_url)
+                answer = kb_answer(general_fallback=not web_ok)
+                web = None
+                if not answer.grounded and web_ok:
+                    try:
+                        web = web_answer()
+                    except WebSearchError as exc:          # search service down: the memory answer, as before
+                        log.info("knowledge-base miss, web search unavailable: %s", exc)
+                        answer = kb_answer(general_fallback=True)
+                if web is not None:
+                    output, extra = web
+                    role = "Web search"
+                else:
+                    output = answer.text
+                    role = "Knowledge base" if answer.grounded else "General knowledge"
+                    extra = {"grounded": answer.grounded, "sources": answer.sources_payload()}
                 if answer.grounded and config.verify_answers:
                     live.set_text(job_id, "assistant", output)          # the answer stays readable meanwhile
                     checked = _verify(answer, client=client, model=model, job_id=job_id,

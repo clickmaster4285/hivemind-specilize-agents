@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Callable
 from typing import Any
@@ -12,6 +13,8 @@ import requests
 from src.core.config import Config
 from src.llm.llm_lock import llm_slot
 from src.llm.usage import record_call
+
+logger = logging.getLogger(__name__)
 
 
 class LLMError(RuntimeError):
@@ -153,7 +156,7 @@ class LLMClient:
             payload["keep_alive"] = cfg.llm_keep_alive
         keep_going = should_continue or (lambda: True)
         url = f"{cfg.llm_base_url}/api/chat"
-        text, calls = "", []
+        text, calls, thought = "", [], 0
         done: dict[str, Any] | None = None
         started = time.monotonic()
         prompt_text = json.dumps(messages)
@@ -183,6 +186,7 @@ class LLMClient:
                                 except ValueError:
                                     args = {}
                             calls.append({"name": str(fn.get("name") or ""), "arguments": args or {}})
+                        thought += len(message.get("thinking") or "")
                         piece = message.get("content") or ""
                         if piece:
                             text += piece
@@ -200,6 +204,11 @@ class LLMClient:
                     f"Failed to reach local LLM at {url} (model={cfg.llm_model}). Last error: {_llm_err(exc)}."
                 ) from exc
         record_call(cfg, model=cfg.llm_model, done=done, started=started, prompt_text=prompt_text, output_text=text)
+        if not text.strip() and not calls:
+            # the caller falls back blind; record why the model stopped (ISSUES_LOG O50: 3-4 tokens, no cause)
+            done = done or {}
+            logger.warning("chat_tools: empty reply, no tool call — done_reason=%s output_tokens=%s thinking_chars=%d "
+                           "raw=%r", done.get("done_reason"), done.get("eval_count"), thought, text[:200])
         return text.strip(), calls
 
     def _chat_ollama_stream(

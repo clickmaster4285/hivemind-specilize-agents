@@ -143,7 +143,14 @@ A specialist only offers its own tools. The **Agentic** mode (planner → tools 
 2. The best passages are numbered and given to `qwen3.5:9b` with today's date and grounding rules.
 3. The answer cites them as `[1]`, `[2]` and gets a sources list; which passages were used is logged per
    account (`brain.retrieval_log`).
-4. Not enough evidence → it says so instead of guessing.
+4. Not enough evidence → **the web is searched instead** (B below), with sources, when web search is set up
+   (O50: news questions that ended here were answered from the model's memory). Only when web search is off
+   or SearXNG is down does the model answer from memory, under a "Not found in the knowledge base" notice
+   (`BRAIN_NO_EVIDENCE=refuse`: it says so instead).
+
+This path is also the fallback when the tool-choice call comes back with no text and no tool call. That call
+then logs `chat_tools: empty reply, no tool call — done_reason=… output_tokens=… thinking_chars=…`, the
+clue to why the model stopped.
 
 The knowledge base keeps itself fresh: the scheduler in the API re-checks each source when its refresh
 interval has passed (fetch → extract → chunk → embed; unchanged pages are skipped). Progress:

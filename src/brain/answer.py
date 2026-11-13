@@ -174,8 +174,12 @@ def answer_question(
     chat: Callable[..., str] | None = None,
     searcher: Callable[..., SearchResult] = search,
     specialist_block: str = "",
+    general_fallback: bool = True,
 ) -> GroundedAnswer:
     """Retrieve, then answer from the passages (or say the knowledge base has nothing).
+
+    general_fallback=False: nothing found → an empty, ungrounded answer and no model call, so the caller can try
+    the web before the model's memory (ISSUES_LOG O50).
 
     collections: a specialist's fields, searched first; when they hold nothing relevant, the whole
     knowledge base is searched (an IT question can still be answered from a Development source).
@@ -226,6 +230,8 @@ def answer_question(
         return GroundedAnswer(text=text, grounded=True, sources=sources, search=result, unverified=unverified)
 
     _log_retrieval(result, config=config, account_id=account_id, job_id=job_id, answered=False)
+    if not general_fallback:
+        return GroundedAnswer(text="", grounded=False, search=result)
     if config.brain_no_evidence == "refuse":
         return GroundedAnswer(text=REFUSE_MESSAGE, grounded=False, search=result)
     text = chat(system=f"{identity_line(config, model)}{persona}\n\n{GENERAL_SYSTEM.format(now=now)}",
