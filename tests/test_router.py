@@ -10,7 +10,7 @@ from src.core.config import Config
 
 from src.llm import assistant
 from src.llm.assistant import pre_route
-from src.llm.router import CLARIFY, MODEL, SEARCH, Route, parse_route, route_message
+from src.llm.router import CLARIFY, MODEL, SEARCH, TOOL, Route, parse_route, route_message
 
 CFG = SimpleNamespace(web_search_url="http://127.0.0.1:8888", model_fast="m", llm_model="m")
 
@@ -105,3 +105,44 @@ def test_a_calculation_is_flagged_for_the_web_answer():
     route = parse_route('{"route": "search", "query": "GTA 6 size", "news": false, "learning": false, "calculation": true}')
     assert route.calculation is True
     assert pre_route(route, "how long to download gta 6", CFG, None).args["calculation"] == "yes"
+
+
+def test_a_named_tool_carries_its_arguments_as_text():
+    raw = ('{"route": "tool", "tool": "compare_sites", "args": {"url": "example.com", '
+           '"competitors": ["a.com", "b.com"], "keyword": "", "market": null}}')
+    route = parse_route(raw)
+    assert route.route == TOOL and route.tool == "compare_sites"
+    assert route.args == {"url": "example.com", "competitors": "a.com, b.com"}      # empty ones dropped
+
+
+FULL = dataclasses.replace(Config.from_env(), web_search_url="http://127.0.0.1:8888", network_scan_enabled=True)
+
+
+def test_a_named_tool_runs_without_the_tool_choice():
+    # the 9B tool choice answered these directly: the router names the tool and it runs (O61)
+    routed = pre_route(Route(TOOL, tool="site_audit", args={"url": "https://clickmasters.pk/", "junk": "x"}),
+                       "tell me the issues in this website", FULL, None)
+    assert (routed.intent, routed.tool, routed.args) == ("site_audit", "site_audit", {"url": "https://clickmasters.pk/"})
+    assert pre_route(Route(TOOL, tool="about_multeagent"), "which model are you", FULL, None).tool == "about_multeagent"
+
+
+def test_the_tool_choice_decides_when_the_router_cannot_be_trusted():
+    missing = Route(TOOL, tool="site_audit")                                   # url is required
+    changes_a_server = Route(TOOL, tool="operate_server", args={"task": "create /srv/backups"})
+    unknown = Route(TOOL, tool="format_disk", args={"disk": "c"})
+    for route in (missing, changes_a_server, unknown):
+        assert pre_route(route, "q", FULL, None) is None, route
+    marketing = SimpleNamespace(tools=["site_audit", "write_content"])
+    assert pre_route(Route(TOOL, tool="ping_host", args={"host": "10.0.0.1"}), "q", FULL, marketing) is None
+
+
+def test_the_router_lists_the_offered_tools_with_their_argument_forms():
+    from src.llm.router import tool_lines
+
+    lines = tool_lines(assistant.tool_schemas(FULL))
+    assert "- create_document(format*: docx, pdf, pptx, xlsx, html, md or txt; request*" in lines
+    assert "operate_server(" in lines                                         # listed, never run on its word
+    for hidden in ("web_search(", "ask_clarification(", "calculate("):
+        assert hidden not in lines
+    marketing = tool_lines(assistant.tool_schemas(FULL, ["site_audit"]))
+    assert "site_audit(" in marketing and "ping_host(" not in marketing

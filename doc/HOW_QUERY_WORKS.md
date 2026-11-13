@@ -109,6 +109,14 @@ In order:
    chat runner, no tool choice.
 5. **Auto** — first the **routing call** (`src/llm/router.py`, O51): one short model call (a few hundred
    tokens, 2–5 s) that reads the message, and the previous one for a follow-up, and answers in JSON:
+   - `route`: **tool** (O61): the message plainly asks for one tool's job (audit a named site, the weather,
+     a file, a diagram, the NVR's cameras, questions about the assistant…) → that tool runs at once with the
+     router's arguments, skipping the ~20 s tool choice. The router sees the same tools the tool choice would
+     offer (`tool_lines`: name, short argument forms such as `format: docx, pdf, … xlsx`, first sentence of
+     the description), so a specialist's limits hold. The tool choice decides instead when the tool is not
+     offered here, a required argument is missing, or it is `operate_server` (changes a server: listed, so
+     the router does not name a near tool, but never run on its word). Asking HOW to do something yourself
+     is **search**, not a tool. Log line: `assistant: the router runs <tool> {…}`.
    - `route`: **search** (the answer needs facts that may have changed since training or must be looked up:
      news, real people, films and games, prices, sizes, versions, rules) → straight to `web_search` with the
      router's search words and `news` flag; **clarify** (only a recommendation or choice missing budget,

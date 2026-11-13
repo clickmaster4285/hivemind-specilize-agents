@@ -27,7 +27,7 @@ from src.jobs import live
 from src.core.config import ROOT, Config
 from src.core.conversation import split_summary
 from src.llm.diagram_rules import DIAGRAM_RULES, MATH_RULE, NETDIAGRAM_RULES
-from src.llm.router import CLARIFY, SEARCH, Route, previous_question, route_message
+from src.llm.router import CLARIFY, NOT_LISTED, NOT_RUN, SEARCH, TOOL, Route, previous_question, route_message
 from src.tools.calculator import CALCULATE_TOOL, chat_tools_with_calculator
 
 if TYPE_CHECKING:
@@ -379,10 +379,29 @@ def _just_clarified(conversation: list[dict[str, str]] | None) -> bool:
     return bool(last) and str(last.get("content") or "").strip() == CLARIFY_INTRO
 
 
+def _routed_tool(route: Route, config: Config, specialist: Specialist | None) -> Decision | None:
+    """The router named a tool (O61): run it straight away, skipping the ~20 s tool choice, when the tool is one
+    the tool choice would offer here and every required argument is filled; else None (the tool choice)."""
+    tool = BY_NAME.get(route.tool)
+    offered = {t["function"]["name"] for t in tool_schemas(config, specialist.tools if specialist else None)}
+    if tool is None or tool.name in NOT_LISTED | NOT_RUN or tool.name not in offered:
+        logger.info("assistant: the router named %r, not offered here: the tool choice decides", route.tool)
+        return None
+    args = {k: v for k, v in route.args.items() if k in tool.params}
+    if any(not args.get(name) for name in tool.required):
+        logger.info("assistant: the router named %s without %s: the tool choice decides", tool.name,
+                    [n for n in tool.required if not args.get(n)])
+        return None
+    logger.info("assistant: the router runs %s %s", tool.name, args)
+    return Decision(False, tool.intent, tool.name, args, learning=route.learning)
+
+
 def pre_route(route: Route, query: str, config: Config, specialist: Specialist | None, *,
               clarify_ok: bool = True, previous: str = "") -> Decision | None:
     """Act on the router's verdict before the model sees the tools; None = let the model choose.
     decide() and evaluate() share it, so the eval measures the path real chats take."""
+    if route.route == TOOL:
+        return _routed_tool(route, config, specialist)
     if route.route == SEARCH and _web_allowed(config, specialist):
         logger.info("assistant: the router sends this to web_search")
         args = ({"query": route.query or query} | ({"news": "yes"} if route.news else {})
@@ -424,7 +443,8 @@ def decide(
 
     emit({"type": "status", "message": "Thinking…"})
     clarify_ok = clarify_ok and not _just_clarified(conversation)
-    route = route_message(query, config, conversation)
+    tools = tool_schemas(config, specialist.tools if specialist else None)
+    route = route_message(query, config, conversation, tools=tools)
     routed = pre_route(route, query, config, specialist, clarify_ok=clarify_ok,
                        previous=previous_question(conversation))
     if routed is not None:
@@ -438,7 +458,6 @@ def decide(
             emit({"type": "status", "agent_id": "assistant", "message": "Writing…"})
         live.set_text(job_id, "assistant", text)
 
-    tools = tool_schemas(config, specialist.tools if specialist else None)
     if not clarify_ok:
         tools = [t for t in tools if t.get("function", {}).get("name") != "ask_clarification"]
     try:
@@ -528,13 +547,14 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
         skill = built_in.get(case.get("skill", ""))
         if skill is not None:
             sp = skills.apply(skill, next((c for c in choices if c.id == skill.specialist), sp))
-        routed = pre_route(route_message(case["text"], config), case["text"], config, sp)
+        offered = tool_schemas(config, sp.tools if sp else None)
+        routed = pre_route(route_message(case["text"], config, tools=offered), case["text"], config, sp)
         if routed is not None:
             got, args, reply = routed.tool, routed.args, ""
         else:
             # the first call is what is scored: a calculate call counts as the choice (it is not worked out)
             reply, calls = client.chat_tools(messages=messages_for(case["text"], config, None, model, sp),
-                                             tools=tool_schemas(config, sp.tools if sp else None), model=model,
+                                             tools=offered, model=model,
                                              temperature=0.0)
             got, args = (calls[0]["name"], calls[0]["arguments"]) if calls else (None, {})
         rows.append({**case, "got": got, "specialist": sp.id if sp else None, "args": args,
