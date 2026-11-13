@@ -19,6 +19,7 @@ project's [README.md](../README.md).
 | [SECURITY.md](SECURITY.md) | Sign-in and accounts: sessions, abuse limits, CAPTCHA, admin unlock, self sign-up; all the numbers |
 | [DATA_MODEL.md](DATA_MODEL.md) | The database: the `app` and `brain` schemas and why they are separate |
 | [BRAIN_DESIGN.md](BRAIN_DESIGN.md) | The knowledge brain (RAG): tables, ingestion, retrieval, answers |
+| [RESOURCES.md](RESOURCES.md) | Hardware: what each part uses of the GPU, CPU, RAM and disk; context sizes measured; the limits |
 | [DOCKER_FULL_STACK_PLAN.md](DOCKER_FULL_STACK_PLAN.md) | What runs where (hybrid: Docker for db + SearXNG, the rest on the host) |
 | [FULL_PROJECT_PLAN.md](FULL_PROJECT_PLAN.md) | The whole system for a reviewer: goals, architecture, libraries and why |
 
