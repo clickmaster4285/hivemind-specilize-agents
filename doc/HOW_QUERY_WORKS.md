@@ -160,6 +160,17 @@ smaller outlets that can be read and carry the facts. If the news engines fail (
 Bing News answered; Google News, Brave News and Reuters did not), the general results answer alone. A
 question sent to web search by the phrase nudge (`pre_route`) has no `news` flag and gets general results.
 
+**Search words** (O49): the search and the ranking of passages use the words the model wrote in `web_search`'s
+`query` (typos fixed, a follow-up's subject filled in from the conversation); the model still answers the
+question as the user typed it. The phrase nudge passes the message itself as `query`.
+
+**Sources and dates** (O47): each source the model sees says "published YYYY-MM-DD" when known: the page's own
+date (its meta tags, as for the knowledge base), else the date SearXNG gave with the result. The Sources table
+shows the same date, or none — never the day the page was fetched, which made every source look new. The
+table hides a section heading that only repeats the page title. `WEB_SYSTEM` speaks of "sources", forbids
+talk of passages, the search or a closing note on the sources, and asks that an allegation about a real
+person or company say who makes it ("according to Reuters [2]").
+
 ### C) Images — `src/images/image_client.py` → image service (`src/images/image_service.py`)
 
 The API itself never loads torch. It starts the separate **image service** (SDXL) on the first image

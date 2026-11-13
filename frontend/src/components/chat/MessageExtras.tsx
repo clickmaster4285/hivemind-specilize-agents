@@ -661,6 +661,13 @@ function faviconOf(host: string): string {
   return host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64` : "";
 }
 
+/** The source's section (last heading), or "" when it only repeats the title: a passage from the top of a page
+ *  has the page's H1 as its heading, which showed as "Title › Title" (ISSUES_LOG O47). */
+function sectionOf(s: { title: string; heading_path?: string | null }): string {
+  const section = (s.heading_path || "").split(" > ").pop()?.trim() || "";
+  return section.toLowerCase() === s.title.trim().toLowerCase() ? "" : section;
+}
+
 export function SourceList({ item }: { item: FeedItem }) {
   const sources = item.sources || [];
   if (item.pending || !item.grounded || !sources.length) return null;
@@ -704,9 +711,7 @@ export function SourceList({ item }: { item: FeedItem }) {
                   ) : (
                     <span className="min-w-0">{s.title}</span>
                   )}
-                  {s.heading_path ? (
-                    <span className="text-text"> › {s.heading_path.split(" > ").pop()}</span>
-                  ) : null}
+                  {sectionOf(s) ? <span className="text-text"> › {sectionOf(s)}</span> : null}
                 </td>
                 <td className={`${td} whitespace-nowrap text-muted`}>{host || s.publisher || ""}</td>
                 <td className={`${td} whitespace-nowrap text-right text-muted`}>

@@ -370,6 +370,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                 about=intent == "about",
                 web_search=intent == "web_search",
                 web_news=intent == "web_search" and wants_news(tool_args),
+                web_query=str(tool_args.get("query") or ""),
                 specialist=specialist,
                 refine=refine,
             )

@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from src.brain.retrieve import Passage as BrainPassage
@@ -24,6 +23,7 @@ from src.tools.web_search import (
     bm25_scores,
     gather,
     search,
+    web_source,
 )
 
 logger = logging.getLogger(__name__)
@@ -163,7 +163,6 @@ def deep_research(
         if len(chosen) >= config.deep_max_passages - len(kb):    # the knowledge base shares the budget
             break
 
-    fetched = datetime.now(timezone.utc).date().isoformat()
     kb_blocks = [
         f'<source id="{n}" kind="knowledge base">\n[{n}] {p.title} — {p.publisher or p.source} '
         f"(KNOWLEDGE BASE, last updated {p.updated_at.date().isoformat() if p.updated_at else 'unknown'})"
@@ -171,7 +170,8 @@ def deep_research(
         for n, p in enumerate(kb, 1)
     ]
     web_blocks = [
-        f'<source id="{n}" kind="live web">\n[{n}] {p.title} — {urlsplit(p.url).hostname} (LIVE WEB, fetched {fetched})'
+        f'<source id="{n}" kind="live web">\n[{n}] {p.title} — {urlsplit(p.url).hostname} (LIVE WEB'
+        + (f", published {p.published})" if p.published else ")")
         + (f"\nSection: {p.heading}" if p.heading else "") + f"\n\n{p.text[:PASSAGE_CHARS]}\n</source>"
         for n, p in enumerate(chosen, len(kb) + 1)
     ]
@@ -190,11 +190,7 @@ def deep_research(
          "updated_at": p.updated_at.date().isoformat() if p.updated_at else None,
          "source": p.source, "cited": n in cited}
         for n, p in enumerate(kb, 1)
-    ] + [
-        {"n": n, "title": p.title, "url": p.url, "heading_path": p.heading or None,
-         "publisher": urlsplit(p.url).hostname, "updated_at": fetched, "source": "web", "cited": n in cited}
-        for n, p in enumerate(chosen, len(kb) + 1)
-    ]
+    ] + [web_source(n, p, cited) for n, p in enumerate(chosen, len(kb) + 1)]
     logger.info(
         "deep_timing research=%.2fs synth=%.2fs subqueries=%d sites=%d kb=%d passages=%d",
         t_research - t0, time.perf_counter() - t_research, len(subqueries), len(per_page), len(kb), len(chosen),
