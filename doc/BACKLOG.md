@@ -567,8 +567,8 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **One source per page (O56)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)
 - [x] **A named site goes to its tools, not web search (O60)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
 - [x] **Unit math with the tool (O57)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
-- [ ] **Router names the tool (O61):** clear requests run their tool at once, skipping the ~20 s tool choice; built, waiting on the eval
-- [ ] **Larger context (O58):** user sets `LLM_NUM_CTX=16384` (~256 MB more GPU memory)
+- [x] **Router names the tool (O61)** — done 2026-11-13, eval 36/38 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
+- [ ] **Larger context (O58):** measure with `python -m src.llm.bench_resources`; user sets `LLM_NUM_CTX=16384` (~256 MB more GPU memory)
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)
 
