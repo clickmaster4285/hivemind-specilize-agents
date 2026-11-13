@@ -77,6 +77,8 @@ cases:
   # ── marketing / SEO ───────────────────────────────────────────────────────────────────────
   - text: "Audit the SEO of https://example.com"
     tool: site_audit
+  - text: "tell me the issues in this website from seo prespective https://clickmasters.pk/"
+    tool: site_audit
   - text: "Show the sites I'm tracking and how their SEO score changed"
     tool: seo_projects
   - text: "Compare my site example.com with competitor1.com and competitor2.com"

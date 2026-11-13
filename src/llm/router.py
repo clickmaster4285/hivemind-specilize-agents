@@ -31,6 +31,12 @@ Reply with ONE JSON object and nothing else:
 "calculation": true or false}}
 
 route:
+- First: a message that names a website, URL, IP address, device, server or file and asks to check, audit,
+  analyse, scan, compare or find issues in it is "model": the assistant's own tools act on it live (a site
+  audit reads the site itself; a web search only finds pages about it). E.g. "tell me the issues in this
+  website from seo perspective https://example.pk/" → "model".
+- Also "model": keyword and ranking research, i.e. who ranks on Google for a keyword or search term and where
+  a site ranks (a keyword tool checks live results). E.g. "Who ranks for 'cctv price' in Pakistan?" → "model".
 - "search": the answer depends on facts that may have changed since your training or that must be looked up:
   news and recent events, real people (who someone is, their life, work, roles, what they did), companies,
   films, shows and games (plot, cast, release), prices, sizes, specs or release details of products and
@@ -42,7 +48,7 @@ route:
   A short or unclear message ("name of the lead actress", "who is she", "what did she do", or an answer like
   "Spider-Man: Brand New Day") continues the previous message: join the two and route the joined question.
 - "model": everything else: arithmetic on numbers the user gave, writing, code, greetings, questions about you,
-  actions on the user's own devices, servers or websites (scan, ping, audit, compare sites), making a file.
+  actions on a named website, device or server (scan, ping, audit, compare sites), making a file.
 query: for "search", short search words: spelling fixed, a follow-up's subject filled in from the previous
 message. Otherwise "".
 news: true when the question is about recent events (the last days, weeks or months).

@@ -565,6 +565,7 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **No facts from other questions (O54)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)
 - [x] **Follow-ups without clarifying (O55)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
 - [x] **One source per page (O56)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)
+- [x] **A named site goes to its tools, not web search (O60)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
 - [x] **Unit math with the tool (O57)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
 - [ ] **Larger context (O58):** user sets `LLM_NUM_CTX=16384` (~256 MB more GPU memory)
 
