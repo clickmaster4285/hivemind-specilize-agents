@@ -119,7 +119,7 @@ def _verify(answer: Any, *, client: LLMClient, model: str, job_id: str | None,
 
 
 def emit_answer_extras(query: str, output: str, *, job_id: str | None, config: Config, model: str,
-                       client: LLMClient, on_progress: ProgressCallback | None) -> None:
+                       client: LLMClient, on_progress: ProgressCallback | None, quiz: bool = False) -> None:
     """Post-answer extras (suggestions, quiz, images) for ANY finished answer — this runner's and the
     assistant's direct reply alike. Computed AFTER the answer is sent and run side by side (images are
     network-bound, the others model-bound); each is emitted as its own event the moment it is ready, so
@@ -148,7 +148,9 @@ def emit_answer_extras(query: str, output: str, *, job_id: str | None, config: C
         if config.suggestions_enabled:
             jobs["suggestions"] = lambda: generate_suggestions(
                 query, output, client_chat=lambda **kw: client.chat(**kw), model=model, n=config.suggestions_count)
-        if config.quiz_enabled and wants_quiz(output):     # answer-driven, no query keyword gate
+        # only when the user is learning a topic (the router's verdict; the user's choice, ISSUES_LOG O52) and
+        # the answer has enough points to test: a quiz holds the GPU 9-17 s
+        if quiz and config.quiz_enabled and wants_quiz(output):
             jobs["quiz"] = lambda: generate_quiz(
                 query, output, client_chat=lambda **kw: client.chat(**kw), model=model, n=config.quiz_count)
         if not jobs:
@@ -184,6 +186,7 @@ def run_chat(
     web_search: bool = False,
     web_news: bool = False,
     web_query: str = "",
+    learning: bool = False,
     deep: bool = False,
     options: bool = False,
     should_continue: Callable[[], bool] | None = None,
@@ -194,6 +197,7 @@ def run_chat(
     web_search=True: the user asked to search the internet — SearXNG + the top pages (src/web_search.py).
     web_news=True: a question about recent events — the search takes SearXNG's news results first.
     web_query: the model's search words (web_search's `query`); empty = search the question as typed.
+    learning=True: the user is learning a topic (src/llm/router.py), so the answer gets a quiz.
 
     The answer streams into src/live.py (shown in the browser as it is written); the Stop button
     (live.stop / should_continue) ends the model call mid-answer and keeps what was written so far.
@@ -405,7 +409,7 @@ def run_chat(
         )
         if "options" not in extra:                   # option cards are a choice, not an answer to extend
             emit_answer_extras(query, output, job_id=job_id, config=config, model=model, client=client,
-                               on_progress=on_progress)
+                               on_progress=on_progress, quiz=learning)
     except WebSearchError as exc:
         # the message already says what to do (start the container, set WEB_SEARCH_URL)
         result.errors.append(str(exc))

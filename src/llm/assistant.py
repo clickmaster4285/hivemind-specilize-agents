@@ -27,6 +27,7 @@ from src.jobs import live
 from src.core.config import ROOT, Config
 from src.core.conversation import split_summary
 from src.llm.diagram_rules import DIAGRAM_RULES, MATH_RULE, NETDIAGRAM_RULES
+from src.llm.router import CLARIFY, SEARCH, Route, route_message
 
 if TYPE_CHECKING:
     from src.llm.specialists import Specialist
@@ -317,21 +318,6 @@ Output ONLY a JSON array, nothing else:
 [{"question": "What is your budget?", "options": ["under $1k", "$1-3k", "$3k+"]}]
 Use 2-4 short options per question, at most 2 questions. If no clarification is needed, output exactly: []"""
 
-# Decision / recommendation / setup-style requests are the ones worth a clarify-check; a cheap gate so
-# clear factual questions and greetings never pay for the extra call.
-_CLARIFY_HINT = re.compile(
-    r"\b(ask (me|some)|what should i|which(?: one| should)?|help me|recommend|suggest|what suits|"
-    r"best .* for|i want to (?:buy|build|start|choose|make|create|set ?up|get into)|"
-    r"how (?:do|should|can) i (?:start|begin|get into|choose|pick|build|set ?up)|should i|advis[e]|advice|guide me)\b",
-    re.I,
-)
-
-
-def _might_need_clarify(query: str) -> bool:
-    q = query.strip()
-    return len(q) >= 6 and bool(_CLARIFY_HINT.search(q))
-
-
 def _ask_clarifying(query: str, config: Config, model: str) -> list[dict[str, Any]]:
     """A dedicated call that returns multiple-choice clarifying questions (or [] if the query is clear)."""
     from src.llm.llm_client import LLMClient
@@ -374,61 +360,24 @@ class Decision:
     tool: str = ""
     args: dict[str, Any] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    learning: bool = False               # the user is learning a topic: the answer gets a quiz (router.py)
 
 
-# A deterministic nudge so clearly factual / how-to / technical questions SEARCH and cite sources instead
-# of being answered from memory (a local model does not always pick web_search on its own). Conservative:
-# it fires only for question shapes that benefit from authoritative sources, and skips anything that is
-# really an action, a local/personal question, code writing, or creative work.
-_WEB_Q = re.compile(
-    r"^\s*(how\s+(to|do|does|can|should|would)\b|what\s+(is|are|does|'s)\b|why\s+(is|are|does|do)\b|"
-    r"when\s+(did|was|is|will)\b|which\b.*\b(better|best)\b|compare\b|difference\s+between\b|"
-    r"best\s+practices?\b|steps?\s+to\b|guide\s+to\b|explain\s+how\b|is\s+it\s+(safe|possible|better|worth)\b|"
-    r"pros\s+and\s+cons\b|should\s+i\b)",
-    re.I,
-)
-_WEB_KW = re.compile(
-    r"\b(best\s+practices?|step[- ]by[- ]step|\bvs\b|latest\s+version|current\s+version|how\s+to|"
-    # reference / educational shapes that benefit from authoritative, cited sources
-    r"parts\s+of|components?\s+of|types?\s+of|kinds?\s+of|features?\s+of|overview\s+of|"
-    r"architecture\s+of|examples?\s+of|explained)\b|\bhow\s+\w+.*\bworks?\b",
-    re.I,
-)
-_WEB_SKIP = re.compile(
-    r"\b(you|your|yourself|multeagent)\b|"                                   # about the assistant
-    r"\bmy\s+(ip|network|server|pc|computer|machine|laptop|wifi|router)\b|"  # local / personal
-    r"\b(log\s*in|login|ssh|rdp|mstsc|connect\s+to)\b|"                      # server / remote actions
-    r"\b(write|create|generate|fix|debug|refactor)\b.{0,30}\b(code|function|script|program|class|component|regex|sql|query)\b|"
-    r"\b(story|poem|joke|lyrics|image|picture|photo|diagram|flow\s*chart|draw|paint)\b|"
-    r"\b(translate|calculate|solve|remember)\b|\bmy\s+name\b|"
-    r"\d{1,3}(\.\d{1,3}){3}|"                                                # an IP address → local / network tool
-    r"https?://|\bwww\.",                                                    # a given site → the model picks (site_audit)
-    re.I,
-)
+def _web_allowed(config: Config, specialist: Specialist | None) -> bool:
+    return bool(config.web_search_url) and (specialist is None or "web_search" in specialist.tools)
 
 
-def _should_web_search(query: str, config: Config, specialist: "Specialist | None") -> bool:
-    """True when the message is a clear factual / how-to question that should be answered with web sources."""
-    if not config.web_search_url:
-        return False
-    if specialist is not None and "web_search" not in specialist.tools:
-        return False
-    q = (query or "").strip()
-    if len(q) < 15 or _WEB_SKIP.search(q):
-        return False
-    return bool(_WEB_Q.match(q) or _WEB_KW.search(q))
-
-
-def pre_route(query: str, config: Config, specialist: Specialist | None, *,
+def pre_route(route: Route, query: str, config: Config, specialist: Specialist | None, *,
               clarify_ok: bool = True) -> Decision | None:
-    """The checks that run before the model sees the tools; None = let the model choose.
+    """Act on the router's verdict before the model sees the tools; None = let the model choose.
     decide() and evaluate() share it, so the eval measures the path real chats take."""
-    if _should_web_search(query, config, specialist):
-        logger.info("assistant: routing a factual question to web_search (nudge)")
-        return Decision(False, "web_search", "web_search", {"query": query})
-    # A decision/recommendation/setup request that's under-specified: ask multiple-choice questions first
-    # (the model is unreliable at calling a tool for this, so a dedicated call makes the choices reliably).
-    if clarify_ok and _might_need_clarify(query):
+    if route.route == SEARCH and _web_allowed(config, specialist):
+        logger.info("assistant: the router sends this to web_search")
+        args = {"query": route.query or query} | ({"news": "yes"} if route.news else {})
+        return Decision(False, "web_search", "web_search", args, learning=route.learning)
+    # an under-specified recommendation: multiple-choice questions first (the model is unreliable at calling
+    # a tool for this, so a dedicated call writes the choices)
+    if route.route == CLARIFY and clarify_ok:
         questions = _ask_clarifying(query, config, config.model_fast or config.llm_model)
         if questions:
             logger.info("assistant: asking %d clarifying questions", len(questions))
@@ -460,7 +409,9 @@ def decide(
     started = time.perf_counter()
     opened = {"done": False}
 
-    routed = pre_route(query, config, specialist, clarify_ok=clarify_ok)
+    emit({"type": "status", "message": "Thinking…"})
+    route = route_message(query, config, conversation)
+    routed = pre_route(route, query, config, specialist, clarify_ok=clarify_ok)
     if routed is not None:
         return routed
 
@@ -472,7 +423,6 @@ def decide(
             emit({"type": "status", "agent_id": "assistant", "message": "Writing…"})
         live.set_text(job_id, "assistant", text)
 
-    emit({"type": "status", "message": "Thinking…"})
     tools = tool_schemas(config, specialist.tools if specialist else None)
     if not clarify_ok:
         tools = [t for t in tools if t.get("function", {}).get("name") != "ask_clarification"]
@@ -503,13 +453,14 @@ def decide(
                 return Decision(False, "clarify", "ask_clarification", {"questions": questions})
             live.finish_agent(job_id, "assistant")
             logger.info("assistant chose %s %s", tool.name, call["arguments"])
-            return Decision(False, tool.intent, tool.name, dict(call["arguments"] or {}))
+            return Decision(False, tool.intent, tool.name, dict(call["arguments"] or {}), learning=route.learning)
     if calls:               # it wanted a tool we can't run: its text was only a preface cut off mid-sentence
         logger.info("assistant: unusable tool call(s) %s — answering normally", [c["name"] for c in calls])
     if not text or calls:   # no usable answer: the knowledge-base path answers (its bubble replaces this one)
         live.finish_agent(job_id, "assistant")
-        return Decision(False, "kb", "search_knowledge_base", {"query": query})
-    return _finish_direct(emit, agent, job_id, query, opened, started, text, [], "Direct reply", config)
+        return Decision(False, "kb", "search_knowledge_base", {"query": query}, learning=route.learning)
+    return _finish_direct(emit, agent, job_id, query, opened, started, text, [], "Direct reply", config,
+                          learning=route.learning)
 
 
 def speaker(specialist: Specialist | None) -> dict[str, str]:
@@ -521,7 +472,8 @@ def speaker(specialist: Specialist | None) -> dict[str, str]:
     return {"name": f"{specialist.name} specialist", "accent": specialist.accent}
 
 
-def _finish_direct(emit, agent, job_id, query, opened, started, output, errors, role, config) -> Decision:
+def _finish_direct(emit, agent, job_id, query, opened, started, output, errors, role, config, *,
+                   learning: bool = False) -> Decision:
     if not opened["done"]:
         emit({"type": "session_start", "mode": "chat", "query": query})
         emit({"type": "agent_start", **agent})
@@ -533,7 +485,7 @@ def _finish_direct(emit, agent, job_id, query, opened, started, output, errors, 
         from src.llm.llm_client import LLMClient
 
         emit_answer_extras(query, output, job_id=job_id, config=config, model=agent["model"],
-                           client=LLMClient(config), on_progress=emit)
+                           client=LLMClient(config), on_progress=emit, quiz=learning)
     emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
     return Decision(True, errors=errors)
 
@@ -560,7 +512,7 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
         skill = built_in.get(case.get("skill", ""))
         if skill is not None:
             sp = skills.apply(skill, next((c for c in choices if c.id == skill.specialist), sp))
-        routed = pre_route(case["text"], config, sp)
+        routed = pre_route(route_message(case["text"], config), case["text"], config, sp)
         if routed is not None:
             got, args, reply = routed.tool, routed.args, ""
         else:

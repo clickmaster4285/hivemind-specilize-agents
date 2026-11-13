@@ -550,9 +550,14 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **Search with the model's words (O49)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)
 - [x] **No answers from memory after a dead end (O50)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) A)
 - [ ] **Search first for things that change (O51):** GTA 6 size and China chip rules answered from memory; the GTA math
-      stopped half-way; pre-routing keyword lists cause 3 eval misses. User decides: routing call, `calculate` tool
+      stopped half-way; pre-routing keyword lists caused 3 eval misses
+  - [x] Routing call in place of the keyword lists — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5);
+        quiz only when the user is learning
+  - [ ] A page that cannot be read frees its read slot for the next result (Rockstar's page was result 5, never read)
+  - [ ] `calculate` tool: exact arithmetic (GTA: 212 GB at 100 Mbps)
 - [ ] **Faster chats (O52):** ~20 s tool choice on an ~8,000-token prompt, quiz and suggestions holding the GPU after
-      each answer; measure prompt reuse first
+      each answer; measure prompt reuse first. Quiz (user, 2026-11-13): only when the user is learning a topic,
+      not after every answer
 - [ ] **Pictures only where they fit (O53):** only section headings that name one thing get images
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)

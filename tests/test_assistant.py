@@ -20,6 +20,13 @@ from src.llm.llm_client import LLMStopped
 CFG = dataclasses.replace(Config.from_env(), assistant_tools=True)
 
 
+@pytest.fixture(autouse=True)
+def offline_router(monkeypatch):
+    """decide() asks the routing call first (src/llm/router.py): keep it offline, leaving the choice to the
+    fake model's tool call, as the tests here expect. The router itself: tests/test_router.py."""
+    monkeypatch.setattr(assistant, "route_message", lambda *a, **k: assistant.Route())
+
+
 def test_normal_messages_go_to_the_assistant_buttons_do_not():
     assert classify_query("what is the current weather", config=CFG).intent == "auto"
     assert classify_query("hello", config=CFG).intent == "auto"
@@ -127,3 +134,16 @@ def test_real_model_picks_the_right_tools():
     result = assistant.evaluate(CFG)
     misses = [(r["text"], r.get("tool"), r["got"]) for r in result["rows"] if not r["ok"]]
     assert len(misses) <= 1, misses
+
+
+@pytest.mark.parametrize("learning", [True, False])
+def test_a_quiz_only_when_the_user_is_learning(monkeypatch, learning):
+    # the user's rule (ISSUES_LOG O52): a quiz holds the GPU 9-17 s, so only for learning a topic
+    answer = "## Seoul\nPalaces and markets.\n\n## Busan\nBeaches and temples. " + "More detail. " * 20   # past the quiz's minimum length
+    _fake_model(monkeypatch, text=answer)
+    monkeypatch.setattr(assistant, "route_message", lambda *a, **k: assistant.Route(learning=learning))
+    monkeypatch.setattr("src.jobs.chat_runner.generate_quiz", lambda *a, **kw: [{"q": "Where are the beaches?"}])
+    cfg = dataclasses.replace(CFG, suggestions_enabled=False, quiz_enabled=True, web_images_enabled=False)
+    events = []
+    assistant.decide("teach me about korea's cities", job_id="aq", config=cfg, on_progress=events.append)
+    assert any("quiz" in e for e in events if e["type"] == "answer_extras") is learning

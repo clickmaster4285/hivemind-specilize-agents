@@ -107,7 +107,18 @@ In order:
    knowledge collections. Event: `specialist_chosen`.
 4. **Deep** (research across many sources) or **Options** (several approaches to pick from): straight to the
    chat runner, no tool choice.
-5. **Auto** — the assistant (`src/llm/assistant.py` → `decide`): **one model call** with the list of tools.
+5. **Auto** — first the **routing call** (`src/llm/router.py`, O51): one short model call (a few hundred
+   tokens, about a second) that reads the message, and the previous one for a follow-up, and answers in JSON:
+   - `route`: **search** (the answer needs facts that may have changed since training: news, prices, sizes,
+     versions, rules) → straight to `web_search` with the router's search words and `news` flag;
+     **clarify** (a recommendation missing details) → the multiple-choice questions;
+     **model** → the tool choice below. A failed or unreadable reply counts as **model**.
+   - `learning`: the user wants to learn a topic → the answer gets a quiz (only then: it holds the GPU 9–17 s).
+
+   It replaced lists of trigger words, which missed "how much time to download GTA 6" (answered from memory)
+   and sent "15% of 2400" and "compare my site with …" to the web. Log line: `router: Route(…)`.
+
+   Then the assistant (`src/llm/assistant.py` → `decide`): **one model call** with the list of tools.
    The model either
    - **answers directly** — streamed into the chat, done; or
    - **calls one tool** with its arguments (event `tool_chosen`); or
@@ -164,12 +175,12 @@ Only when asked. Local SearXNG (`127.0.0.1:8888`) → the top pages are read →
 events. The search then takes SearXNG's general and news results in turn: the general ones bring the big
 outlets, which are often paywalled or refuse page readers (only their snippet is used); the news ones bring
 smaller outlets that can be read and carry the facts. If the news engines fail (often: on 2026-11-12 only
-Bing News answered; Google News, Brave News and Reuters did not), the general results answer alone. A
-question sent to web search by the phrase nudge (`pre_route`) has no `news` flag and gets general results.
+Bing News answered; Google News, Brave News and Reuters did not), the general results answer alone. The
+routing call (Layer 5) sets `news` too when it sends a question to the web.
 
 **Search words** (O49): the search and the ranking of passages use the words the model wrote in `web_search`'s
 `query` (typos fixed, a follow-up's subject filled in from the conversation); the model still answers the
-question as the user typed it. The phrase nudge passes the message itself as `query`.
+question as the user typed it. A question the routing call sends to the web uses the router's search words.
 
 **Sources and dates** (O47): each source the model sees says "published YYYY-MM-DD" when known: the page's own
 date (its meta tags, as for the knowledge base), else the date SearXNG gave with the result. The Sources table

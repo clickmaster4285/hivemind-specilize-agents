@@ -254,6 +254,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
 
         tool_args: dict[str, Any] = {}
         specialist = None
+        learning = False                 # the router's verdict: the user is learning a topic → a quiz suits
         if intent == "auto":
             specialist = _answerer(payload, query, skill, config=config, conversation=conversation,
                                    on_progress=on_progress)
@@ -266,7 +267,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
             if decision.answered:
                 _finish(config, job_id, decision.errors)
                 return
-            intent, tool_args = decision.intent, decision.args
+            intent, tool_args, learning = decision.intent, decision.args, decision.learning
             if intent == "clarify":
                 _clarify(config, job_id, query, tool_args.get("questions") or [], on_progress, specialist)
                 return
@@ -371,6 +372,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                 web_search=intent == "web_search",
                 web_news=intent == "web_search" and wants_news(tool_args),
                 web_query=str(tool_args.get("query") or ""),
+                learning=learning,
                 specialist=specialist,
                 refine=refine,
             )
