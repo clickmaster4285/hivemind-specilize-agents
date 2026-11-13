@@ -551,13 +551,13 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
       time per step), so slow answers can be measured before speeding them up
 - [x] **Search with the model's words (O49)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)
 - [x] **No answers from memory after a dead end (O50)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) A)
-- [ ] **Search first for things that change (O51):** GTA 6 size and China chip rules answered from memory; the GTA math
+- [x] **Search first for things that change (O51)** — done 2026-11-13, eval 31/38 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5): GTA 6 size and China chip rules answered from memory; the GTA math
       stopped half-way; pre-routing keyword lists caused 3 eval misses
   - [x] Routing call in place of the keyword lists — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5);
         quiz only when the user is learning
   - [x] An unreadable page frees its read slot — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)
   - [x] `calculate` tool — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
-  - [ ] The eval rerun (user)
+  - [x] The eval rerun (user) — 31/38 on 2026-11-13; the router's 2 misses fixed
 - [ ] **Faster chats (O52):** ~20 s tool choice on an ~8,000-token prompt, quiz and suggestions holding the GPU after
       each answer; measure prompt reuse first. Quiz (user, 2026-11-13): only when the user is learning a topic,
       not after every answer

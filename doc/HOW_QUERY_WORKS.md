@@ -118,9 +118,10 @@ In order:
      with the previous message and routed as that question, never clarified (O55). After a clarifying reply
      the next message is never clarified again (`_just_clarified`, a code check), and the clarifying call
      sees the previous message, so it does not ask "which movie?" right after one was named.
-   - A message that names a website, URL, IP, device or file and asks to check, audit, scan, compare or find
-     issues in it is **model**, and so is keyword or ranking research: the tools act on it live (O60). Web
-     search only found the site's own sales pages ("the sources do not list its issues").
+   - A request one of the assistant's own tools does is **model**, even when it needs facts that change: a
+     named website, URL, IP, device or file to check, audit, scan or compare; the weather; keyword or ranking
+     research; making a file; a diagram or picture; marketing copy (O60). Web search only found a site's own
+     sales pages, and sent "weather in Lahore" and "router prices into an Excel file" past their tools.
    - `learning`: the user wants to learn a topic → the answer gets a quiz (only then: it holds the GPU 9–17 s).
    - `calculation`: the answer needs a number worked out (a download time, a cost) → the web answer gets an
      instruction to use `calculate` right after the question (O57).

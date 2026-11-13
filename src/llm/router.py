@@ -31,10 +31,13 @@ Reply with ONE JSON object and nothing else:
 "calculation": true or false}}
 
 route:
-- First: a message that names a website, URL, IP address, device, server or file and asks to check, audit,
-  analyse, scan, compare or find issues in it is "model": the assistant's own tools act on it live (a site
-  audit reads the site itself; a web search only finds pages about it). E.g. "tell me the issues in this
-  website from seo perspective https://example.pk/" → "model".
+- First: when the message asks for something the assistant's own tools do, it is "model", even when it needs
+  facts that change (weather, prices, rankings): the tool gets them itself. These tools: checking, auditing,
+  analysing, scanning or comparing a named website, URL, IP address, device, server or file (a site audit
+  reads the site itself; a web search only finds pages about it); the weather and its forecast for a place;
+  making a file (Word, PDF, Excel, PowerPoint); drawing a diagram or a picture; writing marketing copy or a
+  blog post. E.g. "tell me the issues in this website from seo perspective https://example.pk/", "weather in
+  Karachi tomorrow", "put the prices of 5 phones in an Excel file" → "model".
 - Also "model": keyword and ranking research, i.e. who ranks on Google for a keyword or search term and where
   a site ranks (a keyword tool checks live results). E.g. "Who ranks for 'cctv price' in Pakistan?" → "model".
 - "search": the answer depends on facts that may have changed since your training or that must be looked up:
