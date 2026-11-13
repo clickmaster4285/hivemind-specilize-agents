@@ -12,7 +12,7 @@ import math
 import re
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import zip_longest
@@ -145,7 +145,7 @@ def search(query: str, config: Config, *, news: bool = False) -> list[Hit]:
 
 
 def _read(hit: Hit) -> list[Passage]:
-    """One page → passages; on any problem the search snippet stands in for the page."""
+    """One page → passages; [] when it cannot be read (the caller lets the snippet stand in)."""
     from src.brain.chunking import chunk_markdown
     from src.brain.extract import extract_html
     from src.brain.web import WebClient, WebError
@@ -163,7 +163,7 @@ def _read(hit: Hit) -> list[Passage]:
         logger.info("web page not read (%s): %s", hit.url, exc)
     except Exception:  # noqa: BLE001 — one odd page must not break the answer
         logger.exception("web page failed: %s", hit.url)
-    return _snippet(hit)
+    return []
 
 
 _WORD_RE = re.compile(r"\w+", re.UNICODE)
@@ -195,17 +195,41 @@ def bm25_scores(query: str, docs: list[str], k1: float = 1.4, b: float = 0.75) -
     return scores
 
 
-def gather(query: str, hits: list[Hit], config: Config) -> list[Passage]:
-    """Read the top pages in parallel, then keep the passages that best match the question."""
-    # one slow website must not hold up the answer: pages get READ_BUDGET seconds together;
-    # a page not read by then is represented by its search snippet
+def read_pages(hits: list[Hit]) -> dict[str, list[Passage]]:
+    """Read up to MAX_PAGES pages in parallel, in rank order → {url: passages}. A page that cannot be read
+    (social sites refuse page readers, paywalls, errors) frees its slot for the next result: on 2026-11-13 Reddit,
+    X and Facebook took all 4 slots and Rockstar's own page, result 5, was never read (ISSUES_LOG O51). One slow
+    website must not hold up the answer: all pages share READ_BUDGET_SECONDS."""
+    deadline = time.monotonic() + READ_BUDGET_SECONDS
+    waiting = list(hits)
+    read: dict[str, list[Passage]] = {}
     pool = ThreadPoolExecutor(max_workers=MAX_PAGES)
-    futures = {pool.submit(_read, h): h for h in hits[:MAX_PAGES]}
-    done, _late = wait(futures, timeout=READ_BUDGET_SECONDS)
+    running = {pool.submit(_read, h): h for h in waiting[:MAX_PAGES]}
+    del waiting[:MAX_PAGES]
+    tried = len(running)
+    while running and len(read) < MAX_PAGES:
+        done, _ = wait(running, timeout=max(0.0, deadline - time.monotonic()), return_when=FIRST_COMPLETED)
+        if not done:                                     # the time is up: pages still loading are left behind
+            break
+        for future in done:
+            hit = running.pop(future)
+            passages = future.result()
+            if passages:
+                read[hit.url] = passages
+            elif waiting:                                # not readable: the next result takes the slot
+                nxt = waiting.pop(0)
+                running[pool.submit(_read, nxt)] = nxt
+                tried += 1
     pool.shutdown(wait=False, cancel_futures=True)
-    pages = [f.result() if f in done else _snippet(futures[f]) for f in futures]
-    # snippets of the results we did not open still count (cheap, and often to the point)
-    pages += [_snippet(h) for h in hits[MAX_PAGES:]]
+    logger.info("web_read read=%d tried=%d results=%d", len(read), tried, len(hits))
+    return read
+
+
+def gather(query: str, hits: list[Hit], config: Config) -> list[Passage]:
+    """Read the top pages, then keep the passages that best match the question."""
+    read = read_pages(hits)
+    # a result not read (or not readable) counts by its snippet: cheap, and often to the point
+    pages = [read.get(h.url) or _snippet(h) for h in hits]
     passages = [p for page in pages for p in page if p.text.strip()]
     if not passages:
         return []

@@ -133,6 +133,7 @@ In order:
 | `draw_diagram` | Mermaid diagram (`src/tools/diagram_gen.py`) |
 | `create_document` | Document writer: outline → each section written and checked → PDF / Word / … (`src/tools/doc_writer.py`); "this as a PDF" converts the earlier answer as it is |
 | `get_weather` | Weather and 3-day forecast |
+| `calculate` | Worked out inside the same step (`src/tools/calculator.py`): Python evaluates the arithmetic (numbers and + − × ÷ ** only, nothing else runs), the model goes on with the exact result. Also offered while a web answer is written, for sums on the sources' numbers (O51) |
 | `network_scan`, `ping_host`, `security_check`*, `server_audit`, `diagnose_server`, `operate_server`, `nvr_cameras`, `network_device` | Network and server tools (`src/servers/`); they use the user's own saved device logins, encrypted with `DEVICE_KEY` |
 | `site_audit`, `compare_sites`, `keyword_research`, `seo_projects`, `write_content` | SEO and marketing tools (`src/tools/`) |
 | `about_multeagent` | Live facts about this installation |
@@ -177,6 +178,12 @@ outlets, which are often paywalled or refuse page readers (only their snippet is
 smaller outlets that can be read and carry the facts. If the news engines fail (often: on 2026-11-12 only
 Bing News answered; Google News, Brave News and Reuters did not), the general results answer alone. The
 routing call (Layer 5) sets `news` too when it sends a question to the web.
+
+**Reading pages** (O51): the top results are read in parallel, 4 at a time, within 6 s together. A page that
+cannot be read (social sites refuse page readers, paywalls, errors) frees its slot for the next result, until 4
+pages are read or the time is up; every result not read still counts by its snippet. Log line:
+`web_read read=… tried=… results=…`. Before this, Reddit, X and Facebook took all 4 slots for "GTA 6 download size"
+and only snippets reached the model; now 3 real pages with the 212 GB figure did.
 
 **Search words** (O49): the search and the ranking of passages use the words the model wrote in `web_search`'s
 `query` (typos fixed, a follow-up's subject filled in from the conversation); the model still answers the

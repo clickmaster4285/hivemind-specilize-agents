@@ -67,3 +67,36 @@ def test_the_prompt_speaks_of_sources_not_passages(monkeypatch):
     seen, _text, _sources = _answer(monkeypatch)
     assert "passages" not in seen["user"].lower()
     assert "numbered web passages" not in seen["system"] and "according to" in seen["system"]
+
+
+def _hits(n: int) -> list:
+    return [ws.Hit(f"r{i}", f"https://site{i}.test/p", f"snippet {i}", "e") for i in range(n)]
+
+
+def test_an_unreadable_page_frees_its_slot_for_the_next_result(monkeypatch):
+    # the first 4 results refuse page readers (as Reddit, X, Facebook did); result 5 is the official page
+    def read(hit):
+        return [] if hit.title in {"r0", "r1", "r2", "r3"} else [ws.Passage(hit.title, hit.url, "", "page text")]
+
+    monkeypatch.setattr(ws, "_read", read)
+    read_pages = ws.read_pages(_hits(ws.MAX_RESULTS))
+    assert "https://site4.test/p" in read_pages
+    assert len(read_pages) == ws.MAX_RESULTS - ws.MAX_PAGES      # every remaining result got its turn
+
+
+def test_reading_stops_once_enough_pages_are_read(monkeypatch):
+    tried = []
+
+    def read(hit):
+        tried.append(hit.url)
+        return [ws.Passage(hit.title, hit.url, "", "page text")]
+
+    monkeypatch.setattr(ws, "_read", read)
+    assert len(ws.read_pages(_hits(ws.MAX_RESULTS))) == ws.MAX_PAGES
+    assert len(tried) == ws.MAX_PAGES                             # no page beyond the first ones was opened
+
+
+def test_unread_results_still_count_by_their_snippet(monkeypatch):
+    monkeypatch.setattr(ws, "_read", lambda hit: [])
+    passages = ws.gather("snippet", _hits(3), CFG)
+    assert {p.text for p in passages} <= {"snippet 0", "snippet 1", "snippet 2"} and passages

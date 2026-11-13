@@ -16,7 +16,9 @@ cases:
   - text: "Rewrite this sentence to sound more polite: send me the report now"
     tool: null
   - text: "What is 15% of 2400?"
-    tool: null
+    tool: calculate          # exact arithmetic (O51); the router must not send it to the web
+  - text: "how much time it will take to download gta 6 , on a 100mb/s pkg"
+    tool: web_search         # the size changes (the pre-load is 212 GB); the router searches first (O51)
   - text: "Translate 'good morning, how are you?' into Urdu"
     tool: null
 

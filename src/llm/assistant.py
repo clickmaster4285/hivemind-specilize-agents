@@ -28,6 +28,7 @@ from src.core.config import ROOT, Config
 from src.core.conversation import split_summary
 from src.llm.diagram_rules import DIAGRAM_RULES, MATH_RULE, NETDIAGRAM_RULES
 from src.llm.router import CLARIFY, SEARCH, Route, route_message
+from src.tools.calculator import CALCULATE_TOOL, chat_tools_with_calculator
 
 if TYPE_CHECKING:
     from src.llm.specialists import Specialist
@@ -270,7 +271,7 @@ def _source_titles(config: Config) -> str:
 
 
 def tool_schemas(config: Config, allowed: list[str] | None = None) -> list[dict[str, Any]]:
-    """allowed = a specialist's tools (None = every tool); about_multeagent is always offered."""
+    """allowed = a specialist's tools (None = every tool); about_multeagent and calculate are always offered."""
     out = []
     for tool in TOOLS:
         if not tool.available(config):
@@ -279,7 +280,7 @@ def tool_schemas(config: Config, allowed: list[str] | None = None) -> list[dict[
             continue
         desc = tool.description.format(sources=_source_titles(config)) if "{sources}" in tool.description else None
         out.append(tool.schema(desc))
-    return out
+    return out + [CALCULATE_TOOL]          # exact arithmetic, always (worked out inside decide, ISSUES_LOG O51)
 
 
 def messages_for(
@@ -427,7 +428,8 @@ def decide(
     if not clarify_ok:
         tools = [t for t in tools if t.get("function", {}).get("name") != "ask_clarification"]
     try:
-        text, calls = LLMClient(config).chat_tools(
+        text, calls = chat_tools_with_calculator(
+            LLMClient(config),
             messages=messages_for(query, config, conversation, model, specialist,
                                   refine_note=build_refine_note(refine) if refine else None),
             tools=tools, model=model,
@@ -516,6 +518,7 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
         if routed is not None:
             got, args, reply = routed.tool, routed.args, ""
         else:
+            # the first call is what is scored: a calculate call counts as the choice (it is not worked out)
             reply, calls = client.chat_tools(messages=messages_for(case["text"], config, None, model, sp),
                                              tools=tool_schemas(config, sp.tools if sp else None), model=model,
                                              temperature=0.0)

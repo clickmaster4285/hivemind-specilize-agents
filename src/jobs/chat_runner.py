@@ -19,6 +19,7 @@ from src.llm.llm_client import LLMClient, LLMStopped
 from src.llm.ollama_mgmt import model_loaded
 from src.tools.quiz import generate_quiz, wants_quiz
 from src.tools.suggestions import generate_suggestions
+from src.tools.calculator import CALCULATE_TOOL, chat_tools_with_calculator
 from src.tools.web_search import WebSearchError, answer_from_web
 
 log = logging.getLogger(__name__)
@@ -270,16 +271,29 @@ def run_chat(
             _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Writing…"})
         live.set_text(job_id, "assistant", text)
 
-    def chat(**kwargs: Any) -> str:
-        """client.chat, streamed, with a status that says whether the model must load first."""
-        target = kwargs.get("model") or model
+    def announce(target: str) -> None:
+        """A status that says whether the model must load first."""
         warm = model_loaded(config, target)
         if timing["model_warm"] is None:
             timing["model_warm"] = warm
         _emit(on_progress, {"type": "status", "agent_id": "assistant",
                             "message": "Thinking…" if warm
                             else f"Loading {target} into memory (about 10 s)…"})
+
+    def chat(**kwargs: Any) -> str:
+        """client.chat, streamed."""
+        announce(kwargs.get("model") or model)
         return client.chat(on_delta=on_delta, should_continue=keep_going, **kwargs)
+
+    def chat_calculating(*, system: str, user: str, model: str, temperature: float) -> str:
+        """Like chat, with the calculate tool: a web answer's sums (a download time from a size the sources give)
+        are worked out exactly, not by the model (ISSUES_LOG O51)."""
+        announce(model)
+        text, _calls = chat_tools_with_calculator(
+            client, messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            tools=[CALCULATE_TOOL], model=model, temperature=temperature, on_delta=on_delta,
+            should_continue=keep_going)
+        return text
 
     def ttft() -> float | None:
         """Seconds from start to the first visible token (None if nothing streamed)."""
@@ -299,7 +313,7 @@ def run_chat(
         def web_answer() -> tuple[str, dict[str, Any]]:
             """SearXNG + the top pages → (answer, extra): the Web path, and a knowledge-base miss (O50)."""
             text, sources = answer_from_web(
-                query, config, chat=chat, model=model, now=current_time_text(),
+                query, config, chat=chat_calculating, model=model, now=current_time_text(),
                 status=lambda message: _emit(
                     on_progress, {"type": "status", "agent_id": "assistant", "message": message}
                 ),
