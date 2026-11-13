@@ -108,12 +108,19 @@ In order:
 4. **Deep** (research across many sources) or **Options** (several approaches to pick from): straight to the
    chat runner, no tool choice.
 5. **Auto** — first the **routing call** (`src/llm/router.py`, O51): one short model call (a few hundred
-   tokens, about a second) that reads the message, and the previous one for a follow-up, and answers in JSON:
-   - `route`: **search** (the answer needs facts that may have changed since training: news, prices, sizes,
-     versions, rules) → straight to `web_search` with the router's search words and `news` flag;
-     **clarify** (a recommendation missing details) → the multiple-choice questions;
-     **model** → the tool choice below. A failed or unreadable reply counts as **model**.
+   tokens, 2–5 s) that reads the message, and the previous one for a follow-up, and answers in JSON:
+   - `route`: **search** (the answer needs facts that may have changed since training or must be looked up:
+     news, real people, films and games, prices, sizes, versions, rules) → straight to `web_search` with the
+     router's search words and `news` flag; **clarify** (only a recommendation or choice missing budget,
+     purpose or size) → the multiple-choice questions; **model** → the tool choice below. A failed or
+     unreadable reply counts as **model**.
+   - A follow-up ("who is she", "name of the lead actress", a typed answer to a clarifying question) is joined
+     with the previous message and routed as that question, never clarified (O55). After a clarifying reply
+     the next message is never clarified again (`_just_clarified`, a code check), and the clarifying call
+     sees the previous message, so it does not ask "which movie?" right after one was named.
    - `learning`: the user wants to learn a topic → the answer gets a quiz (only then: it holds the GPU 9–17 s).
+   - `calculation`: the answer needs a number worked out (a download time, a cost) → the web answer gets an
+     instruction to use `calculate` right after the question (O57).
 
    It replaced lists of trigger words, which missed "how much time to download GTA 6" (answered from memory)
    and sent "15% of 2400" and "compare my site with …" to the web. Log line: `router: Route(…)`.
@@ -133,7 +140,7 @@ In order:
 | `draw_diagram` | Mermaid diagram (`src/tools/diagram_gen.py`) |
 | `create_document` | Document writer: outline → each section written and checked → PDF / Word / … (`src/tools/doc_writer.py`); "this as a PDF" converts the earlier answer as it is |
 | `get_weather` | Weather and 3-day forecast |
-| `calculate` | Worked out inside the same step (`src/tools/calculator.py`): Python evaluates the arithmetic (numbers and + − × ÷ ** only, nothing else runs), the model goes on with the exact result. Also offered while a web answer is written, for sums on the sources' numbers (O51) |
+| `calculate` | Worked out inside the same step (`src/tools/calculator.py`): Python evaluates the arithmetic (numbers, units and + − × ÷ ** only, nothing else runs), the model goes on with the exact result. Also offered while a web answer is written, for sums on the sources' numbers (O51). Units (O57): the model writes `212 GB / 100 Mbps in hours` and the tool converts (bits/bytes, k/M/G/T, GiB, bps, s/min/h/days): with plain numbers it still skipped steps (16.8 h for a 4.7-hour download) |
 | `network_scan`, `ping_host`, `security_check`*, `server_audit`, `diagnose_server`, `operate_server`, `nvr_cameras`, `network_device` | Network and server tools (`src/servers/`); they use the user's own saved device logins, encrypted with `DEVICE_KEY` |
 | `site_audit`, `compare_sites`, `keyword_research`, `seo_projects`, `write_content` | SEO and marketing tools (`src/tools/`) |
 | `about_multeagent` | Live facts about this installation |
@@ -193,8 +200,22 @@ question as the user typed it. A question the routing call sends to the web uses
 date (its meta tags, as for the knowledge base), else the date SearXNG gave with the result. The Sources table
 shows the same date, or none — never the day the page was fetched, which made every source look new. The
 table hides a section heading that only repeats the page title. `WEB_SYSTEM` speaks of "sources", forbids
-talk of passages, the search or a closing note on the sources, and asks that an allegation about a real
-person or company say who makes it ("according to Reuters [2]").
+talk of passages, the search, "the provided sources" or a closing note on the sources, and asks that an
+allegation about a real person or company say who makes it ("according to Reuters [2]").
+
+**One source per page** (O56): the passages of one page are joined into one numbered source (`by_page`, web
+and deep research), in rank order; its section label stays only when all come from one section. Before, a
+page was listed two or three times.
+
+**Chat context** (O54): a web or deep answer sees the user's last 2 questions only
+(`format_question_context`), to know who "she" is — never earlier answers or the chat summary. With the
+whole conversation above the sources, the 9B model put facts from one person's story into another's answer.
+Other paths (direct reply, knowledge base, files) still get the conversation.
+
+**Calculations** (O57): when the routing call marks `calculation`, `CALCULATION_NOTE` follows the question:
+call `calculate` with the units as given, no conversion factor of its own. Checked live 2026-11-13: GTA 6
+212 GB at 100 Mbps = 4.71 h, Black Ops 7 204.45 GB at 50 Mbps = 9.09 h. In `job_timing` the web answer is the
+`web_search` step (it showed as `calculator`).
 
 ### C) Images — `src/images/image_client.py` → image service (`src/images/image_service.py`)
 

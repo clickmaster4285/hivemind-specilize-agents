@@ -26,8 +26,9 @@ from src.core.conversation import estimate_tokens
 logger = logging.getLogger(__name__)
 
 _job: ContextVar[tuple[str, int | None] | None] = ContextVar("llm_usage_job", default=None)
-_SKIP_MODULES = {__name__, "src.llm.llm_client"}
-_PASS_THROUGH = {"<lambda>", "chat"}
+# the calculate loop makes its caller's call: the step is the caller (web_search, assistant), never "calculator"
+_SKIP_MODULES = {__name__, "src.llm.llm_client", "src.tools.calculator"}
+_PASS_THROUGH = {"<lambda>", "chat", "chat_calculating"}
 
 
 @contextmanager

@@ -100,3 +100,37 @@ def test_unread_results_still_count_by_their_snippet(monkeypatch):
     monkeypatch.setattr(ws, "_read", lambda hit: [])
     passages = ws.gather("snippet", _hits(3), CFG)
     assert {p.text for p in passages} <= {"snippet 0", "snippet 1", "snippet 2"} and passages
+
+
+def test_one_page_is_one_source():
+    # filmibeat, dadnology and Wikipedia were each listed twice, one row per passage (O56)
+    a1 = ws.Passage("A", "https://a.test/p", "Who is she?", "first part", "2026-11-09")
+    b = ws.Passage("B", "https://b.test/p", "", "other page")
+    a2 = ws.Passage("A", "https://a.test/p", "No entries found", "second part")
+    merged = ws.by_page([a1, b, a2])
+    assert [p.url for p in merged] == ["https://a.test/p", "https://b.test/p"]      # rank order kept
+    assert "first part" in merged[0].text and "second part" in merged[0].text
+    assert merged[0].heading == "" and merged[0].published == "2026-11-09"         # two sections: no label
+    assert ws.by_page([a1])[0].heading == "Who is she?"
+
+
+def test_a_web_answer_sees_earlier_questions_never_earlier_answers(monkeypatch):
+    # "who is afia sadiqui" took "recruited by China's Ministry of State Security" from the Jensen answer (O54)
+    from src.core.conversation import format_question_context
+
+    history = [{"role": "user", "content": "jensen huang controversy"},
+               {"role": "assistant", "content": "Alice Huang was recruited by China's Ministry of State Security."},
+               {"role": "user", "content": "did afia sadiqui return to pakistan"},
+               {"role": "assistant", "content": "She remains imprisoned."}]
+    block = format_question_context(history)
+    assert "afia sadiqui" in block and "Ministry of State Security" not in block and "imprisoned" not in block
+    seen, _text, _sources = _answer(monkeypatch, conversation_block=block)
+    assert "return to pakistan\n\n## Sources" in seen["user"]            # set apart from the sources
+    assert "provided sources" in seen["system"]                            # named as what never to write
+
+
+def test_a_calculation_note_follows_the_question(monkeypatch):
+    seen, _text, _sources = _answer(monkeypatch, calculation=True)
+    assert seen["user"].endswith(ws.CALCULATION_NOTE)
+    seen, _text, _sources = _answer(monkeypatch)
+    assert ws.CALCULATION_NOTE not in seen["user"]

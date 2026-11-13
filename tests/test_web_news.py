@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from src.llm.assistant import wants_news
+from src.llm.assistant import tool_flag
 from src.tools import web_search as ws
 
 CFG = SimpleNamespace(web_search_url="http://127.0.0.1:8888")
@@ -50,5 +50,5 @@ def test_a_failed_news_search_falls_back_to_general(monkeypatch):
 
 
 def test_the_news_argument_is_yes_only():
-    assert wants_news({"news": "yes"}) and wants_news({"news": " Yes "})
-    assert not wants_news({"news": ""}) and not wants_news({}) and not wants_news({"news": "no"})
+    assert tool_flag({"news": "yes"}, "news") and tool_flag({"news": " Yes "}, "news")
+    assert not tool_flag({"news": ""}, "news") and not tool_flag({}, "news") and not tool_flag({"news": "no"}, "news")

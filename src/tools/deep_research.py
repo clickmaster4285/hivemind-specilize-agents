@@ -21,6 +21,8 @@ from src.tools.web_search import (
     Passage,
     WebSearchError,
     bm25_scores,
+    by_page,
+    context_lead,
     gather,
     search,
     web_source,
@@ -163,6 +165,7 @@ def deep_research(
         if len(chosen) >= config.deep_max_passages - len(kb):    # the knowledge base shares the budget
             break
 
+    chosen = by_page(chosen)        # one numbered source per page (O56)
     kb_blocks = [
         f'<source id="{n}" kind="knowledge base">\n[{n}] {p.title} — {p.publisher or p.source} '
         f"(KNOWLEDGE BASE, last updated {p.updated_at.date().isoformat() if p.updated_at else 'unknown'})"
@@ -172,13 +175,13 @@ def deep_research(
     web_blocks = [
         f'<source id="{n}" kind="live web">\n[{n}] {p.title} — {urlsplit(p.url).hostname} (LIVE WEB'
         + (f", published {p.published})" if p.published else ")")
-        + (f"\nSection: {p.heading}" if p.heading else "") + f"\n\n{p.text[:PASSAGE_CHARS]}\n</source>"
+        + (f"\nSection: {p.heading}" if p.heading else "") + f"\n\n{p.text}\n</source>"
         for n, p in enumerate(chosen, len(kb) + 1)
     ]
-    where = f"{len(kb)} knowledge-base and {len(chosen)} web passages" if kb else f"{len(chosen)} passages"
+    where = f"{len(kb)} knowledge-base and {len(chosen)} web sources" if kb else f"{len(chosen)} sources"
     status(f"Writing a sourced report from {where} across {len(per_page)} sites…")
     system = DEEP_SYSTEM.format(now=now) + (COMPARE_RULES if kb and chosen else "")
-    user = f"{conversation_block}## Sources\n\n" + "\n\n".join(kb_blocks + web_blocks) + f"\n\n## Question\n{question}"
+    user = f"{context_lead(conversation_block)}## Sources\n\n" + "\n\n".join(kb_blocks + web_blocks) + f"\n\n## Question\n{question}"
     text = chat(system=system, user=user, model=model, temperature=0.3)
 
     from src.brain.answer import cited_numbers

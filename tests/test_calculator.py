@@ -61,3 +61,17 @@ def test_endless_calculating_must_end_in_an_answer():
     client = FakeClient([("", [_sum("1 + 1")])] * MAX_CALC_ROUNDS + [("Two.", [])])
     text, _calls = chat_tools_with_calculator(client, messages=[], tools=[CALCULATE_TOOL])
     assert text == "Two." and client.seen[-1][1] == []                 # the last call has no calculate tool
+
+
+def test_units_are_converted_by_the_tool_not_the_model():
+    # the model wrote '(210 * 8) / 100' and called it hours: 16.8 h for a 4.7-hour download (O57)
+    assert calculate("212 GB / 100 Mbps in hours") == "4.71111111111"
+    assert calculate("212GB/100Mbps in hours") == "4.71111111111"
+    assert calculate("1500 MB in GB") == "1.5"
+    assert calculate("100 MB/s * 1 min in GB") == "6"
+    assert calculate("1e9 / 2") == "500000000"                    # an exponent is not a unit
+
+
+def test_an_unknown_unit_is_named_in_the_error():
+    assert "unknown unit 'parsecs'" in calculate("2 parsecs in hours")
+    assert "unknown unit 'x'" in calculate("x + 1")

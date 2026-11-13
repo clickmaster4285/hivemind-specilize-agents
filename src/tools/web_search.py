@@ -41,8 +41,11 @@ Current date and time: {now}.
 
 Rules:
 - Back every factual statement with its source number in square brackets, like [1] or [2][3].
-- Write a direct answer to the question. Never mention passages, snippets, the search or how you found the
-  information, and add no note about the sources at the end: the user sees them listed under the answer.
+- Write a direct answer to the question. Never refer to the sources as such ("based on the provided sources",
+  "the sources do not say"), nor to passages, snippets, the search or how you found the information, and add no
+  note about the sources at the end: the user sees them listed under the answer.
+- Earlier questions, when listed, only tell you what the question refers to. Every fact comes from the numbered
+  sources, and a fact about one person or event is never told of another.
 - An allegation, accusation, rumour or disputed claim — above all about a real person or company — says who makes
   or reports it ("according to Reuters [2]", "US prosecutors allege [1]"). State as fact only what the sources
   present as established.
@@ -58,6 +61,20 @@ Rules:
   structure, and it is grounded in the cited sources. Skip it only for a plain fact or an unstructured
   list.
 - """ + MATH_RULE + "\n\n" + DIAGRAM_RULES
+
+
+# The GTA answer did 1,696 ÷ 100 = 16.96 hours (right: 4.71 h): the model skipped the unit steps and never called
+# the tool, though MATH_RULE asks it to (ISSUES_LOG O57). Next to the question, the instruction is followed; with
+# units in the expression the tool, not the model, converts them.
+CALCULATION_NOTE = ("This question needs a calculation. Before you answer, call the calculate tool with the numbers "
+                    "and their units exactly as the sources and the question give them, ending with the unit you "
+                    "want, e.g. '212 GB / 100 Mbps in hours'. Write no conversion factor yourself (no * 8, / 1000, "
+                    "/ 3600): the tool converts the units. Give its result.")
+
+
+def context_lead(block: str) -> str:
+    """The chat context that opens a sources prompt, set apart from the "## Sources" heading."""
+    return f"{block}\n\n" if block.strip() else ""
 
 
 class WebSearchError(RuntimeError):
@@ -95,6 +112,24 @@ def _day(value: object) -> str | None:
 def _snippet(hit: Hit) -> list[Passage]:
     """The search result's own text, standing in for a page that was not (or could not be) read."""
     return [Passage(hit.title, hit.url, "", hit.snippet, hit.published)] if hit.snippet else []
+
+
+def by_page(passages: list[Passage]) -> list[Passage]:
+    """One source per page, in rank order: a page's passages joined, each cut to PASSAGE_CHARS. Numbered one by
+    one, the same page was listed two or three times and filled the Sources table (ISSUES_LOG O56). The section
+    label stays only when all of them come from one section."""
+    pages: dict[str, list[Passage]] = {}
+    for p in passages:
+        pages.setdefault(p.url, []).append(p)
+    merged = []
+    for parts in pages.values():
+        first = parts[0]
+        headings = {p.heading for p in parts}
+        text = "\n\n".join(p.text[:PASSAGE_CHARS] if len(headings) == 1 or not p.heading
+                            else f"{p.heading}\n{p.text[:PASSAGE_CHARS]}" for p in parts)
+        merged.append(Passage(first.title, first.url, first.heading if len(headings) == 1 else "", text,
+                              first.published))
+    return merged
 
 
 def web_source(n: int, p: Passage, cited: set[int]) -> dict:
@@ -257,11 +292,13 @@ def answer_from_web(
     conversation_block: str = "",
     news: bool = False,
     search_query: str = "",
+    calculation: bool = False,
 ) -> tuple[str, list[dict]]:
     """→ (answer with [n] citations, sources for the UI). news=True: news results too (see search).
     search_query: the search words the model wrote in web_search's `query` — typos fixed, a follow-up's subject
     filled in from the conversation (ISSUES_LOG O49); the question itself when empty. They find and rank the
-    pages; the model still answers the question as asked."""
+    pages; the model still answers the question as asked. calculation=True (the router saw a number to work out):
+    CALCULATION_NOTE goes right after the question, where the model heeds it most."""
     words = search_query.strip() or question
     t0 = time.perf_counter()
     status("Searching the news…" if news else "Searching the web…")
@@ -270,17 +307,18 @@ def answer_from_web(
     if not hits:
         return "The web search found nothing for this question. Try other words.", []
     status(f"Reading {min(len(hits), MAX_PAGES)} web pages…")
-    passages = gather(words, hits, config)
+    passages = by_page(gather(words, hits, config))
     t_read = time.perf_counter()
     if not passages:
         return "The web results could not be read. Try again or rephrase the question.", []
     numbered = "\n\n".join(
         f'<source id="{n}">\n[{n}] {p.title} — {urlsplit(p.url).hostname}'
         + (f" (published {p.published})" if p.published else "")
-        + (f"\nSection: {p.heading}" if p.heading else "") + f"\n\n{p.text[:PASSAGE_CHARS]}\n</source>"
+        + (f"\nSection: {p.heading}" if p.heading else "") + f"\n\n{p.text}\n</source>"
         for n, p in enumerate(passages, 1)
     )
-    user = f"{conversation_block}## Sources\n\n{numbered}\n\n## Question\n{question}"
+    user = (f"{context_lead(conversation_block)}## Sources\n\n{numbered}\n\n## Question\n{question}"
+            + (f"\n\n{CALCULATION_NOTE}" if calculation else ""))
     # NETDIAGRAM_RULES has JSON braces → append after .format, never inside the template
     text = chat(system=WEB_SYSTEM.format(now=now) + NETDIAGRAM_RULES, user=user, model=model, temperature=0.2)
     # P0 tool-phase split (doc/RESPONSE_QUALITY.md): where the web-search wait goes.

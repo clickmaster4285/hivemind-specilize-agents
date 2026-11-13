@@ -16,34 +16,40 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.core.config import Config
+from src.core.conversation import QUESTION_CHARS
 
 logger = logging.getLogger(__name__)
 
 SEARCH, CLARIFY, MODEL = "search", "clarify", "model"
 ROUTE_MAX_TOKENS = 120     # one small JSON object; caps a runaway reply
-CONTEXT_CHARS = 400        # of the previous message: enough to fill in a follow-up's subject ("and his age?")
 
 ROUTER_SYSTEM = """You sort a chat message before it is answered. Current date: {now}. Your training data is
 older than this date: anything may have changed since.
 
 Reply with ONE JSON object and nothing else:
-{{"route": "search" or "clarify" or "model", "query": "...", "news": true or false, "learning": true or false}}
+{{"route": "search" or "clarify" or "model", "query": "...", "news": true or false, "learning": true or false,
+"calculation": true or false}}
 
 route:
 - "search": the answer depends on facts that may have changed since your training or that must be looked up:
-  news and recent events, people or companies in the news, prices, sizes, specs or release details of products,
-  games and software, latest versions, laws, rules and policies, statistics, schedules. A question that needs
-  such a fact for a calculation (a download time, a cost) is "search" too.
-- "clarify": the user wants a recommendation or a choice made for them (what to buy, which one to pick, how to
-  start) and the message lacks details needed to answer well (budget, purpose, size). Never when the message
+  news and recent events, real people (who someone is, their life, work, roles, what they did), companies,
+  films, shows and games (plot, cast, release), prices, sizes, specs or release details of products and
+  software, latest versions, laws, rules and policies, statistics, schedules. A question that needs such a fact
+  for a calculation (a download time, a cost) is "search" too.
+- "clarify": ONLY when the user asks you to recommend or choose something for them (what to buy, which one to
+  pick, how to start) and gives no budget, purpose or size. Never for any other question, never when the message
   names a concrete target such as an IP address, a website or a file.
+  A short or unclear message ("name of the lead actress", "who is she", "what did she do", or an answer like
+  "Spider-Man: Brand New Day") continues the previous message: join the two and route the joined question.
 - "model": everything else: arithmetic on numbers the user gave, writing, code, greetings, questions about you,
   actions on the user's own devices, servers or websites (scan, ping, audit, compare sites), making a file.
 query: for "search", short search words: spelling fixed, a follow-up's subject filled in from the previous
 message. Otherwise "".
 news: true when the question is about recent events (the last days, weeks or months).
 learning: true when the user wants to learn or understand a topic (an explanation, a lesson, how something
-works); false for news, quick facts, tasks and chat."""
+works); false for news, quick facts, tasks and chat.
+calculation: true when the answer needs a number worked out (a download or travel time, a cost, a total, a
+conversion between units)."""
 
 
 @dataclass(frozen=True)
@@ -52,6 +58,7 @@ class Route:
     query: str = ""            # search words, for SEARCH
     news: bool = False
     learning: bool = False
+    calculation: bool = False  # the answer needs a number worked out: the calculate tool is asked for (O57)
 
 
 def _flag(value: Any) -> bool:
@@ -71,7 +78,13 @@ def parse_route(raw: str) -> Route:
     if route not in (SEARCH, CLARIFY, MODEL):
         return Route()
     return Route(route, str(data.get("query") or "").strip() if route == SEARCH else "",
-                 _flag(data.get("news")), _flag(data.get("learning")))
+                 _flag(data.get("news")), _flag(data.get("learning")), _flag(data.get("calculation")))
+
+
+def previous_question(conversation: list[dict[str, str]] | None) -> str:
+    """The user's previous message, cut to its subject: what a follow-up ("who is she") refers to."""
+    return next((str(m.get("content") or "")[:QUESTION_CHARS] for m in reversed(conversation or [])
+                 if m.get("role") == "user"), "")
 
 
 def route_message(query: str, config: Config, conversation: list[dict[str, str]] | None = None, *,
@@ -80,8 +93,8 @@ def route_message(query: str, config: Config, conversation: list[dict[str, str]]
     from src.core.clock import current_time_text
     from src.llm.llm_client import LLMClient
 
-    previous = next((str(m.get("content") or "") for m in reversed(conversation or []) if m.get("role") == "user"), "")
-    user = (f"Previous message: {previous[:CONTEXT_CHARS]}\n\n" if previous else "") + f"Message: {query}"
+    previous = previous_question(conversation)
+    user = (f"Previous message: {previous}\n\n" if previous else "") + f"Message: {query}"
     try:
         raw = (chat or LLMClient(config).chat)(
             system=ROUTER_SYSTEM.format(now=current_time_text()), user=user,

@@ -14,7 +14,7 @@ from src.brain.db import BrainDBError
 from src.brain.embed import EmbedError
 from src.core.config import Config
 from src.jobs import live
-from src.core.conversation import format_conversation_block, normalize_conversation
+from src.core.conversation import format_conversation_block, format_question_context, normalize_conversation
 from src.llm.llm_client import LLMClient, LLMStopped
 from src.llm.ollama_mgmt import model_loaded
 from src.tools.quiz import generate_quiz, wants_quiz
@@ -187,6 +187,7 @@ def run_chat(
     web_search: bool = False,
     web_news: bool = False,
     web_query: str = "",
+    web_calculation: bool = False,
     learning: bool = False,
     deep: bool = False,
     options: bool = False,
@@ -198,6 +199,7 @@ def run_chat(
     web_search=True: the user asked to search the internet — SearXNG + the top pages (src/web_search.py).
     web_news=True: a question about recent events — the search takes SearXNG's news results first.
     web_query: the model's search words (web_search's `query`); empty = search the question as typed.
+    web_calculation=True: the answer needs a number worked out (router): the web answer is told to use calculate.
     learning=True: the user is learning a topic (src/llm/router.py), so the answer gets a quiz.
 
     The answer streams into src/live.py (shown in the browser as it is written); the Stop button
@@ -301,12 +303,12 @@ def run_chat(
 
     try:
         history = normalize_conversation(conversation)
-        prior = format_conversation_block(history)
-        if refine:
-            # a "Try again, better" regenerate: steer every path (direct, web, brain, deep) with the
-            # user's reason, carried as context rather than a visible extra user turn.
-            note = build_refine_note(refine)
-            prior = f"{prior}\n\n{note}" if prior else note
+        # a "Try again, better" regenerate: steer every path (direct, web, brain, deep) with the
+        # user's reason, carried as context rather than a visible extra user turn.
+        note = build_refine_note(refine) if refine else ""
+        prior = "\n\n".join(p for p in (format_conversation_block(history), note) if p)
+        # answers written from web sources see the earlier questions only, never earlier answers (O54)
+        sourced = "\n\n".join(p for p in (format_question_context(history), note) if p)
         user_msg = f"{prior}\n\n## Current message\n{query}" if prior else query
         extra: dict[str, Any] = {}
 
@@ -317,7 +319,7 @@ def run_chat(
                 status=lambda message: _emit(
                     on_progress, {"type": "status", "agent_id": "assistant", "message": message}
                 ),
-                conversation_block=prior, news=web_news, search_query=web_query,
+                conversation_block=sourced, news=web_news, search_query=web_query, calculation=web_calculation,
             )
             return text, {"grounded": bool(sources), "sources": sources}
 
@@ -334,7 +336,7 @@ def run_chat(
                 status=lambda message: _emit(
                     on_progress, {"type": "status", "agent_id": "assistant", "message": message}
                 ),
-                conversation_block=prior,
+                conversation_block=sourced,
                 should_continue=keep_going,
                 # the knowledge base joins the research and is cross-checked against the live web
                 account_id=account_id,

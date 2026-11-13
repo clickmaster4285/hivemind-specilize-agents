@@ -27,7 +27,7 @@ from src.jobs import live
 from src.core.config import ROOT, Config
 from src.core.conversation import split_summary
 from src.llm.diagram_rules import DIAGRAM_RULES, MATH_RULE, NETDIAGRAM_RULES
-from src.llm.router import CLARIFY, SEARCH, Route, route_message
+from src.llm.router import CLARIFY, SEARCH, Route, previous_question, route_message
 from src.tools.calculator import CALCULATE_TOOL, chat_tools_with_calculator
 
 if TYPE_CHECKING:
@@ -210,9 +210,10 @@ TOOLS: tuple[Tool, ...] = (
 BY_NAME = {t.name: t for t in TOOLS}
 
 
-def wants_news(args: dict[str, Any]) -> bool:
-    """web_search's `news` argument (the schema asks for 'yes'): search the news too (ISSUES_LOG O47)."""
-    return str(args.get("news") or "").strip().lower() == "yes"
+def tool_flag(args: dict[str, Any], name: str) -> bool:
+    """A yes/no tool argument (the schema asks for 'yes'): web_search's `news` (search the news too, ISSUES_LOG
+    O47) and `calculation`, set by the router (the answer needs the calculate tool, O57)."""
+    return str(args.get(name) or "").strip().lower() == "yes"
 
 SYSTEM = """{identity}
 
@@ -311,6 +312,8 @@ def messages_for(
     return msgs
 
 
+CLARIFY_INTRO = "A few quick questions so I can answer this well:"   # the clarify reply's text, also in the chat history
+
 CLARIFY_SYSTEM = """The user's request below may be missing key information needed to answer it well.
 If so, ask 1–2 SHORT multiple-choice questions to pin down what matters (e.g. budget, scale, platform,
 goal, experience level, use case). If the request is already clear enough to answer well, ask nothing.
@@ -319,12 +322,14 @@ Output ONLY a JSON array, nothing else:
 [{"question": "What is your budget?", "options": ["under $1k", "$1-3k", "$3k+"]}]
 Use 2-4 short options per question, at most 2 questions. If no clarification is needed, output exactly: []"""
 
-def _ask_clarifying(query: str, config: Config, model: str) -> list[dict[str, Any]]:
-    """A dedicated call that returns multiple-choice clarifying questions (or [] if the query is clear)."""
+def _ask_clarifying(query: str, config: Config, model: str, previous: str = "") -> list[dict[str, Any]]:
+    """A dedicated call that returns multiple-choice clarifying questions (or [] if the query is clear).
+    It sees the previous message, so it never asks "which movie?" right after one was named (O55)."""
     from src.llm.llm_client import LLMClient
 
+    user = f"Previous message: {previous}\n\nRequest: {query}" if previous else query
     try:
-        raw = LLMClient(config).chat(system=CLARIFY_SYSTEM, user=query, model=model,
+        raw = LLMClient(config).chat(system=CLARIFY_SYSTEM, user=user, model=model,
                                      max_tokens=300, max_retries=0, temperature=0.2)
     except Exception as exc:  # noqa: BLE001 — clarification is optional; fall back to a normal answer
         logger.info("clarify check failed: %s", exc)
@@ -368,18 +373,25 @@ def _web_allowed(config: Config, specialist: Specialist | None) -> bool:
     return bool(config.web_search_url) and (specialist is None or "web_search" in specialist.tools)
 
 
+def _just_clarified(conversation: list[dict[str, str]] | None) -> bool:
+    """The last reply asked clarifying questions: this message answers them, so never ask again (O55)."""
+    last = next((m for m in reversed(conversation or []) if m.get("role") == "assistant"), None)
+    return bool(last) and str(last.get("content") or "").strip() == CLARIFY_INTRO
+
+
 def pre_route(route: Route, query: str, config: Config, specialist: Specialist | None, *,
-              clarify_ok: bool = True) -> Decision | None:
+              clarify_ok: bool = True, previous: str = "") -> Decision | None:
     """Act on the router's verdict before the model sees the tools; None = let the model choose.
     decide() and evaluate() share it, so the eval measures the path real chats take."""
     if route.route == SEARCH and _web_allowed(config, specialist):
         logger.info("assistant: the router sends this to web_search")
-        args = {"query": route.query or query} | ({"news": "yes"} if route.news else {})
+        args = ({"query": route.query or query} | ({"news": "yes"} if route.news else {})
+                | ({"calculation": "yes"} if route.calculation else {}))
         return Decision(False, "web_search", "web_search", args, learning=route.learning)
     # an under-specified recommendation: multiple-choice questions first (the model is unreliable at calling
     # a tool for this, so a dedicated call writes the choices)
     if route.route == CLARIFY and clarify_ok:
-        questions = _ask_clarifying(query, config, config.model_fast or config.llm_model)
+        questions = _ask_clarifying(query, config, config.model_fast or config.llm_model, previous)
         if questions:
             logger.info("assistant: asking %d clarifying questions", len(questions))
             return Decision(False, "clarify", "ask_clarification", {"questions": questions})
@@ -411,8 +423,10 @@ def decide(
     opened = {"done": False}
 
     emit({"type": "status", "message": "Thinking…"})
+    clarify_ok = clarify_ok and not _just_clarified(conversation)
     route = route_message(query, config, conversation)
-    routed = pre_route(route, query, config, specialist, clarify_ok=clarify_ok)
+    routed = pre_route(route, query, config, specialist, clarify_ok=clarify_ok,
+                       previous=previous_question(conversation))
     if routed is not None:
         return routed
 

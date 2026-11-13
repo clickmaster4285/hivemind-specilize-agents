@@ -22,7 +22,7 @@ from src.servers.server_ops import run_server_diagnose, run_server_operate
 from src.servers.host_check import run_host_check
 from src.servers.netdev import run_network_device
 from src.servers.nvr import run_nvr_cameras
-from src.llm.assistant import decide, speaker, wants_news
+from src.llm.assistant import CLARIFY_INTRO, decide, speaker, tool_flag
 from src.llm.skills import Skill
 from src.llm.skills import apply as apply_skill
 from src.llm.skills import for_job as skill_for_job
@@ -90,7 +90,7 @@ def _clarify(config: Config, job_id: str, query: str, questions: list, on_progre
     on_progress({"type": "session_start", "mode": "chat", "query": query})
     on_progress({"type": "agent_start", **agent})
     on_progress({"type": "agent_done", **agent, "elapsed_seconds": 0,
-                 "output": "A few quick questions so I can answer this well:",
+                 "output": CLARIFY_INTRO,
                  "clarify": questions, "clarify_query": query})
     on_progress({"type": "session_done", "total_seconds": 0, "errors": [], "mode": "chat"})
     _finish(config, job_id, [])
@@ -370,7 +370,8 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                 job_id=job_id,
                 about=intent == "about",
                 web_search=intent == "web_search",
-                web_news=intent == "web_search" and wants_news(tool_args),
+                web_news=intent == "web_search" and tool_flag(tool_args, "news"),
+                web_calculation=intent == "web_search" and tool_flag(tool_args, "calculation"),
                 web_query=str(tool_args.get("query") or ""),
                 learning=learning,
                 specialist=specialist,

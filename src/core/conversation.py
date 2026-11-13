@@ -14,6 +14,8 @@ MAX_CHARS_PER_TURN = 6000
 MAX_TOTAL_CHARS = 24000
 SUMMARY_ROLE = "summary"
 CHARS_PER_TOKEN = 4          # rough size of a token for English/Hinglish text; used to budget, never billed
+QUESTIONS_KEPT = 2           # earlier questions a web answer sees: enough to know who "she" is (ISSUES_LOG O54)
+QUESTION_CHARS = 400         # of each earlier question: its subject, not a pasted document
 
 
 def estimate_tokens(text: str) -> int:
@@ -59,6 +61,18 @@ def normalize_conversation(raw: Any) -> list[dict[str, str]]:
         kept.append(turn)
     kept.reverse()
     return ([summary] if summary else []) + kept
+
+
+def format_question_context(turns: list[dict[str, str]]) -> str:
+    """The context for an answer written from sources (web, deep research): the user's last questions only.
+    Earlier answers and the chat summary stay out: the 9B model took their facts for the sources' and put
+    one person's story into another's answer (ISSUES_LOG O54)."""
+    questions = [t["content"][:QUESTION_CHARS] for t in turns if t["role"] == "user"][-QUESTIONS_KEPT:]
+    if not questions:
+        return ""
+    listed = "\n".join(f"- {q}" for q in questions)
+    return ("## Earlier questions in this chat\nOnly to know what the question refers to (who \"she\" or \"it\" "
+            f"is). Take no facts from here.\n{listed}")
 
 
 def format_conversation_block(turns: list[dict[str, str]]) -> str:
