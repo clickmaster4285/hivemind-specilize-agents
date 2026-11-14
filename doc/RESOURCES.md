@@ -100,6 +100,47 @@ the embedding model no longer fitted beside the chat model: a test that needed a
   section). Earlier figures that counted ~1.4 GB for the embedding model measured it on the GPU, where the app
   never runs it.
 
+### 3c. Flash attention + q8_0 context cache (measured)
+
+`python -m src.llm.bench_resources --ctx 12288,16384`, 2026-11-14, the user's runs: Ollama defaults, then
+`OLLAMA_FLASH_ATTENTION=1` + `OLLAMA_KV_CACHE_TYPE=q8_0` (systemd override), then defaults again after
+`systemctl revert` (the third run matched the first).
+
+| | Defaults 12288 | **FA + q8_0 12288** | Defaults 16384 | **FA + q8_0 16384** |
+|---|---|---|---|---|
+| Model size loaded | 5.88 GB | 5.71 GB | 6.02 GB | 5.80 GB |
+| … on the CPU | 0% | 0% | 0% | 0% |
+| GPU memory peak (of 8192 MB) | 7143–7193 MB | 6975 MB | 7275–7312 MB | 7061 MB |
+| Reading the prompt | 431–432 tok/s | 434 tok/s | 423–427 tok/s | 428 tok/s |
+| Writing the answer | 23.3–23.5 tok/s | 23.1 tok/s | 23.4 tok/s | 23.0 tok/s |
+| Model server CPU peak (% of one core) | 1694–1698 | 1540 | 1692–1712 | 1548 |
+
+- **It works on this Pascal card** and saves **~170 MB at 12288, ~220–250 MB at 16384**, at the same speed
+  (writing ~1% slower, within noise). The saving is small because only 8 of the model's 32 layers keep a context
+  cache.
+- **16384 fitted fully on the GPU in all three runs today**, also without the change (6.02 GB, 0% CPU). On
+  2026-11-13 it loaded at 6.69 GB with 12% on the CPU. How much the desktop holds on the card when the model
+  loads decides it (section 4); the ~220 MB that FA + q8_0 frees is margin against that.
+- The eval with FA + q8_0 on: **35/38, median 3.8 s** (was 36/38, 5.2 s). The prompt change of the same day
+  (the date goes last, O52) was also in, so a miss cannot be put down to either one; a rerun with the defaults
+  tells them apart. The user reverted to the defaults after the run.
+
+### 3d. A small model on the CPU for suggestions, quiz and summaries (measured)
+
+`python -m src.llm.bench_small_models`, 2026-11-14: the app's own suggestion, quiz and summary code, 2 runs each;
+all outputs in `logs/bench_small_models.md`. The quiz column is the answers read by hand, not only the format.
+
+| Model | Suggestions | Quiz | Summary | Chat speed meanwhile (alone ~23.5 tok/s) |
+|---|---|---|---|---|
+| **qwen3.5:9b, GPU (now)** | 1.6–1.8 s, good | 8.0–8.6 s, all answers right | 10 s, all 5 facts | — |
+| qwen3:1.7b, CPU | 1.2–1.3 s, gives 1 of 3 | 14 s, **wrong answers marked right** | 11–12 s, drops a fact | 20.6 tok/s (−12%) |
+| qwen3.5:0.8b, CPU | 3.2–3.3 s, good | 9–17 s, **no valid JSON** | 14–15 s, facts kept but a **contradiction** ("fits fully on the GPU but spills 12%") | 22.1 tok/s (−8%) |
+| qwen2.5:1.5b, CPU | 2.0–2.6 s, good, drifts off the answer | 9 s, **wrong answers**, a repeated option | 5–11 s, drops the headings | 21.7 tok/s (−9%) |
+
+- **Keep the 9B for all three.** On the GPU it is as fast as or faster than every small model on the CPU, and
+  only its quiz and summaries were right. A small model on the CPU also slows the chat answer by 8–12%: the
+  chat model uses ~8 CPU cores itself.
+
 ## 4. Limits
 
 - **One model call at a time.** Chat, routing, suggestions, quiz, chat summaries and embeddings all queue on the
@@ -125,8 +166,8 @@ Not built; each is a decision for the user (BACKLOG L20 O58).
 | Option | What changes | Cost |
 |---|---|---|
 | ~~Embedding model on the CPU~~ | Already so: the app has always run it on the CPU. Measured 2026-11-14 (section 3b): keep it there | Adding documents ~3× slower than on the GPU |
-| **A small second model on the CPU** for suggestions, quiz and chat summaries | These stop holding the GPU after each answer (O52) | Weaker output than the 9B; a download; its speed on this CPU needs measuring |
-| **Ollama tuning:** `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0` (set on the Ollama service, needs `sudo systemctl edit ollama`) | A smaller context cache; maybe a larger context on the GPU | Untested on Pascal; keep only if `ollama ps` shows `100% GPU` and answers are as good |
+| ~~A small second model on the CPU~~ for suggestions, quiz and chat summaries | Measured (section 3d): not worth it. No faster than the 9B on the GPU, wrong quiz answers, the chat slows 8–12% | — |
+| **Ollama tuning:** `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0` (a systemd override on the Ollama service, `sudo`) | Measured (section 3c): works on Pascal, ~170–250 MB less GPU memory, same speed: margin against the desktop's share | Reverted 2026-11-14 until an eval with the defaults shows whether the 35/38 came from it; q8_0 may lower quality slightly |
 | Not worth it: the 9B on the CPU, more chat slots on the GPU | — | Much slower / does not fit |
 
 ## How to measure
@@ -135,6 +176,7 @@ Not built; each is a decision for the user (BACKLOG L20 O58).
 python -m src.llm.bench_resources                         # 8192, then 16384
 python -m src.llm.bench_resources --ctx 8192,12288,16384
 python -m src.llm.bench_embed                             # embedding model: CPU (the app) vs GPU
+python -m src.llm.bench_small_models                      # small CPU models vs the 9B: suggestions, quiz, summary
 ```
 
 Run it when nobody is chatting: the app's own calls use `LLM_NUM_CTX` and make Ollama reload the model in

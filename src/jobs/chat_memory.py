@@ -78,10 +78,12 @@ def _thread_jobs(session: Session, thread_id: str, user_id: int, *, before: date
             if json.loads(j.payload_json or "{}").get("thread_id") == thread_id]
 
 
-def summarize(previous: str, turns: list[dict[str, str]], *, config: Config, model: str | None = None) -> str:
+def summarize(previous: str, turns: list[dict[str, str]], *, config: Config, model: str | None = None,
+              chat: Callable[..., str] | None = None) -> str:
     """Fold turns into the running summary. Works through them in pieces that fit the model, so a chat of
-    any length can be summarised; each piece's result carries into the next."""
-    client = LLMClient(config)
+    any length can be summarised; each piece's result carries into the next. chat: the model call (default the
+    app's client; bench_small_models passes its own to compare models)."""
+    chat = chat or LLMClient(config).chat
     piece_budget = config.llm_num_ctx // 2                       # the other half: instructions + the summary
     summary, piece, size = previous.strip(), [], 0
 
@@ -90,7 +92,7 @@ def summarize(previous: str, turns: list[dict[str, str]], *, config: Config, mod
         text = "\n\n".join(f"### {t['role'].title()}\n{t['content']}" for t in piece)
         user = (f"## Summary so far\n{summary or '(none yet)'}\n\n## New part of the chat\n{text}\n\n"
                 "Write the updated summary.")
-        summary = client.chat(system=SUMMARY_SYSTEM, user=user, model=model, temperature=0.2).strip()
+        summary = chat(system=SUMMARY_SYSTEM, user=user, model=model, temperature=0.2).strip()
         piece, size = [], 0
 
     for turn in turns:

@@ -573,8 +573,10 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **Unit math with the tool (O57)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
 - [x] **Router names the tool (O61)** — done 2026-11-13, eval 36/38 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
 - [x] **Larger context (O58)** — done 2026-11-13: measured, `LLM_NUM_CTX=12288` (user) ([RESOURCES.md](RESOURCES.md))
-- [ ] **Use the idle CPU (O58 follow-up):** a small CPU model for suggestions, quiz and summaries; Ollama flash
-      attention + q8_0 cache. Each a user decision ([RESOURCES.md](RESOURCES.md) section 5)
+- [ ] **Use the idle CPU (O58 follow-up):** Ollama flash attention + q8_0 cache: measured, ~170–250 MB less, same
+      speed; reverted until an eval with the defaults (user decision) ([RESOURCES.md](RESOURCES.md) 3c)
+  - [x] A small CPU model for suggestions, quiz and summaries — measured 2026-11-14: not worth it, keep the 9B
+        ([RESOURCES.md](RESOURCES.md) 3d)
   - [x] Embedding model on the CPU — measured 2026-11-14 with `bench_embed`: the app already runs it there; keep
         ([RESOURCES.md](RESOURCES.md) 3b)
 - [ ] **Mermaid 12 (O62):** pinned 12.3.0, the dagre layout and classic look kept (done 2026-11-14); left: the user
