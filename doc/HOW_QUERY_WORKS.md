@@ -270,6 +270,11 @@ knowledge-base answers. Measured 2026-11-14 on the P4000 at 12288 (1-token calls
 | Tool choice | 6,867 tokens | 17.1 s | 1.5 s | 0.13 s |
 | Router | 1,880 tokens | 4.5 s | 1.35 s | — |
 
+**The router is the exception:** it carries the date alone (`current_date_text()`, no time) near the top, as
+before. With the date and time at the end, "Put a table of 5 router models and their prices into an Excel file"
+went to web search 4 times of 4 (at the top: `create_document` 4 of 4; in the user message: search). The date
+alone changes once a day, so its prompt's start is still reused.
+
 The reuse survives another call in between (a router call, then the tool choice: 0.12 s). The ~1.5 s left is
 the part Ollama reads again after the cached start. A prompt whose start changes (another specialist, another
 tool list) is read in full. The diagram rules (`NETDIAGRAM_RULES`) are ~930 of the tool choice's tokens (~2.7 s

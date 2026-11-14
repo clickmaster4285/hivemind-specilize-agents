@@ -30,8 +30,8 @@ NOT_LISTED = frozenset({"web_search", "ask_clarification", "calculate"})
 # server, so only the full tool choice, with every rule in view, picks it.
 NOT_RUN = frozenset({"operate_server"})
 
-ROUTER_SYSTEM = """You sort a chat message before it is answered. Your training data is older than the current
-date (at the end): anything may have changed since.
+ROUTER_SYSTEM = """You sort a chat message before it is answered. Current date: {today}. Your training data is
+older than this date: anything may have changed since.
 
 The assistant's tools (* = required argument):
 {tools}
@@ -48,8 +48,9 @@ route:
   ranks on Google for a search term, where a site ranks); making a file (Word, PDF, Excel, PowerPoint); a
   diagram or a picture; marketing copy or a blog post; questions about the assistant itself (its model, its
   knowledge base, what it can do). Only when the user wants the job DONE now: asking how to do something
-  yourself (steps, a guide, "how do I configure …") is not a tool's job but "search". "tool": the exact name; "args": each argument as a short string taken from
-  the message, "" when the message does not say. E.g. "tell me the issues in this website from seo perspective
+  yourself (steps, a guide, "how do I configure …") is not a tool's job but "search". "tool": the exact name; "args": each argument as a short string copied from
+  the message in the user's own words, never adding details the user did not give; "" when the message does
+  not say. E.g. "tell me the issues in this website from seo perspective
   https://example.pk/" → {{"route": "tool", "tool": "site_audit", "args": {{"url": "https://example.pk/"}}}};
   "put the prices of 5 phones in an Excel file" → "tool" create_document (the file is the job, not the prices).
   Not sure which tool → "model".
@@ -63,8 +64,9 @@ route:
   names a concrete target such as an IP address, a website or a file.
   A short or unclear message ("name of the lead actress", "who is she", "what did she do", or an answer like
   "Spider-Man: Brand New Day") continues the previous message: join the two and route the joined question.
-- "model": everything else: arithmetic on numbers the user gave, other writing, code, greetings, a tool's job
-  when you are not sure which tool.
+- "model": everything else: arithmetic on numbers the user gave, short writing (a story, a poem, slogans, a
+  rewrite or translation; a full blog post or article is a tool's job), code, greetings, a tool's job when you
+  are not sure which tool.
 query: for "search", short search words: spelling fixed, a follow-up's subject filled in from the previous
 message. Otherwise "".
 news: true when the question is about recent events (the last days, weeks or months), such as a controversy,
@@ -145,15 +147,16 @@ def route_message(query: str, config: Config, conversation: list[dict[str, str]]
                   tools: list[dict[str, Any]] | None = None, chat: Callable[..., str] | None = None) -> Route:
     """Ask the fast model where the message goes. tools: the schemas the tool choice would offer (the router may
     name one of them). Never raises: a failed call leaves it to the tool choice."""
-    from src.core.clock import date_line
+    from src.core.clock import current_date_text
     from src.llm.llm_client import LLMClient
 
     previous = previous_question(conversation)
     user = (f"Previous message: {previous}\n\n" if previous else "") + f"Message: {query}"
     try:
         raw = (chat or LLMClient(config).chat)(
-            # the date last, so the fixed rules stay a cached prefix (O52)
-            system=ROUTER_SYSTEM.format(tools=tool_lines(tools or [])) + f"\n\n{date_line()}", user=user,
+            # the date alone, at the top: it changes once a day, so the prompt stays a cached prefix (O52); the
+            # date and time at the end tipped "put … into an Excel file" from create_document to search
+            system=ROUTER_SYSTEM.format(today=current_date_text(), tools=tool_lines(tools or [])), user=user,
             model=config.model_fast or config.llm_model, max_tokens=ROUTE_MAX_TOKENS, max_retries=0,
             temperature=0.0,
         )

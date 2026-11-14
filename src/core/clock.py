@@ -34,16 +34,24 @@ def valid_time_zone(name: str | None) -> bool:
     return True
 
 
+def _local(now: datetime | None, zone: str | None) -> datetime:
+    """`now` (default: this moment) in the user's time zone, else the server's."""
+    if now is None:
+        return datetime.now(ZoneInfo(zone)) if zone else datetime.now().astimezone()
+    return now.astimezone(ZoneInfo(zone)) if zone else now.astimezone()
+
+
+def current_date_text(now: datetime | None = None, time_zone: str | None = None) -> str:
+    """'Saturday, 17 October 2026': the date alone. It changes once a day, so it may stand near the top of a
+    prompt without breaking Ollama's reuse of the prompt's start (ISSUES_LOG O52)."""
+    return f"{_local(now, time_zone or _time_zone.get()):%A, %d %B %Y}"
+
+
 def current_time_text(now: datetime | None = None, time_zone: str | None = None) -> str:
     """'Saturday, 17 October 2026, 11:11 AM — time zone Asia/Karachi (PKT, UTC+05:00)'.
     AM/PM is spelled out: given '11:11' the model once said PM in the morning."""
     zone = time_zone or _time_zone.get()
-    if now is None:
-        now = datetime.now(ZoneInfo(zone)) if zone else datetime.now().astimezone()
-    elif zone:
-        now = now.astimezone(ZoneInfo(zone))
-    else:
-        now = now.astimezone()
+    now = _local(now, zone)
     offset = now.strftime("%z")
     utc = f"UTC{offset[:3]}:{offset[3:]}" if offset else "UTC"
     where = f"time zone {zone} ({now.tzname()}, {utc})" if zone else f"time zone {now.tzname()} ({utc})"
