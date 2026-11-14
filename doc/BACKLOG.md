@@ -36,7 +36,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
 | [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
 | [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
-| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context |
+| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 (user checks diagrams) |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
@@ -561,6 +561,10 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [ ] **Faster chats (O52):** ~20 s tool choice on an ~8,000-token prompt, quiz and suggestions holding the GPU after
       each answer; measure prompt reuse first. Quiz (user, 2026-11-13): only when the user is learning a topic,
       not after every answer
+  - [x] Prompt reuse: the date last in the long prompts — done 2026-11-14, tool choice 17.1 → 1.5 s, router
+        4.5 → 1.35 s ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) "The date goes last")
+  - [ ] Suggestions, quiz and chat summaries after each answer (17–19 s); diagram rules only when a diagram
+        could help (~930 tokens)
 - [ ] **Pictures only where they fit (O53):** only section headings that name one thing get images
 - [x] **No facts from other questions (O54)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)
 - [x] **Follow-ups without clarifying (O55)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
@@ -571,6 +575,9 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] **Larger context (O58)** — done 2026-11-13: measured, `LLM_NUM_CTX=12288` (user) ([RESOURCES.md](RESOURCES.md))
 - [ ] **Use the idle CPU (O58 follow-up):** embedding model on the CPU; a small CPU model for suggestions, quiz and
       summaries; Ollama flash attention + q8_0 cache. Each a user decision ([RESOURCES.md](RESOURCES.md) section 5)
+- [ ] **Mermaid 12 (O62):** pinned 12.3.0, the dagre layout and classic look kept (done 2026-11-14); left: the user
+      checks diagrams and PNG / SVG downloads in the app; then compare ELK and `neo` and keep what reads better;
+      use-case diagrams in the diagram rules
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)
 

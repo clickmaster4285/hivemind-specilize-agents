@@ -32,7 +32,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.core.clock import current_time_text
+from src.core.clock import date_line
 from src.core.config import Config
 from src.llm import assistant
 from src.llm.llm_client import LLMClient
@@ -234,7 +234,7 @@ def bench_model(model: str, config: Config, runs: int, judge_model: str) -> tupl
     client = LLMClient(config, model=model)
     judge = LLMClient(config, model=judge_model)
     identity = f"You are MulteAgent, a local IT assistant (model: {model})."
-    system = assistant.SYSTEM.format(identity=identity, now=current_time_text())
+    system = assistant.SYSTEM.format(identity=identity) + f"\n\n{date_line()}"
     blocks: list[tuple[str, str]] = []  # (global id, code) for the headless validator
 
     # 1) Diagrams

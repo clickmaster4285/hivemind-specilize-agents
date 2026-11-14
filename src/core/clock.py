@@ -48,3 +48,10 @@ def current_time_text(now: datetime | None = None, time_zone: str | None = None)
     utc = f"UTC{offset[:3]}:{offset[3:]}" if offset else "UTC"
     where = f"time zone {zone} ({now.tzname()}, {utc})" if zone else f"time zone {now.tzname()} ({utc})"
     return f"{now:%A, %d %B %Y, %I:%M %p} — {where}"
+
+
+def date_line(now_text: str | None = None) -> str:
+    """A system prompt's date line. It goes LAST (ISSUES_LOG O52): Ollama reuses the cached start of a prompt,
+    and a time that changes every minute near the top made it read the whole prompt again (tool choice,
+    6,864 tokens: 17.1 s; with the date last: 1.6 s)."""
+    return f"Current date and time: {now_text or current_time_text()}."

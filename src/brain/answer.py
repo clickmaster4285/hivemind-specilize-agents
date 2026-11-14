@@ -14,6 +14,7 @@ from typing import Any
 
 from src.tools.about import identity_line
 from src.core.clock import current_time_text as _clock_current_time_text
+from src.core.clock import date_line
 from src.brain.command_check import check_note, unverified_terms
 from src.brain.db import connect
 from src.brain.retrieve import Passage, SearchResult, search
@@ -35,7 +36,7 @@ REFUSE_MESSAGE = (
     "Try rephrasing, or ask an admin to add a source that covers it."
 )
 
-GROUNDED_SYSTEM = """You are MulteAgent's knowledge assistant. Current date and time: {now}.
+GROUNDED_SYSTEM = """You are MulteAgent's knowledge assistant.
 
 Answer the question using ONLY the numbered sources provided by the user message.
 Rules:
@@ -66,7 +67,7 @@ Rules:
   you cannot create pictures here. For a picture the user asks "create an image of …"; for a
   diagram, "create a diagram of …" — say that instead."""
 
-GENERAL_SYSTEM = """You are MulteAgent Assistant, a helpful, concise local AI. Current date and time: {now}.
+GENERAL_SYSTEM = """You are MulteAgent Assistant, a helpful, concise local AI.
 Answer from your general knowledge. Be honest about uncertainty, especially for recent events,
 versions and prices. Reply in the language of the question (English or Hinglish).
 - Keep it short: about 150 words unless the user asks for detail or a full guide.
@@ -201,7 +202,8 @@ def answer_question(
     if result.enough_evidence:
         user = f"{prior}## Sources\n\n{format_sources(result.passages)}\n\n## Question\n{question}"
         text = chat(
-            system=f"{identity_line(config, model)}{persona}\n\n{GROUNDED_SYSTEM.format(now=now)}",
+            # the date last, so the fixed rules stay a cached prefix (O52)
+            system=f"{identity_line(config, model)}{persona}\n\n{GROUNDED_SYSTEM}\n\n{date_line(now)}",
             user=user, model=model, temperature=GROUNDED_TEMPERATURE
         )
         # commands the model named but the sources do not contain: listed under the answer (no model call)
@@ -234,6 +236,6 @@ def answer_question(
         return GroundedAnswer(text="", grounded=False, search=result)
     if config.brain_no_evidence == "refuse":
         return GroundedAnswer(text=REFUSE_MESSAGE, grounded=False, search=result)
-    text = chat(system=f"{identity_line(config, model)}{persona}\n\n{GENERAL_SYSTEM.format(now=now)}",
+    text = chat(system=f"{identity_line(config, model)}{persona}\n\n{GENERAL_SYSTEM}\n\n{date_line(now)}",
                 user=f"{prior}{question}", model=model)
     return GroundedAnswer(text=f"{NO_EVIDENCE_NOTICE}\n\n{text}", grounded=False, search=result)

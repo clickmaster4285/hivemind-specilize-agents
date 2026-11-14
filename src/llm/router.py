@@ -30,8 +30,8 @@ NOT_LISTED = frozenset({"web_search", "ask_clarification", "calculate"})
 # server, so only the full tool choice, with every rule in view, picks it.
 NOT_RUN = frozenset({"operate_server"})
 
-ROUTER_SYSTEM = """You sort a chat message before it is answered. Current date: {now}. Your training data is
-older than this date: anything may have changed since.
+ROUTER_SYSTEM = """You sort a chat message before it is answered. Your training data is older than the current
+date (at the end): anything may have changed since.
 
 The assistant's tools (* = required argument):
 {tools}
@@ -145,14 +145,15 @@ def route_message(query: str, config: Config, conversation: list[dict[str, str]]
                   tools: list[dict[str, Any]] | None = None, chat: Callable[..., str] | None = None) -> Route:
     """Ask the fast model where the message goes. tools: the schemas the tool choice would offer (the router may
     name one of them). Never raises: a failed call leaves it to the tool choice."""
-    from src.core.clock import current_time_text
+    from src.core.clock import date_line
     from src.llm.llm_client import LLMClient
 
     previous = previous_question(conversation)
     user = (f"Previous message: {previous}\n\n" if previous else "") + f"Message: {query}"
     try:
         raw = (chat or LLMClient(config).chat)(
-            system=ROUTER_SYSTEM.format(now=current_time_text(), tools=tool_lines(tools or [])), user=user,
+            # the date last, so the fixed rules stay a cached prefix (O52)
+            system=ROUTER_SYSTEM.format(tools=tool_lines(tools or [])) + f"\n\n{date_line()}", user=user,
             model=config.model_fast or config.llm_model, max_tokens=ROUTE_MAX_TOKENS, max_retries=0,
             temperature=0.0,
         )

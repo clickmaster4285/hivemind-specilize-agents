@@ -217,13 +217,11 @@ def tool_flag(args: dict[str, Any], name: str) -> bool:
 
 SYSTEM = """{identity}
 
-Current date and time: {now}.
-
 You do NOT know by heart: what your knowledge base contains, today's facts (weather, prices, news),
 or the local network. Nor anything that may have changed since your training: news and events, people
 and companies in the news, products, games and software (versions, release dates, sizes, prices), laws,
 rankings and statistics. If your answer would rest on such a fact, or you know the thing only as upcoming
-or expected (compare with the date above), call web_search first. For those, call the tool. For a substantive factual, technical or how-to question,
+or expected (compare with the current date at the end), call web_search first. For those, call the tool. For a substantive factual, technical or how-to question,
 prefer to cite sources rather than answer from memory: use search_knowledge_base when it is about your
 knowledge-base documents, otherwise web_search (it answers with source links). Use a tool also for an
 action (network scan), a file, a picture or a diagram: when the user asks for a diagram, flowchart or
@@ -290,7 +288,7 @@ def messages_for(
     refine_note: str | None = None,
 ) -> list[dict]:
     from src.tools.about import identity_line
-    from src.core.clock import current_time_text
+    from src.core.clock import date_line
 
     identity = identity_line(config, model)
     if specialist is not None:
@@ -299,7 +297,8 @@ def messages_for(
         identity += (f"\n\n{specialist.prompt_block()}\nThe tool rules below always apply to you too: when a "
                      "tool can do the thing or look it up, call the tool instead of explaining how to do it.")
     # NETDIAGRAM_RULES carries JSON braces, so it is appended AFTER .format (never inside a .format template)
-    system = SYSTEM.format(identity=identity, now=current_time_text()) + NETDIAGRAM_RULES
+    # the date last, so the long fixed part stays a cached prefix (O52)
+    system = SYSTEM.format(identity=identity) + NETDIAGRAM_RULES + f"\n\n{date_line()}"
     msgs = [{"role": "system", "content": system}]
     summary, turns = split_summary(conversation or [])
     if summary:          # a long chat's earlier part, folded into a summary (BACKLOG L12) — always kept

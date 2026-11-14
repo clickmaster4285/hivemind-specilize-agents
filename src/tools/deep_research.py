@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 from src.brain.retrieve import Passage as BrainPassage
 from src.brain.retrieve import search as kb_search
+from src.core.clock import date_line
 from src.core.config import Config
 from src.tools.web_search import (
     MAX_PER_PAGE,
@@ -36,7 +37,7 @@ Output ONLY the queries — one per line, no numbering, no commentary, no quotes
 
 DEEP_SYSTEM = """You are MulteAgent's deep-research writer. You are given many numbered passages gathered
 from several web sources. Write ONE thorough, well-structured report that answers the question using ONLY
-those passages. Current date and time: {now}.
+those passages.
 
 Rules:
 - Back every factual statement with its passage number(s) in square brackets, like [1] or [2][5].
@@ -180,7 +181,8 @@ def deep_research(
     ]
     where = f"{len(kb)} knowledge-base and {len(chosen)} web sources" if kb else f"{len(chosen)} sources"
     status(f"Writing a sourced report from {where} across {len(per_page)} sites…")
-    system = DEEP_SYSTEM.format(now=now) + (COMPARE_RULES if kb and chosen else "")
+    # the date last, so the fixed rules stay a cached prefix (O52)
+    system = DEEP_SYSTEM + (COMPARE_RULES if kb and chosen else "") + f"\n\n{date_line(now)}"
     user = f"{context_lead(conversation_block)}## Sources\n\n" + "\n\n".join(kb_blocks + web_blocks) + f"\n\n## Question\n{question}"
     text = chat(system=system, user=user, model=model, temperature=0.3)
 

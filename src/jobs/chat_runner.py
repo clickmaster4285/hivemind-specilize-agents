@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from src.tools.about import about_system, identity_line
 from src.llm.assistant import speaker
-from src.brain.answer import GroundedAnswer, answer_question, current_time_text
+from src.brain.answer import GroundedAnswer, answer_question, current_time_text, date_line
 from src.brain.db import BrainDBError
 from src.brain.embed import EmbedError
 from src.core.config import Config
@@ -232,7 +232,7 @@ def run_chat(
         role = "About MulteAgent"
     else:
         # Who it is (else it says "made by Google"), and the date: the model has no clock.
-        system = f"{identity_line(config, model)}\n\n{system}\n\nCurrent date and time: {current_time_text()}."
+        system = f"{identity_line(config, model)}\n\n{system}\n\n{date_line()}"
         if specialist is not None and not pics:
             system += f"\n\n{specialist.prompt_block()}"
     who = speaker(specialist)

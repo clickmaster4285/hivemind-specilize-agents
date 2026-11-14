@@ -258,6 +258,23 @@ Time in no step is the tool's own work. A web search adds its own split just bef
 `grep job_timing logs/api.log`. The API and UI logs are kept across restarts (`start.sh` appends; a log over
 20 MB becomes `api.log.1` at the next start).
 
+### The date goes last: Ollama reuses the start of a prompt (O52)
+
+Ollama keeps what it has read of a prompt and, when the next call starts with the same text, reads only what
+differs. The time in a prompt changes every minute, so it sits **at the end** of each long system prompt
+(`date_line()` in `src/core/clock.py`): the tool choice, the router, web search, deep research and the
+knowledge-base answers. Measured 2026-11-14 on the P4000 at 12288 (1-token calls, the real prompts):
+
+| Call | Prompt | Time at the top, minute changed | Date last, minute changed | Same prompt again |
+|---|---|---|---|---|
+| Tool choice | 6,867 tokens | 17.1 s | 1.5 s | 0.13 s |
+| Router | 1,880 tokens | 4.5 s | 1.35 s | — |
+
+The reuse survives another call in between (a router call, then the tool choice: 0.12 s). The ~1.5 s left is
+the part Ollama reads again after the cached start. A prompt whose start changes (another specialist, another
+tool list) is read in full. The diagram rules (`NETDIAGRAM_RULES`) are ~930 of the tool choice's tokens (~2.7 s
+when it is read in full).
+
 ## Layer 7 — Shared pieces
 
 | Piece | File | Role |

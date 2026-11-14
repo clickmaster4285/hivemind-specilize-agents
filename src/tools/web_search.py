@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 
 import requests
 
+from src.core.clock import date_line
 from src.core.config import Config
 from src.llm.diagram_rules import DIAGRAM_RULES, MATH_RULE, NETDIAGRAM_RULES
 
@@ -37,7 +38,6 @@ SEARCH_TIMEOUT = 15
 # The answer speaks to the question, never about its own mechanics ("based on the provided passages", a closing
 # note on the sources), and says who makes a claim about a real person (ISSUES_LOG O47).
 WEB_SYSTEM = """You answer the user's question using ONLY the numbered sources below (text from web pages).
-Current date and time: {now}.
 
 Rules:
 - Back every factual statement with its source number in square brackets, like [1] or [2][3].
@@ -320,7 +320,9 @@ def answer_from_web(
     user = (f"{context_lead(conversation_block)}## Sources\n\n{numbered}\n\n## Question\n{question}"
             + (f"\n\n{CALCULATION_NOTE}" if calculation else ""))
     # NETDIAGRAM_RULES has JSON braces → append after .format, never inside the template
-    text = chat(system=WEB_SYSTEM.format(now=now) + NETDIAGRAM_RULES, user=user, model=model, temperature=0.2)
+    # the date last, so the fixed rules stay a cached prefix (O52)
+    text = chat(system=WEB_SYSTEM + NETDIAGRAM_RULES + f"\n\n{date_line(now)}", user=user, model=model,
+                temperature=0.2)
     # P0 tool-phase split (doc/RESPONSE_QUALITY.md): where the web-search wait goes.
     logger.info(
         "web_timing search=%.2fs read=%.2fs synth=%.2fs pages=%d passages=%d",

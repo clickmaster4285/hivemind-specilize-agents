@@ -36,6 +36,10 @@ function loadMermaid() {
       startOnLoad: false,
       securityLevel: "strict",
       theme: "neutral",
+      // Mermaid 12 made ELK the default layout and `neo` the default look (ISSUES_LOG O62): keep the
+      // dagre layout and the classic look our diagrams were tuned with (step edges, Arial box sizing)
+      layout: "dagre",
+      look: "classic",
       // plain SVG text instead of HTML labels, so the PNG export can draw it on a canvas (a canvas holding
       // HTML may not be exported). Top level: Mermaid 11 ignores the old `flowchart.htmlLabels` (ISSUES_LOG O45)
       htmlLabels: false,
