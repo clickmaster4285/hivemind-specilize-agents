@@ -597,7 +597,8 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
   - [ ] Memory eval: facts said early, asked after they are folded; summary only vs summary + recall — built
         (`python -m src.llm.bench_recall`). v1 (user, 2026-11-14): tie 6/6, too easy (one summary pass, facts
         flagged). v2 built: 28 exchanges folded in rounds like the app, facts in passing and in the assistant's
-        answers; waiting: the user's run, then MIN_SIMILARITY
+        answers. User's run: 8/11 summary only, 9/11 with recall; MIN_SIMILARITY 0.60 → 0.45 (lost facts'
+        pieces 0.48, 0.54); waiting: the rerun
   - [x] Fewer summary calls: fold to half the room the summary leaves, not half the budget (20 → 8 summary
         rounds in v2's chat) — done 2026-11-14
   - [ ] Later: recall across the user's own chats

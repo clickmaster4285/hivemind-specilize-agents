@@ -102,7 +102,7 @@ In order:
 1. **Memory** — the chat's earlier turns, rebuilt from its own jobs and kept within the model's context
    (`src/jobs/chat_memory.py`; older turns are summarised). Once a chat has a summary, the folded turns' own
    words that match the new message come back under it (**chat recall**, O63, `src/jobs/chat_recall.py`): up
-   to a quarter of the history budget, pieces that score at least 0.60 by meaning or hold the message's exact
+   to a quarter of the history budget, pieces that score at least 0.45 by meaning or hold the message's exact
    identifiers (an IP, a version), oldest first, marked as older than the summary. After every job, its
    exchange is cut into pieces and embedded on the CPU in a background thread (`brain.chat_passages`, only the
    chat's owner can read them; a deleted job is never recalled).

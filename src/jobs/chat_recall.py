@@ -34,10 +34,11 @@ RECALL_SHARE = 0.25
 # covers the ones that matter without reading a whole long chat back.
 CANDIDATES = 20
 # The meaning score a recalled piece needs, unless it holds the message's exact identifiers (an IP, a version,
-# an error code). Measured 2026-11-14 on bench_recall's chat: the piece that answers a question 0.68–0.80, the
-# next best 0.40–0.56 (the old internet speed for "what speed is it now"), unrelated messages ("thanks!", a
-# haiku, 15% of 2400) at most 0.35. Between 0.56 and 0.68; recheck with `python -m src.llm.bench_recall`.
-MIN_SIMILARITY = 0.6
+# an error code). Measured with `python -m src.llm.bench_recall` (eval v2, 2026-11-14): a fact said in passing
+# scores lower than one said plainly; the summary had dropped the backup time (its piece 0.48) and the UPS serial
+# (0.54), both missed at 0.60; pieces holding a fact 0.42–0.81; unrelated messages ("thanks!", a haiku, 15% of
+# 2400) at most 0.35. 0.45 keeps 0.10 above the unrelated ones. A weaker piece only costs the room kept for it.
+MIN_SIMILARITY = 0.45
 
 
 @dataclass(frozen=True)

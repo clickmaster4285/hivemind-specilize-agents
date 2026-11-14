@@ -147,8 +147,9 @@ After every answer in a saved chat, the exchange is embedded on the CPU in a bac
 ~450-token piece, section 3b; a short exchange is one piece); the next job does not wait for it. Once a chat
 has a summary, each message costs one more CPU embedding and one search, ~0.1 s. Measured 2026-11-14 on
 `bench_recall`'s chat (the scripted questions with short stand-in answers, embeddings only): the piece that
-answers a question scores 0.68–0.80, the next best 0.40–0.56, unrelated messages at most 0.35, so
-`MIN_SIMILARITY` is 0.60. Disk: the pieces' text plus 4 KB of vector each.
+answers a question scores 0.68–0.80, the next best 0.40–0.56, unrelated messages at most 0.35. Eval v2 (28
+exchanges, facts said in passing): pieces holding a fact 0.42–0.81, two lost facts at 0.48 and 0.54, unrelated
+0.29–0.31, so `MIN_SIMILARITY` is 0.45. Disk: the pieces' text plus 4 KB of vector each.
 
 ## 4. Limits
 
