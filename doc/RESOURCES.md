@@ -21,7 +21,7 @@ O58. Re-measure after any change of model, driver or Ollama version (see [How to
 | Part | GPU | CPU | RAM | Disk |
 |---|---|---|---|---|
 | Chat model `qwen3.5:9b` (Q4_K_M, through Ollama) | 5.7–5.9 GB (table in section 3) | ~8 cores average while it works, ~17 at peak; ~0 when idle | ~1.4 GB | 6.6 GB |
-| Embedding model `qwen3-embedding:0.6b` (knowledge base, example router) | up to ~1.4 GB together with the desktop's share (card peak 7.1 GB with both at 8k, chat model alone 5.74 GB); its own size alone was not measured | low | small | 0.6 GB |
+| Embedding model `qwen3-embedding:0.6b` (knowledge base, example router) | none: the app runs it on the CPU (`CPU_ONLY` in `src/brain/embed.py`); on the GPU it would take ~207 MB (section 3b) | a few cores while it embeds | small | 0.6 GB |
 | Image service, SDXL (`src/images/image_service.py`) | the whole card while it runs: it unloads the chat model first (`IMAGE_UNLOAD_OLLAMA`) and itself after 10 idle minutes (`IMAGE_IDLE_UNLOAD_MINUTES`) | low | a few GB while loaded | checkpoint not measured |
 | API (FastAPI, `web/`) | — | low | < 300 MB | — |
 | UI (Next.js) | — | low | ~0.9 GB | 1.5 GB (`node_modules` + build) |
@@ -41,7 +41,7 @@ Ollama, a ~6,000-token prompt and a 200-token answer, then one embedding call.
 | … on the GPU | 5.74 GB | 5.88 GB | 5.89 GB |
 | … on the CPU | 0% | 0% | **12%** |
 | Load time | 3.4 s | 6.5 s | 4.7 s |
-| GPU memory peak (of 8192 MB, with the embedding model) | 7124 MB | 7257 MB | 7269 MB |
+| GPU memory peak (of 8192 MB; the embedding call was on the GPU, not where the app runs it) | 7124 MB | 7257 MB | 7269 MB |
 | GPU busy, average | 95% | 95% | 89% |
 | GPU power, average | 97 W | 96 W | 93 W |
 | Model server CPU, average (% of one core) | 843 | 838 | 1271 |
@@ -77,13 +77,39 @@ With `LLM_NUM_CTX=16384` (2026-11-13), `ollama ps` showed the chat model at 6.7 
 card 7 of 8 GB full. The model server ran on ~9 CPU cores, the start-up warm call timed out after 60 s, and
 the embedding model no longer fitted beside the chat model: a test that needed an embedding waited 14 minutes.
 
+### 3b. Embedding model: CPU or GPU (measured)
+
+`python -m src.llm.bench_embed`, 2026-11-14, chat model loaded at 12288:
+
+| | CPU (the app) | GPU |
+|---|---|---|
+| Load time | 1.7 s | 7.2 s |
+| Share on the GPU (`ollama ps`) | 0% | 10% |
+| GPU memory it takes | 0 MB | 207 MB |
+| One search query (median) | 78 ms | 69 ms |
+| Per document chunk (~450 tokens, batches of 16) | 727 ms | 219 ms |
+| Search query while the chat model writes | 118 ms | 276 ms |
+| Chat speed meanwhile (alone: 21.2 tok/s) | 20.9 tok/s | 20.6 tok/s |
+
+- **The CPU is the right place, and the app already uses it** (it always has, since the knowledge base was built).
+  A search query costs the same (~80 ms), is faster than the GPU while a chat answer is being written, and the
+  chat model's speed does not change.
+- **Adding documents is ~3× slower on the CPU**: ~0.7 s per chunk, so a 100-chunk document takes ~73 s instead of
+  ~22 s. It runs in the background and never holds the GPU.
+- **Loading it on the GPU made Ollama reload the chat model**, and the chat model came back 12% on the CPU (next
+  section). Earlier figures that counted ~1.4 GB for the embedding model measured it on the GPU, where the app
+  never runs it.
+
 ## 4. Limits
 
 - **One model call at a time.** Chat, routing, suggestions, quiz, chat summaries and embeddings all queue on the
   one GPU. Suggestions and the quiz run after an answer and delay the next question (ISSUES_LOG O52).
 - **Context ceiling ~12288.** Above that the chat model spills to the CPU and every call slows down. 12288 sits
   at the edge: if the desktop or Chrome hold more GPU memory when the model loads, it can spill too. After a
-  restart, `ollama ps` must show `100% GPU`.
+  restart, `ollama ps` must show `100% GPU`. Seen 2026-11-14: with the desktop at ~680 MB (gnome-shell 346,
+  Chrome 259, System Monitor 45, Nautilus 23) a reload at 12288 gave 6.5 GB, 12% on the CPU. Ollama decides the
+  split when the model loads and keeps it until the next load: close what holds GPU memory, then
+  `ollama stop qwen3.5:9b`; the next message loads it again.
 - **Images and chat cannot run together.** SDXL needs the whole card, so the chat model is unloaded for an
   image and loads again afterwards (a few seconds).
 - **No GPU-side tuning yet.** The Ollama service runs with its defaults: no `OLLAMA_*` settings, so no flash
@@ -98,7 +124,7 @@ Not built; each is a decision for the user (BACKLOG L20 O58).
 
 | Option | What changes | Cost |
 |---|---|---|
-| **Embedding model on the CPU** | Knowledge-base search and the example router run on idle cores, in parallel with chat; the chat model is never pushed off the GPU; the embedding model's share of the card comes free (part of the ~1.4 GB above) | Embedding on the CPU is slower (speed not measured); adding many documents takes longer. Does **not** raise the context ceiling: Ollama's ~5.9 GB limit held with the embedding model unloaded |
+| ~~Embedding model on the CPU~~ | Already so: the app has always run it on the CPU. Measured 2026-11-14 (section 3b): keep it there | Adding documents ~3× slower than on the GPU |
 | **A small second model on the CPU** for suggestions, quiz and chat summaries | These stop holding the GPU after each answer (O52) | Weaker output than the 9B; a download; its speed on this CPU needs measuring |
 | **Ollama tuning:** `OLLAMA_FLASH_ATTENTION=1`, `OLLAMA_KV_CACHE_TYPE=q8_0` (set on the Ollama service, needs `sudo systemctl edit ollama`) | A smaller context cache; maybe a larger context on the GPU | Untested on Pascal; keep only if `ollama ps` shows `100% GPU` and answers are as good |
 | Not worth it: the 9B on the CPU, more chat slots on the GPU | — | Much slower / does not fit |
@@ -108,10 +134,12 @@ Not built; each is a decision for the user (BACKLOG L20 O58).
 ```
 python -m src.llm.bench_resources                         # 8192, then 16384
 python -m src.llm.bench_resources --ctx 8192,12288,16384
+python -m src.llm.bench_embed                             # embedding model: CPU (the app) vs GPU
 ```
 
 Run it when nobody is chatting: the app's own calls use `LLM_NUM_CTX` and make Ollama reload the model in
-between. It unloads both models at the end. Quick checks any time: `ollama ps` (size, CPU/GPU split, context),
+between. It unloads both models at the end; `bench_embed` leaves the chat model loaded and unloads the
+embedding model. Quick checks any time: `ollama ps` (size, CPU/GPU split, context),
 `nvidia-smi` (GPU memory and load), `free -h`, `df -h`.
 
 | Constant | Value | File |

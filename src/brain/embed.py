@@ -13,6 +13,8 @@ from src.core.config import Config
 
 EMBED_DIM = 1024
 BATCH_SIZE = 16
+# no layers on the GPU: the embedding model runs on the CPU, the chat model keeps the card (bench_embed measures it)
+CPU_ONLY = {"num_gpu": 0}
 DEFAULT_TASK = "Given an IT question, retrieve documentation passages that answer it"
 
 
@@ -29,7 +31,7 @@ def _embed_batch(texts: list[str], config: Config) -> list[list[float]]:
                 "model": config.model_embed,
                 "input": texts,
                 "truncate": True,
-                "options": {"num_gpu": 0},
+                "options": CPU_ONLY,
             },
             timeout=config.timeout_seconds,
         )

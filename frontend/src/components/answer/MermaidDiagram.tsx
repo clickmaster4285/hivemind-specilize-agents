@@ -78,15 +78,36 @@ function download(name: string, blob: Blob) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// PNG pixels per diagram unit: 3× the diagram's own size stays sharp when zoomed in a document or a slide
+const PNG_SCALE = 3;
+// the longest PNG side: browsers blank out or refuse larger canvases (Safari limits the area, others a side)
+const PNG_MAX_SIDE = 8192;
+
+/** Mermaid writes `width="100%"`, so as an <img> the SVG has no size of its own and the browser draws it
+ *  ~300 px wide (a 1,824-unit mindmap came out 600 px, blurry). Give it the viewBox size. */
+function sizedSvg(svg: string): { text: string; width: number; height: number } | null {
+  const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+  const root = doc.documentElement;
+  if (doc.querySelector("parsererror") || root.nodeName !== "svg") return null;
+  const [, , width, height] = (root.getAttribute("viewBox") ?? "").trim().split(/[\s,]+/).map(Number);
+  if (!(width > 0 && height > 0)) return null;
+  root.setAttribute("width", String(width));
+  root.setAttribute("height", String(height));
+  return { text: new XMLSerializer().serializeToString(root), width, height };
+}
+
 function svgToPng(svg: string): Promise<Blob> {
   return new Promise((resolve, reject) => {
+    const sized = sizedSvg(svg);
     const img = new Image();
-    const url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+    const url = URL.createObjectURL(new Blob([sized?.text ?? svg], { type: "image/svg+xml;charset=utf-8" }));
     img.onload = () => {
-      const scale = 2; // sharp in documents and slides
+      const width = sized?.width ?? img.naturalWidth;
+      const height = sized?.height ?? img.naturalHeight;
+      const scale = Math.min(PNG_SCALE, PNG_MAX_SIDE / Math.max(width, height));
       const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth * scale;
-      canvas.height = img.naturalHeight * scale;
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
       const ctx = canvas.getContext("2d");
       if (!ctx) return reject(new Error("no canvas"));
       ctx.fillStyle = "#ffffff";

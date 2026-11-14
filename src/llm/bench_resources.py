@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 import psutil
 import requests
 
+from src.brain.embed import CPU_ONLY
 from src.core.config import Config
 
 SAMPLE_SECONDS = 0.5        # how often GPU and CPU are read while the model works
@@ -141,7 +142,9 @@ def measure(config: Config, ctx: int, prompt_tokens: int, output_tokens: int) ->
     run.gen_tps = done.get("eval_count", 0) / max(done.get("eval_duration", 1) / 1e9, 1e-9)
 
     t = time.perf_counter()
-    _post(config, "/api/embed", {"model": config.model_embed, "input": "how do I reset the camera recorder"})
+    # placed as the app places it (src/brain/embed.py): on the CPU
+    _post(config, "/api/embed", {"model": config.model_embed, "input": "how do I reset the camera recorder",
+                                 "options": CPU_ONLY})
     run.embed_s = time.perf_counter() - t
     models = {m["name"]: m for m in _loaded(config)}
     embed = models.get(config.model_embed, {})
