@@ -11,7 +11,7 @@ from typing import Any
 from src.agentic.runtime import run_agentic
 from src.brain.answer import should_use_brain
 from src.core.conversation import normalize_conversation
-from src.jobs.chat_memory import chat_memory
+from src.jobs.chat_memory import chat_memory, remember_job
 from src.jobs.chat_runner import run_chat
 from src.core.clock import set_time_zone
 from src.tools.diagram_gen import run_diagram
@@ -143,6 +143,21 @@ def process_job(job_id: str, config: Config | None = None) -> None:
     with job_usage(job_id, user_id):          # every model call of this job is counted (BACKLOG L11)
         _run_job(job_id, config, mode=mode, query=query, user_id=user_id, payload=payload, model_plan=model_plan)
     _log_timing(config, job_id, mode, time.monotonic() - started)
+    # the exchange is embedded on the CPU for chat recall (O63) while the next job starts
+    threading.Thread(target=_remember, args=(config, job_id), name="chat-recall", daemon=True).start()
+
+
+def _remember(config: Config, job_id: str) -> None:
+    """Store a finished job's exchange for chat recall (ISSUES_LOG O63). Never raises: a chat without it only
+    loses recall of this exchange."""
+    started = time.monotonic()
+    try:
+        stored = remember_job(config, job_id)
+    except Exception as exc:  # noqa: BLE001 — recall is an extra; the answer is already saved
+        log.warning("chat recall: job %s not stored: %s", job_id, exc)
+        return
+    if stored:
+        log.info("chat recall: job %s stored in %d pieces, %.1fs", job_id, stored, time.monotonic() - started)
 
 
 def _log_timing(config: Config, job_id: str, mode: str, seconds: float) -> None:

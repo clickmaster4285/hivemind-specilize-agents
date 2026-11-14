@@ -36,7 +36,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
 | [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
 | [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
-| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 (user checks diagrams) |
+| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 (user checks diagrams); O63 chat recall (user runs bench_recall) |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
@@ -582,6 +582,17 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [ ] **Mermaid 12 (O62):** pinned 12.3.0, the dagre layout and classic look kept (done 2026-11-14); left: the user
       checks diagrams and PNG / SVG downloads in the app; then compare ELK and `neo` and keep what reads better;
       use-case diagrams in the diagram rules
+- [ ] **Chat recall (O63):** a long chat's folded turns come back when the new message needs them; built 2026-11-14 (user's
+      go), waiting for the API restart and the user's `bench_recall` run. No new software: Postgres + pgvector, embedding on the CPU
+  - [x] Index each finished exchange (question + answer, chat and user id) in a pgvector table, in the background
+        — built 2026-11-14 (`brain.chat_passages`, migration 003); new answers only, old chats left as they are
+        (user)
+  - [x] When a chat has a summary: the best few earlier original passages (vector + exact words) next to the
+        summary, within the history budget; only the same user's chat — built 2026-11-14
+        ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
+  - [ ] Memory eval: facts said early, asked after they are folded; summary only vs summary + recall — built
+        (`python -m src.llm.bench_recall`); waiting: the user's run
+  - [ ] Later: recall across the user's own chats
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)
 

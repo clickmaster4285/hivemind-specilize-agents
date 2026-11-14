@@ -17,6 +17,7 @@ from src.core.conversation import SUMMARY_ROLE, format_conversation_block, norma
 from src.core.db import Base
 from src.core.models_db import ChatThreadRow, Job, JobEvent
 from src.jobs import chat_memory as cm
+from src.jobs import chat_recall
 from src.llm.assistant import messages_for
 
 T0 = datetime(2026, 11, 2, 9, 0)
@@ -37,6 +38,21 @@ def db(monkeypatch):
     monkeypatch.setattr("src.core.db.session_scope", scope)
     yield session
     session.close()
+
+
+@pytest.fixture(autouse=True)
+def recalls(monkeypatch):
+    """Chat recall (O63) without the brain database or the embedding model: records each search, finds nothing
+    unless a test sets `found`."""
+    calls: list[dict] = []
+    found: list = []
+
+    def recall(config, **kw):
+        calls.append(kw)
+        return list(found)
+
+    monkeypatch.setattr("src.jobs.chat_recall.recall", recall)
+    return calls, found
 
 
 @pytest.fixture
@@ -139,3 +155,79 @@ def test_the_summary_turn_leads_every_prompt():
     msgs = messages_for("now?", CFG, kept, "m")
     assert msgs[1] == {"role": "system", "content": "Summary of the earlier part of this chat:\nthe gist"}
     assert msgs[-1]["content"] == "now?" and all(m["role"] != SUMMARY_ROLE for m in msgs)
+
+
+# ── chat recall (ISSUES_LOG O63) ───────────────────────────────────────────
+
+def _long_chat(db):
+    chat_thread(db)
+    for n in range(5):
+        add_job(db, f"j{n}", n, query=f"question {n}", answer="y" * 3200)
+
+
+def test_no_summary_no_recall(db, summaries, recalls):
+    chat_thread(db)
+    add_job(db, "a", 1, query="what is docker", answer="a tool")
+    add_job(db, "now", 2, query="and podman?")
+    cm.chat_memory(CFG, job_id="now", fallback=[])
+    assert recalls[0] == []
+
+
+def test_the_folded_turns_are_searched_for_the_new_message(db, summaries, recalls):
+    calls, found = recalls
+    found.append(chat_recall.Recalled("User: the NVR is at 192.168.10.45", T0, 0.8))
+    _long_chat(db)
+    add_job(db, "now", 10, query="what was the NVR's IP?")
+    turns = cm.chat_memory(CFG, job_id="now", fallback=[])
+    [call] = calls
+    assert call["job_ids"] == ["j0", "j1", "j2", "j3"]            # just folded; the recent turn is in the prompt
+    assert call["message"] == "what was the NVR's IP?" and call["user_id"] == 1 and call["thread_id"] == "t1"
+    assert 0 < call["budget"] <= chat_recall.recall_budget(cm.history_budget(CFG))
+    assert turns[0]["content"].startswith("summary #1\n\n**Earlier messages, word for word**")
+    assert "User: the NVR is at 192.168.10.45" in turns[0]["content"]
+    assert db.get(ChatThreadRow, "t1").summary == "summary #1"      # the stored summary stays without recall
+
+
+def test_a_chat_with_a_summary_keeps_room_for_recall(db, summaries, recalls):
+    """Without a summary the turns may fill the budget; with one, RECALL_SHARE of it is kept for recall, so
+    the next fold comes that much earlier."""
+    chat_thread(db, summary="old part", summary_through=T0)
+    add_job(db, "a", 1, query="q1", answer="y" * 3000)               # ~750 tokens each, budget 2,000
+    add_job(db, "b", 2, query="q2", answer="y" * 3000)
+    add_job(db, "now", 3, query="next")
+    turns = cm.chat_memory(CFG, job_id="now", fallback=[])
+    assert len(summaries) == 1                                      # 1,500 + summary + 500 kept > 2,000
+    assert [t["content"] for t in turns if t["role"] == "user"] == ["q2"]
+
+
+def test_a_failed_recall_keeps_the_summary(db, summaries, monkeypatch):
+    def down(config, **kw):
+        raise ConnectionError("embedding model down")
+
+    monkeypatch.setattr("src.jobs.chat_recall.recall", down)
+    _long_chat(db)
+    add_job(db, "now", 10, query="next")
+    assert cm.chat_memory(CFG, job_id="now", fallback=[])[0]["content"] == "summary #1"
+
+
+def test_a_deleted_job_is_not_recalled(db, summaries, recalls):
+    calls, _ = recalls
+    chat_thread(db, summary="old part", summary_through=T0 + timedelta(minutes=2))
+    add_job(db, "kept", 1, query="q1", answer="a1")
+    add_job(db, "gone", 2, query="q2", answer="a2")
+    db.get(Job, "gone").deleted_at = T0
+    add_job(db, "now", 3, query="next")
+    cm.chat_memory(CFG, job_id="now", fallback=[])
+    assert calls[0]["job_ids"] == ["kept"]
+
+
+def test_remember_job_stores_a_saved_chats_answer(db, monkeypatch):
+    stored: list[dict] = []
+    monkeypatch.setattr("src.jobs.chat_recall.remember", lambda config, **kw: stored.append(kw) or 1)
+    add_job(db, "a", 1, query="what is docker", answer="a tool")
+    add_job(db, "no-answer", 2, query="still writing")
+    db.add(Job(id="no-thread", user_id=1, mode="chat", query="hi", payload_json="{}", created_at=T0))
+    assert cm.remember_job(CFG, "a") == 1
+    assert cm.remember_job(CFG, "no-answer") == 0 and cm.remember_job(CFG, "no-thread") == 0
+    assert stored == [{"user_id": 1, "thread_id": "t1", "job_id": "a", "asked_at": T0 + timedelta(minutes=1),
+                       "question": "what is docker", "answer": "a tool"}]

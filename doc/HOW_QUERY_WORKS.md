@@ -100,7 +100,12 @@ rules if that model is not reachable.
 In order:
 
 1. **Memory** — the chat's earlier turns, rebuilt from its own jobs and kept within the model's context
-   (`src/jobs/chat_memory.py`; older turns are summarised).
+   (`src/jobs/chat_memory.py`; older turns are summarised). Once a chat has a summary, the folded turns' own
+   words that match the new message come back under it (**chat recall**, O63, `src/jobs/chat_recall.py`): up
+   to a quarter of the history budget, pieces that score at least 0.60 by meaning or hold the message's exact
+   identifiers (an IP, a version), oldest first, marked as older than the summary. After every job, its
+   exchange is cut into pieces and embedded on the CPU in a background thread (`brain.chat_passages`, only the
+   chat's owner can read them; a deleted job is never recalled).
 2. **Skill** — a message starting with `/name` uses that skill's instructions (`src/llm/skills.py`).
 3. **Specialist** — IT, Development or Marketing (`src/llm/specialists.py`): the one pinned in the chat bar,
    the skill's, or picked by one short model call. It brings its own instructions, allowed tools and

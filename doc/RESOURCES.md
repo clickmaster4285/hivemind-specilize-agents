@@ -21,7 +21,7 @@ O58. Re-measure after any change of model, driver or Ollama version (see [How to
 | Part | GPU | CPU | RAM | Disk |
 |---|---|---|---|---|
 | Chat model `qwen3.5:9b` (Q4_K_M, through Ollama) | 5.7–5.9 GB (table in section 3) | ~8 cores average while it works, ~17 at peak; ~0 when idle | ~1.4 GB | 6.6 GB |
-| Embedding model `qwen3-embedding:0.6b` (knowledge base, example router) | none: the app runs it on the CPU (`CPU_ONLY` in `src/brain/embed.py`); on the GPU it would take ~207 MB (section 3b) | a few cores while it embeds | small | 0.6 GB |
+| Embedding model `qwen3-embedding:0.6b` (knowledge base, example router, chat recall) | none: the app runs it on the CPU (`CPU_ONLY` in `src/brain/embed.py`); on the GPU it would take ~207 MB (section 3b) | a few cores while it embeds | small | 0.6 GB |
 | Image service, SDXL (`src/images/image_service.py`) | the whole card while it runs: it unloads the chat model first (`IMAGE_UNLOAD_OLLAMA`) and itself after 10 idle minutes (`IMAGE_IDLE_UNLOAD_MINUTES`) | low | a few GB while loaded | checkpoint not measured |
 | API (FastAPI, `web/`) | — | low | < 300 MB | — |
 | UI (Next.js) | — | low | ~0.9 GB | 1.5 GB (`node_modules` + build) |
@@ -141,6 +141,15 @@ all outputs in `logs/bench_small_models.md`. The quiz column is the answers read
   only its quiz and summaries were right. A small model on the CPU also slows the chat answer by 8–12%: the
   chat model uses ~8 CPU cores itself.
 
+### 3e. Chat recall: what it costs (O63)
+
+After every answer in a saved chat, the exchange is embedded on the CPU in a background thread (~0.7 s per
+~450-token piece, section 3b; a short exchange is one piece); the next job does not wait for it. Once a chat
+has a summary, each message costs one more CPU embedding and one search, ~0.1 s. Measured 2026-11-14 on
+`bench_recall`'s chat (the scripted questions with short stand-in answers, embeddings only): the piece that
+answers a question scores 0.68–0.80, the next best 0.40–0.56, unrelated messages at most 0.35, so
+`MIN_SIMILARITY` is 0.60. Disk: the pieces' text plus 4 KB of vector each.
+
 ## 4. Limits
 
 - **One model call at a time.** Chat, routing, suggestions, quiz, chat summaries and embeddings all queue on the
@@ -177,6 +186,7 @@ python -m src.llm.bench_resources                         # 8192, then 16384
 python -m src.llm.bench_resources --ctx 8192,12288,16384
 python -m src.llm.bench_embed                             # embedding model: CPU (the app) vs GPU
 python -m src.llm.bench_small_models                      # small CPU models vs the 9B: suggestions, quiz, summary
+python -m src.llm.bench_recall                            # chat recall: a long chat's facts, summary only vs + recall
 ```
 
 Run it when nobody is chatting: the app's own calls use `LLM_NUM_CTX` and make Ollama reload the model in

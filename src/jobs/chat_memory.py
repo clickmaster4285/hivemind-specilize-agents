@@ -9,6 +9,9 @@ When the earlier turns no longer fit, the oldest are folded ONCE into a running 
 (`chat_threads.summary` + `summary_through`), until the verbatim part is down to half the budget — so it is
 not re-summarised every turn. The prompt then gets [summary turn] + the recent turns word for word.
 "Summarize & continue in a new chat" summarises the whole chat and starts a new one from that summary.
+
+Once a chat has a summary, the folded turns' original words that best match the new message come back under it
+(chat recall, ISSUES_LOG O63, `chat_recall.py`): RECALL_SHARE of the budget is kept free for them.
 """
 
 from __future__ import annotations
@@ -24,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from src.core.config import Config
 from src.core.conversation import SUMMARY_ROLE, CHARS_PER_TOKEN, estimate_tokens
+from src.jobs import chat_recall
 from src.llm.llm_client import LLMClient
 
 log = logging.getLogger(__name__)
@@ -121,18 +125,23 @@ def chat_memory(config: Config, *, job_id: str, fallback: list[dict[str, str]], 
         thread = session.get(ChatThreadRow, thread_id) if thread_id else None
         if job is None or thread is None or thread.user_id != job.user_id:
             return fallback
+        user_id, message = job.user_id, job.query or ""
         summary = (thread.summary or "").strip()
-        jobs = [(j.created_at, _job_turns(session, j))
-                for j in _thread_jobs(session, thread_id, job.user_id, before=job.created_at,
-                                      after=thread.summary_through)]
+        earlier = _thread_jobs(session, thread_id, user_id, before=job.created_at, after=None)
+        through = thread.summary_through
+        folded_ids = [j.id for j in earlier if through is not None and j.created_at <= through]
+        jobs = [(j.created_at, j.id, _job_turns(session, j)) for j in earlier
+                if through is None or j.created_at > through]
 
-    sizes = [sum(estimate_tokens(t["content"]) for t in turns) for _, turns in jobs]
-    if estimate_tokens(summary) + sum(sizes) > budget and len(jobs) > 1:
+    sizes = [sum(estimate_tokens(t["content"]) for t in turns) for _, _, turns in jobs]
+    # with a summary, part of the budget is kept for recalled turns (O63): fold that much earlier
+    reserve = chat_recall.recall_budget(budget) if summary else 0
+    if estimate_tokens(summary) + sum(sizes) + reserve > budget and len(jobs) > 1:
         # fold the oldest turns until the verbatim part is half the budget (always keep the last exchange)
         fold = 0
         while fold < len(jobs) - 1 and sum(sizes[fold:]) > budget // 2:
             fold += 1
-        folded = [t for _, turns in jobs[:fold] for t in turns]
+        folded = [t for _, _, turns in jobs[:fold] for t in turns]
         try:
             summary = summarize(summary, folded, config=config, model=model)
             with session_scope(config) as session:
@@ -140,13 +149,55 @@ def chat_memory(config: Config, *, job_id: str, fallback: list[dict[str, str]], 
                 row.summary, row.summary_through = summary, jobs[fold - 1][0]
             if on_progress:
                 on_progress({"type": "memory_compacted", "folded": fold})
+            folded_ids += [folded_id for _, folded_id, _ in jobs[:fold]]
         except Exception as exc:  # noqa: BLE001 — a failed summary drops the oldest turns instead
             log.warning("chat memory: summary failed, dropping %d old exchanges: %s", fold, exc)
         jobs = jobs[fold:]
 
     # one turn larger than the whole budget (a huge pasted log, a long document) keeps its start and end
-    recent = [{"role": t["role"], "content": _clip(t["content"], budget)} for _, turns in jobs for t in turns]
+    recent = [{"role": t["role"], "content": _clip(t["content"], budget)} for _, _, turns in jobs for t in turns]
+    if summary and folded_ids:
+        room = budget - estimate_tokens(summary) - sum(estimate_tokens(t["content"]) for t in recent)
+        summary = _with_recall(config, summary, user_id=user_id, thread_id=thread_id, job_ids=folded_ids,
+                               message=message, budget=min(chat_recall.recall_budget(budget), room))
     return ([{"role": SUMMARY_ROLE, "content": summary}] if summary else []) + recent
+
+
+def _with_recall(config: Config, summary: str, *, user_id: int, thread_id: str, job_ids: list[str], message: str,
+                 budget: int) -> str:
+    """The summary with the folded turns' original words that match the new message under it (O63). Never
+    raises: without the brain database or the embedding model, the summary alone."""
+    if not config.brain_enabled:
+        return summary
+    try:
+        recalled = chat_recall.recall(config, user_id=user_id, thread_id=thread_id, job_ids=job_ids,
+                                      message=message, budget=budget)
+    except Exception as exc:  # noqa: BLE001 — recall adds to the memory; the summary still stands
+        log.warning("chat recall failed, the summary alone: %s", exc)
+        return summary
+    return f"{summary}\n\n{chat_recall.recall_block(recalled)}" if recalled else summary
+
+
+def remember_job(config: Config, job_id: str) -> int:
+    """After a job: store its exchange for chat recall (O63). Only a saved chat's job with an answer; returns
+    how many pieces were stored."""
+    from src.core.db import session_scope
+    from src.core.models_db import Job
+
+    if not config.brain_enabled:
+        return 0
+    with session_scope(config) as session:
+        job = session.get(Job, job_id)
+        thread_id = json.loads(job.payload_json or "{}").get("thread_id") if job else None
+        if job is None or not thread_id:
+            return 0
+        turns = _job_turns(session, job)
+        user_id, asked_at, question = job.user_id, job.created_at, job.query or ""
+    answer = next((t["content"] for t in turns if t["role"] == "assistant"), "")
+    if not answer.strip():
+        return 0
+    return chat_recall.remember(config, user_id=user_id, thread_id=thread_id, job_id=job_id, asked_at=asked_at,
+                                question=question, answer=answer)
 
 
 def summarize_chat(config: Config, thread_id: str, user_id: int, *, model: str | None = None) -> str:
