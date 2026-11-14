@@ -6,8 +6,8 @@ chat's own jobs, in full, and budgets it in tokens: `history_budget` = CONTEXT_H
 (the rest is for instructions, sources and the answer).
 
 When the earlier turns no longer fit, the oldest are folded ONCE into a running summary stored on the chat
-(`chat_threads.summary` + `summary_through`), until the verbatim part is down to half the budget — so it is
-not re-summarised every turn. The prompt then gets [summary turn] + the recent turns word for word.
+(`chat_threads.summary` + `summary_through`), until the verbatim part is down to half the room the summary
+leaves (`fold_count`) — so it is not re-summarised every turn. The prompt then gets [summary turn] + the recent turns word for word.
 "Summarize & continue in a new chat" summarises the whole chat and starts a new one from that summary.
 
 Once a chat has a summary, the folded turns' original words that best match the new message come back under it
@@ -111,6 +111,21 @@ def summarize(previous: str, turns: list[dict[str, str]], *, config: Config, mod
     return summary
 
 
+def fold_count(summary_tokens: int, sizes: list[int], budget: int) -> int:
+    """How many of the oldest exchanges (`sizes`: tokens each, oldest first) to fold into the summary now: none
+    while they fit in the room the summary leaves; else until they fill half that room, always keeping the last
+    exchange. Once a chat has a summary, RECALL_SHARE of the budget is also kept for recalled turns (O63).
+    Half the ROOM, not half the budget: with an 800-token summary and the recall share, half the budget left
+    less than one exchange of slack, and the chat was summarised again after almost every answer (eval v2)."""
+    room = budget - summary_tokens - (chat_recall.recall_budget(budget) if summary_tokens else 0)
+    if sum(sizes) <= room or len(sizes) < 2:
+        return 0
+    fold = 0
+    while fold < len(sizes) - 1 and sum(sizes[fold:]) > room // 2:
+        fold += 1
+    return fold
+
+
 def chat_memory(config: Config, *, job_id: str, fallback: list[dict[str, str]], model: str | None = None,
                 on_progress: Callable[[dict], None] | None = None) -> list[dict[str, str]]:
     """The turns to give the model for this job: [summary] + recent turns in full, within the history budget.
@@ -134,13 +149,8 @@ def chat_memory(config: Config, *, job_id: str, fallback: list[dict[str, str]], 
                 if through is None or j.created_at > through]
 
     sizes = [sum(estimate_tokens(t["content"]) for t in turns) for _, _, turns in jobs]
-    # with a summary, part of the budget is kept for recalled turns (O63): fold that much earlier
-    reserve = chat_recall.recall_budget(budget) if summary else 0
-    if estimate_tokens(summary) + sum(sizes) + reserve > budget and len(jobs) > 1:
-        # fold the oldest turns until the verbatim part is half the budget (always keep the last exchange)
-        fold = 0
-        while fold < len(jobs) - 1 and sum(sizes[fold:]) > budget // 2:
-            fold += 1
+    fold = fold_count(estimate_tokens(summary), sizes, budget)
+    if fold:
         folded = [t for _, _, turns in jobs[:fold] for t in turns]
         try:
             summary = summarize(summary, folded, config=config, model=model)

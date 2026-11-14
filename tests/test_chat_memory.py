@@ -231,3 +231,17 @@ def test_remember_job_stores_a_saved_chats_answer(db, monkeypatch):
     assert cm.remember_job(CFG, "no-answer") == 0 and cm.remember_job(CFG, "no-thread") == 0
     assert stored == [{"user_id": 1, "thread_id": "t1", "job_id": "a", "asked_at": T0 + timedelta(minutes=1),
                        "question": "what is docker", "answer": "a tool"}]
+
+
+def test_a_chat_with_a_long_summary_is_not_summarised_after_every_answer():
+    """Folding to half the budget left less than one exchange of slack once the summary (800 tokens) and the
+    recall share were taken: every answer started a new summary call (eval v2). Now half the room left."""
+    budget = cm.history_budget(dataclasses.replace(CFG, llm_num_ctx=12288, context_history_share=0.35))
+    summary, sizes, calls = 800, [], 0
+    for _ in range(12):                                                  # 12 answers of ~600 tokens
+        sizes.append(600)
+        fold = cm.fold_count(summary, sizes, budget)
+        calls += bool(fold)
+        sizes = sizes[fold:]
+    assert calls <= 4
+    assert cm.fold_count(0, [600] * 8, budget) == 5                      # the first fold: as before, to half

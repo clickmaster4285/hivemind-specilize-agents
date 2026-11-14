@@ -582,6 +582,10 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [ ] **Mermaid 12 (O62):** pinned 12.3.0, the dagre layout and classic look kept (done 2026-11-14); left: the user
       checks diagrams and PNG / SVG downloads in the app; then compare ELK and `neo` and keep what reads better;
       use-case diagrams in the diagram rules
+  - [ ] Diagram look (user, 2026-11-14: after the O63 eval v2): mermaid.live draws the same code better, with
+        `neo`, group borders in colour and a dark theme. Ours: `neutral`, `classic`, `dagre`. Try `neo` + a
+        theme that follows the app (`redux-color` / `redux-dark-color`), the default layout vs dagre on 5
+        diagram types; downloads with a matching background
 - [ ] **Chat recall (O63):** a long chat's folded turns come back when the new message needs them; built 2026-11-14 (user's
       go), waiting for the API restart and the user's `bench_recall` run. No new software: Postgres + pgvector, embedding on the CPU
   - [x] Index each finished exchange (question + answer, chat and user id) in a pgvector table, in the background
@@ -591,7 +595,11 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
         summary, within the history budget; only the same user's chat — built 2026-11-14
         ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
   - [ ] Memory eval: facts said early, asked after they are folded; summary only vs summary + recall — built
-        (`python -m src.llm.bench_recall`); waiting: the user's run
+        (`python -m src.llm.bench_recall`). v1 (user, 2026-11-14): tie 6/6, too easy (one summary pass, facts
+        flagged). v2 built: 28 exchanges folded in rounds like the app, facts in passing and in the assistant's
+        answers; waiting: the user's run, then MIN_SIMILARITY
+  - [x] Fewer summary calls: fold to half the room the summary leaves, not half the budget (20 → 8 summary
+        rounds in v2's chat) — done 2026-11-14
   - [ ] Later: recall across the user's own chats
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)

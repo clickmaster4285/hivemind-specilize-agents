@@ -9,6 +9,7 @@ logs/*.md
 logs/*.txt
 logs/*.log
 logs/*.pid
+logs/*.json
 !logs/.gitkeep
 agents/agents.json
 agents/specialists.json
