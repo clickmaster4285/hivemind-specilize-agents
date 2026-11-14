@@ -36,7 +36,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
 | [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
 | [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
-| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 (user checks diagrams); O63 chat recall (user runs bench_recall) |
+| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 (user checks diagrams); O63 chat recall (11/11 with recall; summary prompt waits on the user) |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
@@ -587,7 +587,7 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
         theme that follows the app (`redux-color` / `redux-dark-color`), the default layout vs dagre on 5
         diagram types; downloads with a matching background
 - [ ] **Chat recall (O63):** a long chat's folded turns come back when the new message needs them; built 2026-11-14 (user's
-      go), waiting for the API restart and the user's `bench_recall` run. No new software: Postgres + pgvector, embedding on the CPU
+      go), migration applied, eval v2 11/11 with recall; waiting: the summary prompt decision. No new software: Postgres + pgvector, embedding on the CPU
   - [x] Index each finished exchange (question + answer, chat and user id) in a pgvector table, in the background
         — built 2026-11-14 (`brain.chat_passages`, migration 003); new answers only, old chats left as they are
         (user)
@@ -598,7 +598,10 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
         (`python -m src.llm.bench_recall`). v1 (user, 2026-11-14): tie 6/6, too easy (one summary pass, facts
         flagged). v2 built: 28 exchanges folded in rounds like the app, facts in passing and in the assistant's
         answers. User's run: 8/11 summary only, 9/11 with recall; MIN_SIMILARITY 0.60 → 0.45 (lost facts'
-        pieces 0.48, 0.54); waiting: the rerun
+        pieces 0.48, 0.54). Rerun at 0.45 (user, 2026-11-14): 8/11 summary only, **11/11 with recall**, +0.8 s
+  - [ ] Summary prompt: keep the user's facts and decisions word for word, one line per general explanation
+        (the summary drops different facts each run and spends most of its ~1,400 tokens on explanations);
+        waiting on the user's go
   - [x] Fewer summary calls: fold to half the room the summary leaves, not half the budget (20 → 8 summary
         rounds in v2's chat) — done 2026-11-14
   - [ ] Later: recall across the user's own chats
