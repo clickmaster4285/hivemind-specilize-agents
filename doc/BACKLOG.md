@@ -31,7 +31,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L13](#l13-marketing--seo-tools---done-2026-11-02-fixes-o11-assistant-eval-run-pending) | Marketing / SEO tools | ✅ 2026-11-02 | assistant eval run (user) |
 | [L14](#l14-skills--reusable-instruction-packs--in-progress-2026-11-03-fixes-issues_log-o13) | Skills | in progress | a unit test for `clarify_query` |
 | [L15](#l15-seo-suite--screaming-frog--semrush-capabilities--p1-p3-p5-done-p2-on-hold-fixes-o12) | SEO suite | P1, P3–P6 ✅ | P2 page speed on hold |
-| [L16](#l16-security-hardening--in-progress-s1-s1b-s2-s2b-s4-s7-s8-done-s3-s5-s6-open-fixes-issues_log-o16) | Security hardening | in progress | S3 uploads, S5, S6 |
+| [L16](#l16-security-hardening--in-progress-s1-s1b-s2-s2b-s4-s7-s8-done-s3-s5-s6-s9-open-fixes-issues_log-o16) | Security hardening | in progress | S3 uploads, S5, S6, S9 public user ids |
 | [L17](#l17-nvr-camera-list--in-progress-2026-11-04-fixes-issues_log-o17-before-l16-s2-users-order) | NVR camera list | in progress | N4 ONVIF; live check on the NVR |
 | [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
 | [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
@@ -374,7 +374,7 @@ then skills (L14) and sub-agents.
       now leaves out `nav`, `aside`, the site header/footer and ARIA navigation landmarks (content gap, word counts).
       Country data from Babel's CLDR (no lists of ours). Phone numbers / currency not used (would need lists)
 
-### L16. Security hardening — in progress (S1, S1b, S2, S2b, S4, S7, S8 done; S3, S5, S6 open) (fixes ISSUES_LOG O16)
+### L16. Security hardening — in progress (S1, S1b, S2, S2b, S4, S7, S8 done; S3, S5, S6, S9 open) (fixes ISSUES_LOG O16)
 
 Threats: a stolen login token, password guessing, request floods, a malicious uploaded file, XSS, clickjacking.
 DDoS proper is stopped at the network (firewall / reverse proxy); the app limits what one client can do.
@@ -409,6 +409,11 @@ How the finished parts work: **[SECURITY.md](SECURITY.md)**.
       HSTS comes with HTTPS
 - [ ] **S5 encryption at rest (AES-256-GCM):** for secrets the app stores — decided per item (see questions)
 - [ ] **S6 security log:** failed logins, locks, refresh-token reuse, rejected uploads — visible to admins
+- [ ] **S9 public user ids (user, 2026-11-16):** user ids are 1, 2, 3 (`users.id`, a serial). Keep the number inside
+      the database (about 9 tables reference it, plus row-level security), add a random `public_id` (UUID) and use it
+      wherever an id leaves the server: the login token's `sub`, `/api/auth/users/{id}/…`, the admin user list.
+      Gains: the number of users is hidden, and a missed ownership check on a future endpoint is not guessable.
+      Access is already checked by the signed token and per-user queries, so this is defence in depth
 - [x] **S8 message filter (O59) — done 2026-11-13:** secrets and fake turn markers masked, oversize refused, an
       optional model check (off) → [SECURITY.md §1.8](SECURITY.md#18-what-a-message-may-carry-s8)
 - [x] **S7 self sign-up (O38) — done 2026-11-11:** "Create account" (username, email, phone optional,
@@ -601,7 +606,8 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
         pieces 0.48, 0.54). Rerun at 0.45 (user, 2026-11-14): 8/11 summary only, **11/11 with recall**, +0.8 s
   - [ ] Summary prompt: keep the user's facts and decisions word for word, one line per general explanation
         (the summary drops different facts each run and spends most of its ~1,400 tokens on explanations);
-        reworded 2026-11-14 (user's go); waiting: the user's `bench_recall` run
+        reworded 2026-11-14 (user's go); 2026-11-16: rewording alone did not hold (11/11 at 1,932 tokens, then 8/11
+        at 2,180), so a word limit (0.2 of the history budget, 645 words), the facts come from recall; waiting: the rerun
   - [x] Fewer summary calls: fold to half the room the summary leaves, not half the budget (20 → 8 summary
         rounds in v2's chat) — done 2026-11-14
   - [ ] Later: recall across the user's own chats
