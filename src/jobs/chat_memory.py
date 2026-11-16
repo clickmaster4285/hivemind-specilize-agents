@@ -33,10 +33,17 @@ from src.llm.llm_client import LLMClient
 log = logging.getLogger(__name__)
 
 SUMMARY_SYSTEM = """You keep the memory of a long chat between a user and an AI assistant. Update the
-summary so the chat can continue without the full text. Keep: the user's goals and constraints, decisions
-made, key facts, numbers, names, versions, commands, file names, and open questions. Drop small talk and
-anything superseded. Write short bullet points under: **Goal**, **Key facts and decisions**, **Open questions**
-(leave a heading out when empty). Output only the summary, in the language of the chat."""
+summary so the chat can continue without the full text.
+Keep word for word, exactly as written: the user's own setup and facts (addresses, serial numbers, ports, device
+and host names, versions, paths and shares, schedules and times, speeds, people and deadlines), each decision and
+what it changed (old → new), and the specific values the assistant gave (commands, names it suggested, settings).
+Never drop one of these to save space, and carry them over from the summary so far unless the chat replaced them.
+Shorten the rest: a general explanation, guide or checklist becomes one line naming its topic. Drop small talk
+and anything superseded. Write short bullet points under: **Goal**, **Key facts and decisions**, **Open
+questions** (leave a heading out when empty). Output only the summary, in the language of the chat."""
+# Why (ISSUES_LOG O63, eval v2): the old wording kept "key facts" in general, and the summary spent most of its
+# ~1,400–1,600 tokens on explanations (a checklist, a patching plan) while dropping a different few of the user's
+# own facts each run (a serial, a backup time, an IP, a camera channel).
 
 
 def history_budget(config: Config) -> int:

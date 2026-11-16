@@ -138,6 +138,11 @@ def test_summarize_works_through_a_chat_bigger_than_the_model(summaries):
     assert len(summaries) > 1 and "summary #1" in summaries[1]        # each piece carries the summary forward
 
 
+def test_the_summary_prompt_keeps_the_heading_the_model_bench_checks():
+    from src.llm.bench_small_models import GOAL_HEADING
+    assert GOAL_HEADING.search(cm.SUMMARY_SYSTEM)
+
+
 def test_summarize_whole_chat_for_continue(db, summaries):
     chat_thread(db, summary="old part", summary_through=T0)
     add_job(db, "a", 1, query="recent question", answer="recent answer")
