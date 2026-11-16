@@ -1,8 +1,10 @@
 "use client";
 
+import type { MermaidConfig } from "mermaid";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import SvgPanZoom from "@/components/answer/SvgPanZoom";
+import { useResolvedTheme, type ResolvedTheme } from "@/lib/theme";
 import { btn, diagram } from "@/lib/ui";
 
 type Props = { code: string };
@@ -27,34 +29,19 @@ function sanitizeMermaid(code: string): string {
     .join("\n");
 }
 
-let ready: Promise<typeof import("mermaid").default> | null = null;
+type Mermaid = typeof import("mermaid").default;
+let ready: Promise<Mermaid> | null = null;
+
+/** Per app theme: Mermaid 12's colour theme, the card colour (also the background of the exports and the
+ *  full-size view, so white text in the dark theme never lands on white), and the colour of architecture icons. */
+const LOOK: Record<ResolvedTheme, { theme: MermaidConfig["theme"]; background: string; ink: string }> = {
+  light: { theme: "redux-color", background: "#f7f5f0", ink: "#1f2937" },
+  dark: { theme: "redux-dark-color", background: "#1a1f27", ink: "#e7e2d8" },
+};
 
 /** Load Mermaid once, only when a diagram is on screen (it is large). */
-function loadMermaid() {
+function loadMermaid(): Promise<Mermaid> {
   ready ??= import("mermaid").then(({ default: mermaid }) => {
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: "strict",
-      theme: "neutral",
-      // Mermaid 12 made ELK the default layout and `neo` the default look (ISSUES_LOG O62): keep the
-      // dagre layout and the classic look our diagrams were tuned with (step edges, Arial box sizing)
-      layout: "dagre",
-      look: "classic",
-      // plain SVG text instead of HTML labels, so the PNG export can draw it on a canvas (a canvas holding
-      // HTML may not be exported). Top level: Mermaid 11 ignores the old `flowchart.htmlLabels` (ISSUES_LOG O45)
-      htmlLabels: false,
-      // `step` = orthogonal right-angle edges (the clean org-chart / taxonomy look). `basis` drew wavy
-      // curves that bunched and crossed on wide trees and read as messy vs mermaid.live's straight lines.
-      flowchart: { curve: "step" },
-      // a font every browser has: boxes are sized with it, and "Open full size" / PNG export draw
-      // without the app's web font — with IBM Plex the labels came out wider than their boxes
-      fontFamily: "Arial, Helvetica, sans-serif",
-      themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
-      // architecture-beta icons use `fill: currentColor`, and the diagram defaults `color` to white,
-      // so mdi/logos icons render white-on-white (invisible) on our light card. Force a dark colour on
-      // the architecture groups so the icons show. Travels in the SVG <style>, so full-size + PNG keep it.
-      themeCSS: '.architecture-service, g[class*="architecture"] { color: #1f2937; }',
-    });
     // Icon packs for `architecture-beta` diagrams — bundled locally (no CDN), lazy-loaded with the
     // diagram. Icons render as inline SVG, so the PNG/SVG export still works. Referenced as
     // `logos:aws` (tech/brand logos) or `mdi:server` (generic shapes) in service(...) annotations.
@@ -67,6 +54,41 @@ function loadMermaid() {
     return mermaid;
   });
   return ready;
+}
+
+/** Mermaid's settings for the app's theme, set before each drawing (the theme can change between two). */
+function configure(mermaid: Mermaid, theme: ResolvedTheme): void {
+  const look = LOOK[theme];
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: "strict",
+    // Mermaid 12's look (ISSUES_LOG O62): `neo` and a colour theme that follows the app's light / dark mode,
+    // compared in headless Chrome on 7 diagram types against our old `neutral` / `classic` / `dagre`. No
+    // `layout`: Mermaid's default is ELK for flowchart, class, state, ER, requirement and use-case diagrams
+    // (groups no longer overlap their edges), and each other type keeps its own; forcing ELK broke mindmaps.
+    look: "neo",
+    theme: look.theme,
+    // plain SVG text instead of HTML labels, so the PNG export can draw it on a canvas (a canvas holding
+    // HTML may not be exported). Top level: Mermaid 11 ignores the old `flowchart.htmlLabels` (ISSUES_LOG O45)
+    htmlLabels: false,
+    // a font every browser has: boxes are sized with it, and "Open full size" / PNG export draw
+    // without the app's web font — with IBM Plex the labels came out wider than their boxes
+    fontFamily: "Arial, Helvetica, sans-serif",
+    themeVariables: { fontFamily: "Arial, Helvetica, sans-serif" },
+    // architecture-beta icons use `fill: currentColor`, and the diagram defaults `color` to white, so mdi/logos
+    // icons drew white-on-white on the light card. Set the theme's ink. Travels in the SVG <style>, so
+    // full-size + PNG keep it.
+    themeCSS: `.architecture-service, g[class*="architecture"] { color: ${look.ink}; }`,
+  });
+}
+
+/** The SVG with the card's colour behind it, for the downloads and the full-size view. */
+function withBackground(svg: string, background: string): string {
+  const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+  const root = doc.documentElement;
+  if (doc.querySelector("parsererror") || root.nodeName !== "svg") return svg;
+  root.setAttribute("style", `${root.getAttribute("style") ?? ""};background-color:${background}`);
+  return new XMLSerializer().serializeToString(root);
 }
 
 function download(name: string, blob: Blob) {
@@ -96,7 +118,7 @@ function sizedSvg(svg: string): { text: string; width: number; height: number } 
   return { text: new XMLSerializer().serializeToString(root), width, height };
 }
 
-function svgToPng(svg: string): Promise<Blob> {
+function svgToPng(svg: string, background: string): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const sized = sizedSvg(svg);
     const img = new Image();
@@ -110,7 +132,7 @@ function svgToPng(svg: string): Promise<Blob> {
       canvas.height = Math.round(height * scale);
       const ctx = canvas.getContext("2d");
       if (!ctx) return reject(new Error("no canvas"));
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = background;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
@@ -143,11 +165,16 @@ export default function MermaidDiagram({ code }: Props) {
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
   const clean = useMemo(() => sanitizeMermaid(code), [code]);
+  const theme = useResolvedTheme();
+  const { background } = LOOK[theme];
 
   useEffect(() => {
     let cancelled = false;
     loadMermaid()
-      .then((mermaid) => mermaid.render(id, clean))
+      .then((mermaid) => {
+        configure(mermaid, theme);
+        return mermaid.render(id, clean);
+      })
       .then(({ svg: out }) => {
         if (!cancelled) {
           setSvg(out);
@@ -161,7 +188,7 @@ export default function MermaidDiagram({ code }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [clean, id]);
+  }, [clean, id, theme]);
 
   const copy = async () => {
     await navigator.clipboard.writeText(clean);
@@ -172,7 +199,7 @@ export default function MermaidDiagram({ code }: Props) {
   const codeVisible = showCode || Boolean(error);
 
   return (
-    <div className={diagram.card}>
+    <div className={theme === "dark" ? diagram.cardDark : diagram.card}>
       {error ? (
         <div className={diagram.error}>
           The diagram could not be drawn: {error.split("\n")[0]}. Ask me to fix it, or paste the code into{" "}
@@ -186,21 +213,25 @@ export default function MermaidDiagram({ code }: Props) {
       ) : (
         <div className={diagram.loading}>Drawing…</div>
       )}
-      <div className={diagram.actions}>
+      <div className={theme === "dark" ? diagram.actionsDark : diagram.actions}>
         {error && (
           <button type="button" className={btn("sm")} onClick={() => askToFix(error)}>
             Fix diagram
           </button>
         )}
-        <button type="button" className={btn("ghost", "sm")} disabled={!svg} onClick={() => openFullSize(svg)}>
+        <button type="button" className={btn("ghost", "sm")} disabled={!svg}
+          onClick={() => openFullSize(withBackground(svg, background))}>
           Open full size
         </button>
         <button type="button" className={btn("ghost", "sm")} disabled={!svg}
-          onClick={() => download("diagram.svg", new Blob([svg], { type: "image/svg+xml" }))}>
+          onClick={() => download("diagram.svg",
+            new Blob([withBackground(svg, background)], { type: "image/svg+xml" }))}>
           Download SVG
         </button>
         <button type="button" className={btn("ghost", "sm")} disabled={!svg}
-          onClick={() => svgToPng(svg).then((b) => download("diagram.png", b)).catch((e) => setError(String(e)))}>
+          onClick={() => svgToPng(svg, background)
+            .then((b) => download("diagram.png", b))
+            .catch((e) => setError(String(e)))}>
           Download PNG
         </button>
         <button type="button" className={btn("ghost", "sm")} onClick={() => void copy()}>

@@ -68,8 +68,8 @@ export function brandMark(size?: "sm"): string {
 export const mdPre =
   "mt-2 mb-[0.8rem] overflow-auto rounded-[0.55rem] border border-line bg-code-bg px-[0.9rem] py-3 text-[0.8rem] leading-[1.55]";
 
-/** Diagrams (Mermaid, network) sit on a light "paper" card in both themes, so they also export cleanly:
- *  these colours are fixed on purpose, not theme tokens. */
+/** Diagrams sit on a card of fixed colours (not theme tokens), so they export as drawn: the light "paper" card,
+ *  and for a Mermaid diagram in the dark theme the dark card (the network diagram stays on paper). */
 export const diagram = {
   card: "mt-[0.4rem] mb-[0.6rem] rounded-[10px] border border-line bg-[#f7f5f0] p-3 text-[#1d232c]",
   actions:
@@ -77,4 +77,8 @@ export const diagram = {
   loading: "p-[0.6rem] text-[0.85rem]",
   error: "p-[0.6rem] text-[0.85rem] text-[#9b2c1f]",
   code: `${mdPre} text-text`,
+  // a Mermaid diagram in the dark theme: drawn with redux-dark-color on the dark panel (O62); exports keep it
+  cardDark: "mt-[0.4rem] mb-[0.6rem] rounded-[10px] border border-line bg-[#1a1f27] p-3 text-[#e7e2d8]",
+  actionsDark:
+    "mt-[0.6rem] flex flex-wrap gap-[0.4rem] border-t border-[#343b48] pt-2 [&_button]:border-[#4a5263] [&_button]:text-[#e7e2d8]",
 };

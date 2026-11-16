@@ -61,3 +61,15 @@ function subscribe(onChange: () => void): () => void {
 export function useThemePref(): ThemePref {
   return useSyncExternalStore(subscribe, readPref, () => "light");
 }
+
+export type ResolvedTheme = "light" | "dark";
+
+function readResolved(): ResolvedTheme {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+/** The theme on screen now (what <html data-theme> says), for things drawn outside CSS, such as Mermaid
+ *  diagrams, which bake their colours into the SVG (ISSUES_LOG O62). */
+export function useResolvedTheme(): ResolvedTheme {
+  return useSyncExternalStore(subscribe, readResolved, () => "light");
+}

@@ -61,6 +61,29 @@ architecture-beta
   fw:R --> L:core
   core:R --> L:srv
 ```
+For WHO DOES WHAT in a system (people or roles and the tasks they do there: a use-case diagram), use
+`usecase-beta`:
+- Declare actors in one line: `actor Customer, Admin` (a two-word actor in quotes: `actor "IT admin"`).
+- Put the use cases inside `systemBoundary <id>["System name"]` … `end`, one per line as `<id>("Short task")`:
+  2–3 words, a longer label spills out of its ellipse. No emoji here.
+- Link an actor to a use case with `Customer --> browse`. A use case that always runs another:
+  `checkout ..> : include pay` (`: extend` for an optional one).
+A shop's use cases, done right:
+```mermaid
+usecase-beta
+  direction LR
+  actor Customer, Admin
+  systemBoundary shop["Online shop"]
+    browse("Browse products")
+    checkout("Check out")
+    pay("Pay by card")
+    stock("Manage stock")
+  end
+  Customer --> browse
+  Customer --> checkout
+  Admin --> stock
+  checkout ..> : include pay
+```
 Use the emoji `flowchart` above for processes, steps, flows and hierarchies — and whenever you are not sure
 an `architecture-beta` icon name or its syntax is right, since a valid emoji flowchart beats a broken
 topology."""

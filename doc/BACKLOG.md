@@ -591,6 +591,8 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
         `neo`, group borders in colour and a dark theme. Ours: `neutral`, `classic`, `dagre`. Try `neo` + a
         theme that follows the app (`redux-color` / `redux-dark-color`), the default layout vs dagre on 5
         diagram types; downloads with a matching background
+        — built 2026-11-16 (neo, redux-color / redux-dark-color, Mermaid's default layout, backgrounds;
+        use-case diagrams in the rules); waiting: the user's look in the app
 - [x] **Chat recall (O63) — done 2026-11-16:** a long chat's folded turns come back when the new message needs them; built 2026-11-14 (user's
       go), migration applied, eval v2 11/11 with recall; summary prompt reworded; waiting: the user's bench_recall run. No new software: Postgres + pgvector, embedding on the CPU
   - [x] Index each finished exchange (question + answer, chat and user id) in a pgvector table, in the background
