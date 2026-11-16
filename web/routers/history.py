@@ -12,7 +12,7 @@ from src.core.auth import get_current_user, get_db
 from src.core.config import Config
 from src.core.models_db import User
 from src.jobs import history_store
-from src.jobs.chat_memory import summarize_chat
+from src.jobs.chat_memory import compact_chat, memory_status, summarize_chat
 from src.llm.llm_client import LLMError
 from web.schemas import (
     FeedbackPayload,
@@ -83,6 +83,28 @@ def _chat_summary(thread_id: str, user: User) -> str:
 def summary_endpoint(thread_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
     """"Save summary": the chat summarised (goal, key facts and decisions, open questions)."""
     return {"summary": _chat_summary(thread_id, user)}
+
+
+@router.get("/api/threads/{thread_id}/memory")
+def memory_endpoint(thread_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """How full the chat's memory is and how much room is left before its oldest messages are summarised (O76)."""
+    try:
+        return memory_status(Config.from_env(), thread_id, user.id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/api/threads/{thread_id}/compact")
+def compact_endpoint(thread_id: str, user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """/compact: summarise all but the last exchange now (a model call — the route runs in a worker thread)."""
+    config = Config.from_env()
+    try:
+        folded = compact_chat(config, thread_id, user.id)
+        return {"folded": folded, "memory": memory_status(config, thread_id, user.id)}
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(status_code=503, detail=f"The model could not summarise this chat: {exc}") from exc
 
 
 @router.post("/api/threads/{thread_id}/continue")

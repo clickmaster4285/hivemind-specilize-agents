@@ -1,5 +1,6 @@
 import type {
   AuthUser,
+  ThreadMemory,
   CaptchaAnswer,
   CaptchaChallenge,
   CatalogSkill,
@@ -560,4 +561,14 @@ export async function streamJobEvents(
   } catch (err) {
     throw new Error(networkHint(err));
   }
+}
+
+/** How full a chat's memory is (summary + recent exchanges vs the history budget), and the room before a fold. */
+export async function getThreadMemory(threadId: string): Promise<ThreadMemory> {
+  return request(`/api/threads/${encodeURIComponent(threadId)}/memory`);
+}
+
+/** /compact: summarise every exchange but the last now. */
+export async function compactThread(threadId: string): Promise<{ folded: number; memory: ThreadMemory }> {
+  return request(`/api/threads/${encodeURIComponent(threadId)}/compact`, { method: "POST" });
 }

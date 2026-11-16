@@ -118,13 +118,19 @@ def summarize(previous: str, turns: list[dict[str, str]], *, config: Config, mod
     return summary
 
 
+def room_left(summary_tokens: int, budget: int) -> int:
+    """Tokens the chat's recent exchanges may fill before the oldest are folded into the summary: the history
+    budget less the summary and, once there is a summary, RECALL_SHARE for recalled turns (O63)."""
+    return budget - summary_tokens - (chat_recall.recall_budget(budget) if summary_tokens else 0)
+
+
 def fold_count(summary_tokens: int, sizes: list[int], budget: int) -> int:
     """How many of the oldest exchanges (`sizes`: tokens each, oldest first) to fold into the summary now: none
     while they fit in the room the summary leaves; else until they fill half that room, always keeping the last
     exchange. Once a chat has a summary, RECALL_SHARE of the budget is also kept for recalled turns (O63).
     Half the ROOM, not half the budget: with an 800-token summary and the recall share, half the budget left
     less than one exchange of slack, and the chat was summarised again after almost every answer (eval v2)."""
-    room = budget - summary_tokens - (chat_recall.recall_budget(budget) if summary_tokens else 0)
+    room = room_left(summary_tokens, budget)
     if sum(sizes) <= room or len(sizes) < 2:
         return 0
     fold = 0
@@ -233,3 +239,47 @@ def summarize_chat(config: Config, thread_id: str, user_id: int, *, model: str |
     if not turns and not previous:
         raise LookupError("this chat has no messages yet")
     return summarize(previous, turns, config=config, model=model) if turns else previous
+
+
+def _unfolded(session: Session, thread_id: str, user_id: int) -> tuple[str, list[tuple[Any, list[dict[str, str]]]]]:
+    """A chat's summary and its exchanges after it (each job with its turns), oldest first. LookupError when the
+    chat is not this user's."""
+    from src.core.models_db import ChatThreadRow
+
+    thread = session.get(ChatThreadRow, thread_id)
+    if thread is None or thread.user_id != user_id:
+        raise LookupError("chat not found")
+    jobs = _thread_jobs(session, thread_id, user_id, before=None, after=thread.summary_through)
+    return (thread.summary or "").strip(), [(j, _job_turns(session, j)) for j in jobs]
+
+
+def memory_status(config: Config, thread_id: str, user_id: int) -> dict[str, int]:
+    """How full the chat's memory is (ISSUES_LOG O76), measured as `chat_memory` measures it: the summary and the
+    exchanges after it, against the history budget, and the room the exchanges have before the next fold."""
+    from src.core.db import session_scope
+
+    with session_scope(config) as session:
+        summary, exchanges = _unfolded(session, thread_id, user_id)
+    budget = history_budget(config)
+    summary_tokens = estimate_tokens(summary)
+    recent = sum(estimate_tokens(t["content"]) for _, turns in exchanges for t in turns)
+    return {"budget": budget, "summary_tokens": summary_tokens, "recent_tokens": recent,
+            "used": summary_tokens + recent, "room": room_left(summary_tokens, budget)}
+
+
+def compact_chat(config: Config, thread_id: str, user_id: int, *, model: str | None = None) -> int:
+    """/compact (O76): fold every exchange but the last into the chat's summary now, as the automatic fold does when
+    the room runs out. Their exact words still come back through recall. → how many exchanges were folded."""
+    from src.core.db import session_scope
+    from src.core.models_db import ChatThreadRow
+
+    with session_scope(config) as session:
+        summary, exchanges = _unfolded(session, thread_id, user_id)
+    fold = len(exchanges) - 1                        # the last exchange stays word for word
+    if fold < 1:
+        return 0
+    summary = summarize(summary, [t for _, turns in exchanges[:fold] for t in turns], config=config, model=model)
+    with session_scope(config) as session:
+        row = session.get(ChatThreadRow, thread_id)
+        row.summary, row.summary_through = summary, exchanges[fold - 1][0].created_at
+    return fold

@@ -21,7 +21,7 @@ import type { ImageProfile } from "@/lib/api";
 import type { ChatMemory, EditStrength } from "@/lib/chat";
 import { usageLine } from "@/lib/format";
 import type { Health, RunMode, Skill, UsageTotals } from "@/lib/types";
-import { iconBtn, msgAction } from "@/lib/ui";
+import { iconBtn, msgAction, composerColumn } from "@/lib/ui";
 
 type Props = {
   query: string;
@@ -169,7 +169,7 @@ export default function Composer(props: Props) {
 
   return (
     <form
-      className="mx-auto w-full max-w-[820px] shrink-0 bg-transparent px-4 pt-[0.55rem] pb-[0.7rem]"
+      className={`${composerColumn} shrink-0 bg-transparent pt-[0.55rem] pb-[0.7rem]`}
       onSubmit={onSubmit}
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}

@@ -2,6 +2,8 @@
 
 import { useState, type KeyboardEvent } from "react";
 
+import { COMPACT_COMMAND } from "@/lib/chat";
+
 import type { Skill } from "@/lib/types";
 
 /** While the message is just "/" plus the start of a name, the skills it could be (BACKLOG L14). */
@@ -24,7 +26,8 @@ export function useSkillMenu(query: string, skills: Skill[], onPick: (skill: Ski
           ...skills.filter(starts),
           ...skills.filter((s) => !starts(s) && `${s.name} ${s.title.toLowerCase()}`.includes(typed)),
         ];
-  const open = matches.length > 0 && closedFor !== query;
+  // /compact is a command (O76): the menu stays closed, so Enter sends it instead of picking a skill
+  const open = matches.length > 0 && closedFor !== query && query.trim().toLowerCase() !== COMPACT_COMMAND;
   const active = Math.min(index, matches.length - 1);
 
   function pick(skill: Skill) {

@@ -355,3 +355,6 @@ export type FeedItem = {
   steps?: string[];        // the procedure so far ("Searching the web…", "Reading 5 pages…") — shown while running
   streaming?: boolean;
 };
+
+/** A saved chat's memory, measured on the server as the model sees it (GET /api/threads/{id}/memory, O76). */
+export type ThreadMemory = { budget: number; summary_tokens: number; recent_tokens: number; used: number; room: number };

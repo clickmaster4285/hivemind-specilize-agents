@@ -29,3 +29,12 @@ export function IconSend() {
     </svg>
   );
 }
+
+/** The feed's "jump to the latest message" button (ISSUES_LOG O79). */
+export function IconChevronDown() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="m6 9 6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}

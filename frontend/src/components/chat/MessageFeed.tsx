@@ -6,10 +6,11 @@ import LiveStatus from "@/components/chat/LiveStatus";
 import MarkdownBody from "@/components/answer/MarkdownBody";
 import MessageAvatar from "@/components/chat/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
+import { IconChevronDown } from "@/components/chat/Icons";
 import PromptRail, { promptAnchorId } from "@/components/chat/PromptRail";
 import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, SourceList, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
-import { msgAction } from "@/lib/ui";
+import { composerColumn, msgAction } from "@/lib/ui";
 
 // Inline Tailwind building blocks. Shared ones (buttons, message actions) are in lib/ui.ts.
 // The scroll container is full-width (so the scrollbar sits at the Main-area edge, not against the text);
@@ -22,8 +23,11 @@ const colCls = "mx-auto flex w-full max-w-[1040px] flex-col gap-5";
 const BOTTOM_SLACK_PX = 48;
 // A question counts as "in view" (highlighted in the prompt rail, O78) once its top is this far into the feed.
 const ACTIVE_OFFSET_PX = 120;
+// The jump button sits right above the send arrow: the composer's column, its right edge inset by the message box's
+// padding and border (pr-1 + 1px), and the arrow's size (2.1rem), so the two line up (user, O79)
+const jumpStripCls = `pointer-events-none absolute inset-x-0 bottom-3 flex justify-end ${composerColumn}`;
 const jumpCls =
-  "absolute bottom-3 left-1/2 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border " +
+  "pointer-events-auto mr-[calc(0.25rem+1px)] grid h-[2.1rem] w-[2.1rem] place-items-center rounded-full border " +
   "border-line bg-panel text-text shadow-[0_2px_8px_rgba(0,0,0,0.25)] hover:bg-panel-2";
 const captionCls =
   "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[0.72rem] leading-[1.25] text-muted";
@@ -192,10 +196,12 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
     </div>
     <PromptRail prompts={prompts} active={activePrompt} onJump={jumpTo} />
     {!atBottom && (
-      <button type="button" className={jumpCls} aria-label="Jump to the latest message" title="Jump to the latest message"
-        onClick={() => toBottom(true)}>
-        ⌄
-      </button>
+      <div className={jumpStripCls}>
+        <button type="button" className={jumpCls} aria-label="Jump to the latest message" title="Jump to the latest message"
+          onClick={() => toBottom(true)}>
+          <IconChevronDown />
+        </button>
+      </div>
     )}
     </div>
   );

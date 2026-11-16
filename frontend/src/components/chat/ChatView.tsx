@@ -6,7 +6,6 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import { useApp, type AppValue } from "@/components/app/AppProvider";
 import Composer from "@/components/chat/Composer";
 import MessageFeed from "@/components/chat/MessageFeed";
-import { chatMemory } from "@/lib/chat";
 import { sumUsage } from "@/lib/format";
 
 /** The chat page content (below the persistent navbar): the run/specialist/model controls, the message
@@ -34,9 +33,8 @@ export default function ChatView() {
     [],
   );
   const feed = app.chat.feed;
-  const historyBudget = app.health.health?.context?.history_budget;
   const chatUsage = useMemo(() => sumUsage(feed), [feed]);
-  const memory = useMemo(() => chatMemory(feed, historyBudget), [feed, historyBudget]);
+  const memory = app.memory;                      // measured on the server, as the model sees the chat (O76)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">

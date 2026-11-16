@@ -5,20 +5,21 @@
 import { useState } from "react";
 
 import { compactCount } from "@/lib/format";
-import { MEMORY_WARN_PERCENT, type ChatMemory } from "@/lib/chat";
+import { COMPACT_COMMAND, MEMORY_WARN_PERCENT, type ChatMemory } from "@/lib/chat";
 
-export type MemoryBusy = "continue" | "save" | null;
+export type MemoryBusy = "continue" | "save" | "compact" | null;
 
 /** A small bar + percentage under the message bar. Past 100% the oldest messages are summarised. */
 export function MemoryMeter({ memory }: { memory: ChatMemory }) {
   const full = Math.min(100, memory.percent);
   const tone =
     memory.percent >= 100 ? "var(--danger)" : memory.percent >= MEMORY_WARN_PERCENT ? "var(--copper)" : "var(--teal)";
+  // when the chat is folded, in the server's own terms (O76): the recent messages may fill `room` tokens
   const title =
-    `About ${compactCount(memory.tokens)} of ${compactCount(memory.budget)} tokens of chat memory.` +
-    (memory.percent >= 100
-      ? " The oldest messages are now summarized so the model keeps the gist."
-      : " Past 100%, the oldest messages are summarized automatically.");
+    `About ${compactCount(memory.tokens)} of ${compactCount(memory.budget)} tokens of chat memory` +
+    (memory.summarized ? ", the earlier part as a summary." : ".") +
+    ` The oldest messages are summarized once the recent ones pass ${compactCount(memory.room)} tokens;` +
+    ` their exact words still come back when a question needs them. Type ${COMPACT_COMMAND} to summarize now.`;
   return (
     <span className="inline-flex cursor-default items-center gap-1.5" title={title}>
       <span className="relative h-[0.3rem] w-[3.2rem] overflow-hidden rounded-full bg-line" aria-hidden>

@@ -82,3 +82,6 @@ export const diagram = {
   actionsDark:
     "mt-[0.6rem] flex flex-wrap gap-[0.4rem] border-t border-[#343b48] pt-2 [&_button]:border-[#4a5263] [&_button]:text-[#e7e2d8]",
 };
+
+/** The composer's column (centred, as wide as the message box); the feed's jump button lines up in it (O79). */
+export const composerColumn = "mx-auto w-full max-w-[820px] px-4";

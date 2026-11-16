@@ -15,10 +15,11 @@ import { useModels } from "@/hooks/useModels";
 import { usePendingImages } from "@/hooks/usePendingImages";
 import { useSkills } from "@/hooks/useSkills";
 import { useSpecialists } from "@/hooks/useSpecialists";
+import { useThreadMemory } from "@/hooks/useThreadMemory";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
 import type { MemoryBusy } from "@/components/chat/ChatMemory";
-import { confirmCommand, continueThread, summarizeThread, type ImageProfile } from "@/lib/api";
-import { chatImagesToPending, errorText, IMAGE_QUESTION, type EditStrength } from "@/lib/chat";
+import { compactThread, confirmCommand, continueThread, summarizeThread, type ImageProfile } from "@/lib/api";
+import { chatImagesToPending, COMPACT_COMMAND, errorText, IMAGE_QUESTION, type EditStrength } from "@/lib/chat";
 import { saveText } from "@/lib/download";
 import { newId } from "@/lib/id";
 import { markConfirmAnswered } from "@/lib/feedReducer";
@@ -89,7 +90,13 @@ function useAppState() {
     if (text) void chat.send(text, []);
   });
 
-  const send = (opts?: SendOptions) => void chat.send(query.trim(), images.images, opts);
+  const send = (opts?: SendOptions) => {
+    if (query.trim().toLowerCase() === COMPACT_COMMAND) {
+      void compactChat();                      // a command, not a message (O76)
+      return;
+    }
+    void chat.send(query.trim(), images.images, opts);
+  };
 
   function newChat() {
     chat.newChat();
@@ -141,6 +148,27 @@ function useAppState() {
   // Chat memory (BACKLOG L12): the "this chat is getting long" banner's two actions. Both summarise the
   // open chat with the model on the server, so they take a few seconds (memoryBusy drives the buttons).
   const [memoryBusy, setMemoryBusy] = useState<MemoryBusy>(null);
+  const threadMemory = useThreadMemory(history.activeThreadId, chat.running);
+
+  /** /compact (O76): summarise every exchange but the last now; a note in the chat says what happened. */
+  async function compactChat() {
+    const id = history.activeThreadId;
+    if (!id || chat.running || memoryBusy) return;
+    setMemoryBusy("compact");
+    try {
+      const { folded } = await compactThread(id);
+      setQuery("");
+      const body = folded
+        ? `Summarised ${folded} earlier exchange${folded === 1 ? "" : "s"}. Their exact words still come back when a question needs them.`
+        : "Nothing to summarise yet: only the last exchange is in this chat's memory.";
+      chat.setFeed((prev) => [...prev, { id: `compact-${newId()}`, kind: "system", title: "Compacted", body }]);
+      await threadMemory.refresh();
+    } catch (err) {
+      alert(errorText(err));
+    } finally {
+      setMemoryBusy(null);
+    }
+  }
 
   async function continueInNewChat() {
     const from = history.activeThreadId;
@@ -184,6 +212,7 @@ function useAppState() {
 
   return {
     auth, health, models, specialists, skills, history, images, chat,
+    memory: threadMemory.memory,
     query, setQuery, queryRef,
     runMode, setRunMode, imageProfile, setImageProfile, editStrength, setEditStrength,
     deep,

@@ -8,7 +8,20 @@ import { saveText, saveUrl } from "@/lib/download";
 import { useResolvedTheme, type ResolvedTheme } from "@/lib/theme";
 import { btn, diagram } from "@/lib/ui";
 
-type Props = { code: string };
+// title: the answer's heading over the diagram, for the file names of its downloads
+type Props = { code: string; title?: string };
+
+// Longest file name stem taken from a title: long enough for the topic, short enough for any file system.
+const FILE_STEM_CHARS = 60;
+
+/** "Sales Process Flowchart" → "sales-process-flowchart"; with no title, the diagram's kind ("flowchart",
+ *  "usecase"), so two downloads are never both "diagram". */
+function fileStem(title: string | undefined, code: string): string {
+  const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const fromTitle = slug(title ?? "").slice(0, FILE_STEM_CHARS).replace(/-+$/, "");
+  const kind = slug((code.trim().split(/\s/)[0] ?? "").replace(/-beta$/, ""));
+  return fromTitle || kind || "diagram";
+}
 
 /** Conservative safety net for model-written Mermaid: fix the common parse-breakers before rendering so
  *  a small mistake draws instead of erroring into a "Fix diagram" round-trip. Deliberately minimal — it
@@ -153,7 +166,7 @@ function askToFix(error: string) {
 }
 
 /** Renders a ```mermaid block as a diagram, with SVG/PNG download and the code behind it. */
-export default function MermaidDiagram({ code }: Props) {
+export default function MermaidDiagram({ code, title }: Props) {
   const id = `mmd-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const [svg, setSvg] = useState("");
   const [error, setError] = useState("");
@@ -219,12 +232,12 @@ export default function MermaidDiagram({ code }: Props) {
           Open full size
         </button>
         <button type="button" className={btn("ghost", "sm")} disabled={!svg}
-          onClick={() => saveText(withBackground(svg, background), "diagram.svg", "image/svg+xml")}>
+          onClick={() => saveText(withBackground(svg, background), `${fileStem(title, code)}.svg`, "image/svg+xml")}>
           Download SVG
         </button>
         <button type="button" className={btn("ghost", "sm")} disabled={!svg}
           onClick={() => svgToPng(svg, background)
-            .then((b) => saveUrl(URL.createObjectURL(b), "diagram.png"))
+            .then((b) => saveUrl(URL.createObjectURL(b), `${fileStem(title, code)}.png`))
             .catch((e) => setError(String(e)))}>
           Download PNG
         </button>

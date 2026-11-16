@@ -250,3 +250,25 @@ def test_a_chat_with_a_long_summary_is_not_summarised_after_every_answer():
         sizes = sizes[fold:]
     assert calls <= 4
     assert cm.fold_count(0, [600] * 8, budget) == 5                      # the first fold: as before, to half
+
+
+# ── O76: the memory line and /compact ─────────────────────────────────────
+def test_memory_status_measures_summary_and_recent_against_the_budget(db, summaries):
+    chat_thread(db)
+    add_job(db, "a", 1, query="q" * 400, answer="a" * 400)          # ~200 tokens
+    status = cm.memory_status(CFG, "t1", 1)
+    assert status["budget"] == cm.history_budget(CFG) and status["summary_tokens"] == 0
+    assert status["recent_tokens"] == status["used"] > 0 and status["room"] == cm.history_budget(CFG)
+    with pytest.raises(LookupError):
+        cm.memory_status(CFG, "t1", 2)                                   # someone else's chat
+
+
+def test_compact_folds_all_but_the_last_exchange(db, summaries):
+    chat_thread(db)
+    for n in range(3):
+        add_job(db, f"j{n}", n, query=f"question {n}", answer=f"answer {n}")
+    assert cm.compact_chat(CFG, "t1", 1) == 2
+    row = db.get(ChatThreadRow, "t1")
+    assert row.summary == "summary #1" and row.summary_through == T0 + timedelta(minutes=1)
+    assert cm.memory_status(CFG, "t1", 1)["summary_tokens"] > 0
+    assert cm.compact_chat(CFG, "t1", 1) == 0                          # only the last exchange is left

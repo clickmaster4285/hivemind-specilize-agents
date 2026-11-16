@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getHealth } from "@/lib/api";
 import { errorText } from "@/lib/chat";
@@ -17,6 +17,22 @@ export function useHealth() {
       setHealth(null);
       setError(errorText(err));
     }
+  }, []);
+
+  // load once: nothing else called refresh(), so the memory meter (context.history_budget) and the image settings
+  // (image_pipeline) never had their data (ISSUES_LOG O76)
+  useEffect(() => {
+    let cancelled = false;
+    void getHealth()
+      .then((h) => {
+        if (!cancelled) setHealth(h);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorText(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return { health, error, refresh };

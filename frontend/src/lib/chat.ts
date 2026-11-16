@@ -1,7 +1,7 @@
 /** Pure helpers for the chat screen: no React, no state. */
 import { fetchJobAttachment } from "@/lib/api";
 import { newId } from "@/lib/id";
-import type { ChatImage, FeedItem, Job } from "@/lib/types";
+import type { ChatImage, FeedItem, Job, ThreadMemory } from "@/lib/types";
 
 export const MAX_CHAT_IMAGES = 4;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -54,22 +54,19 @@ export function conversationFromFeed(items: FeedItem[], maxTurns = 10): Conversa
   return turns.slice(-maxTurns);
 }
 
-/** Chat memory (BACKLOG L12) — same rough measure as the server: ~4 characters per token. */
-const CHARS_PER_TOKEN = 4;
+/** Chat memory (BACKLOG L12): measured on the server (GET /api/threads/{id}/memory). */
 export const MEMORY_WARN_PERCENT = 80;
 
-export type ChatMemory = { tokens: number; budget: number; percent: number };
+export type ChatMemory = { tokens: number; budget: number; percent: number; room: number; summarized: boolean };
 
-/** How much of the model's chat memory this conversation fills: its messages (and any carried summary)
- *  against the history budget. Past 100% the server has folded the oldest turns into a summary. */
-export function chatMemory(items: FeedItem[], budget: number | undefined): ChatMemory | null {
-  if (!budget) return null;
-  const chars = items
-    .filter((i) => !i.pending && (i.kind === "user" || i.kind === "agent"))
-    .reduce((n, i) => n + (i.body || "").length, 0);
-  if (!chars) return null;
-  const tokens = Math.ceil(chars / CHARS_PER_TOKEN);
-  return { tokens, budget, percent: Math.round((tokens / budget) * 100) };
+/** Typed alone in the message box: summarise the chat now instead of sending (O76). */
+export const COMPACT_COMMAND = "/compact";
+
+/** The meter's numbers from the server's measure (O76): it counted every message on screen before, so after a
+ *  fold it stayed "full" for good; the server counts the summary and the exchanges after it, as the model sees them. */
+export function chatMemory(m: ThreadMemory): ChatMemory {
+  return { tokens: m.used, budget: m.budget, percent: Math.round((m.used / m.budget) * 100),
+           room: m.room, summarized: m.summary_tokens > 0 };
 }
 
 export const SUMMARY_CARD_TITLE = "Summary of the previous chat";

@@ -1,6 +1,6 @@
 "use client";
 
-import { isValidElement, useRef, useState, type ReactNode } from "react";
+import { isValidElement, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 // tables, strikethrough, task lists: without it a | table | shows as raw text
@@ -215,7 +215,37 @@ function normalizeMarkdown(raw: string): string {
   return text;
 }
 
+const HEADING_LINE = /^#{1,6}\s+(.+?)\s*#*\s*$/;
+const BOLD_LINE = /^\*\*(.+?)\*\*\s*:?\s*$/;
+
+/** Each ```mermaid block's code → the heading or bold title line nearest above it ("**Sales Process Flowchart**",
+ *  as the diagram tool writes it): a downloaded diagram is named after its topic, not "diagram.png". */
+function diagramTitles(content: string): Map<string, string> {
+  const titles = new Map<string, string>();
+  let title = "";
+  let code: string[] | null = null;
+  for (const line of content.split("\n")) {
+    if (code !== null) {
+      if (line.trim().startsWith("```")) {
+        titles.set(code.join("\n").trim(), title);
+        code = null;
+      } else {
+        code.push(line);
+      }
+      continue;
+    }
+    if (/^\s*```\s*mermaid\b/i.test(line)) {
+      code = [];
+      continue;
+    }
+    const found = HEADING_LINE.exec(line.trim()) ?? BOLD_LINE.exec(line.trim());
+    if (found) title = found[1].replace(/[*_`]/g, "").trim();
+  }
+  return titles;
+}
+
 export default function MarkdownBody({ content, pending, sources }: Props) {
+  const titles = useMemo(() => diagramTitles(content), [content]);
   if (pending) {
     return (
       <div className="whitespace-pre-wrap text-[0.74rem] leading-[1.35] text-muted [font-family:var(--font-mono)]">
@@ -254,7 +284,7 @@ export default function MarkdownBody({ content, pending, sources }: Props) {
           code: ({ className, children }) => <code className={`${md.code} ${className ?? ""}`.trim()}>{children}</code>,
           pre: ({ children }) => {
             const mermaid = fencedCode(children, "mermaid");
-            if (mermaid !== null) return <MermaidDiagram code={mermaid} />;
+            if (mermaid !== null) return <MermaidDiagram code={mermaid} title={titles.get(mermaid)} />;
             const net = fencedCode(children, "netdiagram");
             if (net !== null) return <NetworkDiagram code={net} />;
             const block = fenced(children);
