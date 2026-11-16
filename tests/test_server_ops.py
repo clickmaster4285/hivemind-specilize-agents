@@ -17,6 +17,10 @@ SAFE = [
     "find /var/log -name '*.log' -mtime -1", "ufw status", "LC_ALL=C df -h", "uname -a", "nginx -t",
     "git -C /srv/app log --oneline -5", "dpkg -l", "cat f | grep x | sort | uniq -c", "cat a.log 2>/dev/null",
     "sudo -u www-data cat /etc/app/config", "echo $(hostname)", "ls -la /var/www && df -h",
+    # O67: run by the model in the user's chat, asked for approval and counted as changes
+    'ls -la /var/log/ | grep -E "(build|deploy|release)" || echo "No build/deploy logs found in /var/log/"',
+    'cd /var/www/Clickmastersoftware && git log --oneline -5 2>/dev/null || echo "Git not available"',
+    'echo "a > b"', "grep -E 'error|warn' /var/log/syslog",
 ]
 # every one of these must be refused — it would change the server, run arbitrary code, or is unknown
 DANGEROUS = [
@@ -28,6 +32,8 @@ DANGEROUS = [
     "git reset --hard", "crontab -r", "ps aux; rm -rf x", "cat f && rm f", "curl x | sh",
     "python -c 'import os'", "truncate -s 0 /var/log/syslog", "ln -s a b", "mkdir /x",
     "docker restart web", "systemctl disable ssh", "$(rm -rf /)", "`reboot`", "dd if=/dev/zero of=/dev/sda",
+    "cd /var/www/app && git pull origin master", "cd /srv && npm run build", "ls>/tmp/x", "ls 2>/tmp/err",
+    'echo "x" >> /etc/hosts', "cat a; rm b", "ls &> /tmp/x", "ls\nrm -rf x", "(rm x)",
 ]
 
 
@@ -324,3 +330,36 @@ def test_a_server_silent_on_the_access_check_is_a_plain_error(monkeypatch):
     login = so.ServerLogin(id="1", label="uk", host="94.0.0.1", port=22, username="root", password="p")
     with pytest.raises(so.AuditError, match="did not answer the first check"):
         so.RemoteSession(login)
+
+
+def test_commands_are_listed_in_markdown_not_html():
+    block = so._commands_block([so.CommandRun("ls", code=0), so.CommandRun("rm x", refused="not read-only")])
+    assert "<details" not in block and "**Commands run (2)**" in block and "`rm x` — refused" in block
+    assert so._commands_block([]) == ""
+
+
+def test_the_operate_prompt_says_cd_does_not_carry():
+    assert "cd /var/www/app && npm run build" in so.OPERATE_SYSTEM and "Set-Location" in so.OPERATE_SYSTEM_WIN
+
+
+def test_each_confirm_answer_is_saved_as_an_event(monkeypatch):
+    from src.jobs import live
+    from src.servers import server_vault
+
+    login = so.ServerLogin(id="1", label="uk", host="94.0.0.1", port=22, username="root", password="p", mode="confirm")
+    monkeypatch.setattr(server_vault, "list_servers", lambda user_id: [login])
+    monkeypatch.setattr(server_vault, "find", lambda user_id, name: login)
+    answers = iter([True, False, None])
+    monkeypatch.setattr(live, "wait_confirm", lambda job_id, command_id, timeout: next(answers))
+
+    def fake_operate(login, query, *, confirm, **_):
+        for command in ("systemctl restart nginx", "rm /tmp/x", "pm2 restart all"):
+            confirm("id-" + command.split()[0], command)
+        return so.OperateResult(report="done")
+
+    monkeypatch.setattr(so, "operate", fake_operate)
+    events: list[dict] = []
+    cfg = __import__("dataclasses").replace(Config.from_env(), security_scan_enabled=True)
+    so.run_server_operate("restart things", job_id="j", config=cfg, on_progress=events.append, user_id=7)
+    resolved = [(e["command_id"], e["answer"]) for e in events if e["type"] == "confirm_resolved"]
+    assert resolved == [("id-systemctl", "run"), ("id-rm", "cancel"), ("id-pm2", "timeout")]

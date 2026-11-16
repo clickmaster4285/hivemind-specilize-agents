@@ -42,6 +42,8 @@ export type SkillCategory = { name: string; count: number };
 
 /** What the agent may change on a server (src/server_vault.py MODES). */
 export type ServerMode = "audit" | "confirm" | "trusted";
+/** How a "Run this?" card ended (the server's `confirm_resolved` event, or the job ending first — O66). */
+export type ConfirmAnswer = "run" | "cancel" | "timeout" | "closed";
 
 /** A Linux server login kept in the API's memory for this session (src/server_vault.py) — never the secret. */
 export type ServerInfo = {
@@ -346,7 +348,7 @@ export type FeedItem = {
   /** Section anchors whose web images are still being fetched — loading placeholders sit there meanwhile. */
   imagesPending?: string[];
   /** operate_server: a command waiting for the user to approve or cancel. */
-  confirm?: { commandId: string; command: string; server: string; answered?: "run" | "cancel" };
+  confirm?: { commandId: string; command: string; server: string; answered?: ConfirmAnswer };
   /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */
   startedAt?: number;
   statusText?: string;

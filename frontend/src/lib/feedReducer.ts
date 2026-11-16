@@ -4,6 +4,7 @@ import type {
   AnswerVerification,
   BrainSource,
   ClarifyQuestion,
+  ConfirmAnswer,
   QuizQuestion,
   ChatImage,
   JobEvent,
@@ -173,14 +174,24 @@ function attachToolResult(prev: FeedItem[], event: JobEvent): FeedItem[] {
   return upsertStatus(prev, isError ? "Tool issue" : "Tool", `${tool} finished`, isError);
 }
 
-/** After the user clicks Run / Cancel: mark the confirm card so its buttons disable. */
-export function markConfirmAnswered(prev: FeedItem[], commandId: string, answered: "run" | "cancel"): FeedItem[] {
+/** After the user clicks Run / Cancel, or the server's `confirm_resolved` event (also on a reloaded chat):
+ *  mark the confirm card so its buttons go. */
+export function markConfirmAnswered(prev: FeedItem[], commandId: string, answered: ConfirmAnswer): FeedItem[] {
   return prev.map((item) =>
     item.confirm && item.confirm.commandId === commandId
       ? { ...item, confirm: { ...item.confirm, answered } }
       : item,
   );
 }
+
+/** The job is over: a card nobody answered can no longer run (O66). */
+function closeOpenConfirms(prev: FeedItem[]): FeedItem[] {
+  return prev.map((item) =>
+    item.confirm && !item.confirm.answered ? { ...item, confirm: { ...item.confirm, answered: "closed" } } : item,
+  );
+}
+
+const CONFIRM_ANSWERS: readonly ConfirmAnswer[] = ["run", "cancel", "timeout"];
 
 /** Pure reducer: apply one backend event onto a feed snapshot. */
 export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
@@ -237,6 +248,10 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
         },
       },
     ];
+  }
+  if (type === "confirm_resolved") {
+    const answer = CONFIRM_ANSWERS.find((a) => a === event.answer);
+    return answer ? markConfirmAnswered(prev, String(event.command_id || ""), answer) : prev;
   }
   if (type === "job_started" || type === "session_start" || type === "agentic_start") {
     return upsertStatus(prev, "Working", "Running…");
@@ -513,7 +528,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
     const errors = Array.isArray(event.errors) ? event.errors.join("; ") : "";
     return upsertStatus(
       // the job is over: no more images can arrive, so no placeholder may linger
-      prev.map((item) => (item.imagesPending ? { ...item, imagesPending: undefined } : item)),
+      closeOpenConfirms(prev.map((item) => (item.imagesPending ? { ...item, imagesPending: undefined } : item))),
       errors ? "Finished with issues" : "Done",
       `${Number(event.total_seconds || 0).toFixed(1)}s${errors ? ` · ${errors.slice(0, 100)}` : ""}`,
       Boolean(errors),

@@ -1,11 +1,19 @@
 "use client";
 
-import type { FeedItem } from "@/lib/types";
+import type { ConfirmAnswer, FeedItem } from "@/lib/types";
 import { btn } from "@/lib/ui";
 
 type Props = {
   item: FeedItem;
   onConfirm: (commandId: string, approved: boolean) => void;
+};
+
+/** What happened to the command, once the card is answered (O66: shown on a reloaded chat too). */
+const OUTCOME: Record<ConfirmAnswer, string> = {
+  run: "✓ You approved it. Its result is in the Commands run list.",
+  cancel: "✕ You cancelled it. It was not run.",
+  timeout: "No answer in time. It was not run.",
+  closed: "The job ended before an answer. It was not run.",
 };
 
 /** operate_server: a command the agent wants to run on a server, waiting for Run / Cancel. */
@@ -20,7 +28,7 @@ export default function ConfirmCard({ item, onConfirm }: Props) {
       </p>
       <pre className="mb-[0.6rem] whitespace-pre-wrap break-all rounded-md bg-panel px-[0.7rem] py-2 text-[0.82rem] [font-family:ui-monospace,SFMono-Regular,Consolas,monospace]">{c.command}</pre>
       {answered ? (
-        <p className="text-[0.85rem] text-muted">{answered === "run" ? "✓ You approved it." : "✕ You cancelled it."}</p>
+        <p className="text-[0.85rem] text-muted">{OUTCOME[answered]}</p>
       ) : (
         <div className="flex gap-2">
           <button type="button" className={btn("primary", "sm")} onClick={() => onConfirm(c.commandId, true)}>

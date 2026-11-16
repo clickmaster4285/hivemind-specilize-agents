@@ -43,6 +43,7 @@ READ_ONLY: frozenset[str] = frozenset({
     "fgrep", "zgrep", "zcat", "cut", "sort", "uniq", "tr", "awk", "nl", "tac", "readlink", "realpath",
     "basename", "dirname", "find", "locate", "md5sum", "sha256sum", "cmp", "diff", "column", "fold",
     "strings", "xxd", "hexdump", "od", "pwd", "echo", "printf", "true", "false", "test", "seq", "jq", "base64",
+    "cd",       # changes only the folder this one command runs in: each command is a new shell (O67, O68)
     # system / processes
     "uname", "hostname", "hostnamectl", "uptime", "whoami", "id", "groups", "who", "w", "last", "lastlog",
     "date", "cal", "env", "printenv", "ps", "top", "htop", "pgrep", "pidof", "free", "vmstat", "iostat",
@@ -101,10 +102,11 @@ WRITE_FLAGS: dict[str, frozenset[str]] = {
     "nft": frozenset({"add", "delete", "flush", "insert", "replace", "create"}),
     "ip": frozenset({"add", "del", "delete", "set", "change", "replace", "flush"}),
 }
-_OPERATORS = re.compile(r"\|\||&&|\||;|\n")
+# Between two commands. Split by the shell's own rules, so a `|` inside quotes (grep -E "a|b") is not a pipe (O67)
+_SEPARATORS = frozenset({"|", "||", "&&", ";", "&", ";;"})
 _SUBSHELL = re.compile(r"\$\([^)]*\)|`[^`]*`|<\([^)]*\)")
-# a > or >> that writes to a file (2>&1, 2>/dev/null, >/dev/null are cleared before this runs)
-_REDIRECT = re.compile(r">>?")
+# redirections that only discard output or merge it; any other `>` writes a file
+_HARMLESS_REDIRECTS = ("2>&1", "2>/dev/null", ">/dev/null")
 
 
 def _first_program(tokens: list[str]) -> tuple[str, list[str]] | None:
@@ -124,18 +126,30 @@ def _first_program(tokens: list[str]) -> tuple[str, list[str]] | None:
     return None
 
 
-def _check_simple(command: str) -> str | None:
-    """A single command (no pipes/operators): reason it is NOT read-only, or None if it is."""
-    command = command.strip()
-    if not command:
-        return None
-    cleaned = command.replace("2>&1", " ").replace("2>/dev/null", " ").replace(">/dev/null", " ")
-    if _REDIRECT.search(cleaned):
-        return "it writes to a file (>)"
+def _commands_in(command: str) -> list[list[str]] | str:
+    """The simple commands in a command line, as token lists, split at | || && ; & outside quotes; or the
+    reason it is NOT read-only (a write redirection, or it cannot be parsed)."""
+    for harmless in _HARMLESS_REDIRECTS:
+        command = command.replace(harmless, " ")
+    lexer = shlex.shlex(command.replace("\n", " ; "), posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
     try:
-        tokens = shlex.split(command, comments=True)
+        tokens = list(lexer)
     except ValueError:
         return "it could not be parsed safely"
+    if any(">" in t for t in tokens if set(t) <= set(lexer.punctuation_chars)):
+        return "it writes to a file (>)"
+    parts: list[list[str]] = [[]]
+    for token in tokens:
+        if token in _SEPARATORS:
+            parts.append([])
+        else:
+            parts[-1].append(token)
+    return [p for p in parts if p]
+
+
+def _check_simple(tokens: list[str]) -> str | None:
+    """A single command's tokens: reason it is NOT read-only, or None if it is."""
     found = _first_program(tokens)
     if found is None:
         return None
@@ -164,7 +178,10 @@ def classify_command(command: str) -> str | None:
         reason = classify_command(inner.strip("$()`<> "))
         if reason:
             return f"a sub-command is not read-only ({reason})"
-    for part in _OPERATORS.split(_SUBSHELL.sub(" echo INNER ", command)):
+    parts = _commands_in(_SUBSHELL.sub(" echo INNER ", command))
+    if isinstance(parts, str):
+        return parts
+    for part in parts:
         reason = _check_simple(part)
         if reason:
             return reason
@@ -446,7 +463,11 @@ def diagnose(
 
 # ── as a chat job ──────────────────────────────────────────────────────────
 def _commands_block(runs: list[CommandRun]) -> str:
-    return "\n".join(f"- `{run.command}` — {run.outcome}" for run in runs)
+    """The commands under a report, as Markdown: the chat does not render HTML such as <details> (O65)."""
+    if not runs:
+        return ""
+    lines = "\n".join(f"- `{run.command}` — {run.outcome}" for run in runs)
+    return f"\n\n**Commands run ({len(runs)})**\n\n{lines}"
 
 
 def run_server_diagnose(
@@ -494,9 +515,7 @@ def run_server_diagnose(
             result = diagnose(login, query, config=config, should_continue=lambda: not live.is_stopped(job_id),
                               on_command=on_command)
             note = "\n\n_Read-only diagnosis: the server was not changed._"
-            commands = (f"\n\n<details><summary>Commands run ({len(result.runs)})</summary>\n\n"
-                        f"{_commands_block(result.runs)}\n</details>") if result.runs else ""
-            output = (result.report or "No findings.") + commands + note
+            output = (result.report or "No findings.") + _commands_block(result.runs) + note
     except (AuditError, VaultError) as exc:
         output = f"Not run: {exc}."
         errors.append(str(exc))
@@ -518,6 +537,8 @@ You MAY change the server (install, edit config, restart services) when the task
 How changes are handled on this server: {mode_note}
 Rules:
 - Read-only checks run freely. A change may need the user's approval first (you will see the result).
+- Every command starts in a new shell in the home folder: a `cd` does not carry to the next command. To work in a
+  folder, put both in one command: `cd /var/www/app && npm run build`.
 - If a change is refused or cancelled, do not retry it blindly — explain and stop, or try another way.
 - Make the smallest change that does the job. Check your work afterwards (e.g. systemctl status).
 - At the end, write what you did, what changed, and how to verify or undo it.
@@ -532,6 +553,8 @@ Rules:
 - Read-only checks run freely. A change may need the user's approval first (you will see the result).
 - Use PowerShell cmdlets (Verb-Noun): New-Item, Set-Content, Copy-Item, Restart-Service, Install-WindowsFeature,
   etc. Do NOT use Invoke-Expression, download-and-run, or bash — they are blocked.
+- Every command starts in a new session in the home folder: Set-Location does not carry to the next command, so
+  use full paths (C:\\inetpub\\site\\index.html).
 - If a change is refused or cancelled, do not retry it blindly — explain and stop, or try another way.
 - Make the smallest change that does the job. Check your work afterwards (e.g. Get-Service, Test-Path).
 - At the end, write what you did, what changed, and how to verify or undo it. Use real values; never invent."""
@@ -684,7 +707,11 @@ def run_server_operate(
         emit({"type": "confirm_command", "agent_id": "assistant", "command_id": command_id, "command": command,
               "server": login.label, "host": login.host})
         status("Waiting for you to approve a command…")
-        return live.wait_confirm(job_id, command_id, CONFIRM_TIMEOUT)
+        approved = live.wait_confirm(job_id, command_id, CONFIRM_TIMEOUT)
+        # saved with the job's events, so a reloaded chat shows the card answered, not with live buttons (O66)
+        emit({"type": "confirm_resolved", "agent_id": "assistant", "command_id": command_id,
+              "answer": "timeout" if approved is None else "run" if approved else "cancel"})
+        return approved
 
     try:
         if not config.security_scan_enabled:
@@ -707,9 +734,7 @@ def run_server_operate(
                              on_command=on_command)
             note = (f"\n\n_Operated on **{login.label}** ({login.mode} mode): {result.changes} change(s) made. "
                     "Every change is in the command log._")
-            commands = (f"\n\n<details><summary>Commands ({len(result.runs)})</summary>\n\n"
-                        f"{_commands_block(result.runs)}\n</details>") if result.runs else ""
-            output = (result.report or "Done.") + commands + note
+            output = (result.report or "Done.") + _commands_block(result.runs) + note
     except (AuditError, VaultError) as exc:
         output = f"Not run: {exc}."
         errors.append(str(exc))

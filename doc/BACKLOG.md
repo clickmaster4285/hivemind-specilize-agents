@@ -616,8 +616,8 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
   - [ ] Later: recall across the user's own chats
 - [ ] **Server operate and routing (O64–O71, user's chat 2026-11-16):** a hung command fails the whole job (O64: part 1 done 2026-11-16, it goes on; part 2 why);
       raw `<details>` (O65); confirm cards stay live (O66); read-only chains asked for approval (O67); the folder
-      does not carry between commands (O68); follow-up server tasks answered instead of run, server state invented
-      (O69: hand-over built 2026-11-16, eval 37/40 and 36/40, live check waits); O72 two router cases flip; a requested restart judged unnecessary (O70); pictures in server answers, stuck "re-checking…" (O71)
+      does not carry between commands (O68) — O65–O68 built 2026-11-16, waiting for a look; follow-up server tasks answered instead of run, server state invented
+      (O69: hand-over built 2026-11-16, eval 37/40 and 36/40, live check waits); O72 two router cases flip (script `bench_router_dates` for the user); a requested restart judged unnecessary (O70); pictures in server answers, stuck "re-checking…" (O71)
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)
 
