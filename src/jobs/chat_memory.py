@@ -36,14 +36,17 @@ SUMMARY_SYSTEM = """You keep the memory of a long chat between a user and an AI 
 summary so the chat can continue without the full text.
 Keep word for word, exactly as written: the user's own setup and facts (addresses, serial numbers, ports, device
 and host names, versions, paths and shares, schedules and times, speeds, people and deadlines), each decision and
-what it changed (old → new), and the specific values the assistant gave (commands, names it suggested, settings).
-Never drop one of these to save space, and carry them over from the summary so far unless the chat replaced them.
-Shorten the rest: a general explanation, guide or checklist becomes one line naming its topic. Drop small talk
-and anything superseded. Write short bullet points under: **Goal**, **Key facts and decisions**, **Open
-questions** (leave a heading out when empty). Output only the summary, in the language of the chat."""
+what it changed (old → new), and what the assistant made for the user's own setup (a command written for their
+devices, a name it suggested). Never drop one of these to save space, and carry them over from the summary so far
+unless the chat replaced them. Everything general gets one line naming its topic, with no steps, sub-bullets or
+example values: a plan, a checklist, best practices, a comparison, how a technology works. Drop small talk and
+anything superseded. Write one-line bullet points under: **Goal** (one sentence), **Key facts and decisions**,
+**Open questions** (leave a heading out when empty). Output only the summary, in the language of the chat."""
 # Why (ISSUES_LOG O63, eval v2): the old wording kept "key facts" in general, and the summary spent most of its
 # ~1,400–1,600 tokens on explanations (a checklist, a patching plan) while dropping a different few of the user's
-# own facts each run (a serial, a backup time, an IP, a camera channel).
+# own facts each run (a serial, a backup time, an IP, a camera channel). The first rewording kept all 11 facts
+# but grew to 1,932 tokens: "the specific values the assistant gave" pulled whole plans and checklists in as
+# sub-bullets, so only what the assistant made for the user's setup is kept now, and general topics get one line.
 
 
 def history_budget(config: Config) -> int:
