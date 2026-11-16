@@ -78,7 +78,10 @@ function configure(mermaid: Mermaid, theme: ResolvedTheme): void {
     // architecture-beta icons use `fill: currentColor`, and the diagram defaults `color` to white, so mdi/logos
     // icons drew white-on-white on the light card. Set the theme's ink. Travels in the SVG <style>, so
     // full-size + PNG keep it.
-    themeCSS: `.architecture-service, g[class*="architecture"] { color: ${look.ink}; }`,
+    // Use-case labels: Mermaid 12.3 puts the label at the ellipse's centre without centring the text, so it ran
+    // right by half its width and out of the ellipse (seen in the app, O62); text-anchor middle centres it.
+    themeCSS: `.architecture-service, g[class*="architecture"] { color: ${look.ink}; }
+      .usecase-element .label text { text-anchor: middle; }`,
   });
 }
 
