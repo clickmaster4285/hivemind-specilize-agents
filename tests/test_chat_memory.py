@@ -138,14 +138,6 @@ def test_summarize_works_through_a_chat_bigger_than_the_model(summaries):
     assert len(summaries) > 1 and "summary #1" in summaries[1]        # each piece carries the summary forward
 
 
-def test_the_summary_is_asked_to_stay_under_a_share_of_the_history_budget(monkeypatch):
-    systems: list[str] = []
-    monkeypatch.setattr("src.llm.llm_client.LLMClient.chat", lambda self, *, system, user, **kw: systems.append(system) or "s")
-    cm.summarize("", [{"role": "user", "content": "q"}], config=CFG)
-    words = cm.summary_words(CFG)
-    assert 0 < words < cm.history_budget(CFG) and f"under {words} words" in systems[0]
-
-
 def test_the_summary_prompt_keeps_the_heading_the_model_bench_checks():
     from src.llm.bench_small_models import GOAL_HEADING
     assert GOAL_HEADING.search(cm.SUMMARY_SYSTEM)

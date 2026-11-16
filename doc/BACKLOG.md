@@ -36,7 +36,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
 | [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
 | [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
-| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 (user checks diagrams); O63 chat recall (11/11 with recall; new summary prompt: user runs bench_recall) |
+| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 (user checks diagrams); O63 chat recall (11/11 with recall; summary size: capped notes proposed); O64–O71 server operate and routing (2026-11-16 chat) |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
@@ -607,10 +607,15 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
   - [ ] Summary prompt: keep the user's facts and decisions word for word, one line per general explanation
         (the summary drops different facts each run and spends most of its ~1,400 tokens on explanations);
         reworded 2026-11-14 (user's go); 2026-11-16: rewording alone did not hold (11/11 at 1,932 tokens, then 8/11
-        at 2,180), so a word limit (0.2 of the history budget, 645 words), the facts come from recall; waiting: the rerun
+        at 2,180), so a word limit (0.2 of the history budget, 645 words), the facts come from recall; the limit was ignored
+        (3,037 tokens, 12 rounds). Proposed: fold-round notes on the new exchanges only, capped, oldest dropped
   - [x] Fewer summary calls: fold to half the room the summary leaves, not half the budget (20 → 8 summary
         rounds in v2's chat) — done 2026-11-14
   - [ ] Later: recall across the user's own chats
+- [ ] **Server operate and routing (O64–O71, user's chat 2026-11-16):** a hung command fails the whole job (O64);
+      raw `<details>` (O65); confirm cards stay live (O66); read-only chains asked for approval (O67); the folder
+      does not carry between commands (O68); follow-up server tasks answered instead of run, server state invented
+      (O69); a requested restart judged unnecessary (O70); pictures in server answers, stuck "re-checking…" (O71)
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)
 
