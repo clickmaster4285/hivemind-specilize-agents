@@ -22,8 +22,10 @@ import yaml
 
 from src.core import clock
 from src.core.config import Config
+from src.llm import skills
 from src.llm.assistant import EVAL_FILE, tool_schemas
 from src.llm.router import CLARIFY, SEARCH, TOOL, Route, route_message
+from src.llm.specialists import default_specialists
 
 # Five days in a row around the change: the 14th (the eval passed) to the 16th (it missed) and two after
 DATES = [datetime(2026, 11, day) for day in range(14, 19)]
@@ -48,7 +50,17 @@ def wrong(choice: str, wanted: str | list[str] | None) -> bool:
 def main() -> int:
     config = Config.from_env()
     cases = yaml.safe_load(EVAL_FILE.read_text(encoding="utf-8"))["cases"]
-    tools = tool_schemas(config, None)
+    built_in = {s.name: s for s in skills.catalog(config)}
+    specialists = default_specialists()
+
+    def tools_for(case: dict) -> list[dict]:
+        """As the app: every tool, or only the skill's own tools when the case applies a skill (/keyword-plan)."""
+        skill = built_in.get(case.get("skill", ""))
+        if skill is None:
+            return tool_schemas(config, None)
+        applied = skills.apply(skill, next((c for c in specialists if c.id == skill.specialist), None))
+        return tool_schemas(config, applied.tools if applied else None)
+
     rows: list[tuple[dict, list[str]]] = []
     started = time.perf_counter()
     for case in cases:
@@ -56,7 +68,7 @@ def main() -> int:
         choices = []
         for day in DATES:
             with mock.patch.object(clock, "current_date_text", lambda *a, _day=day, **k: f"{_day:%A, %d %B %Y}"):
-                choices.append(verdict(route_message(case["text"], config, conversation, tools=tools)))
+                choices.append(verdict(route_message(case["text"], config, conversation, tools=tools_for(case))))
         rows.append((case, choices))
         print(f"{' | '.join(choices)}  ←  {case['text'][:60]}", flush=True)
 

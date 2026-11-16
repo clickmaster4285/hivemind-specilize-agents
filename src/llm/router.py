@@ -41,7 +41,9 @@ Reply with ONE JSON object and nothing else:
 "news": true or false, "learning": true or false, "calculation": true or false}}
 
 route:
-- First: "tool" when the message plainly asks for the job of ONE tool listed above, even when it needs facts
+- A file the user wants made (Excel, PDF, Word, PowerPoint) is always "tool" create_document, even when its
+  content needs prices or other facts that change: the file is the job, the tool fills in the facts.
+- Next: "tool" when the message plainly asks for the job of ONE tool listed above, even when it needs facts
   that change (weather, prices, rankings): the tool gets them itself. Such jobs: checking, auditing, analysing,
   scanning or comparing a named website, URL, IP address, device, server, recorder or file (a site audit reads
   the site itself; a web search only finds pages about it); the weather; keyword and ranking research (who
@@ -52,7 +54,7 @@ route:
   the message in the user's own words, never adding details the user did not give; "" when the message does
   not say. E.g. "tell me the issues in this website from seo perspective
   https://example.pk/" → {{"route": "tool", "tool": "site_audit", "args": {{"url": "https://example.pk/"}}}};
-  "put the prices of 5 phones in an Excel file" → "tool" create_document (the file is the job, not the prices).
+  "put the prices of 5 phones in an Excel file" → "tool" create_document.
   Not sure which tool → "model".
 - "search": the answer depends on facts that may have changed since your training or that must be looked up:
   news and recent events, real people (who someone is, their life, work, roles, what they did), companies,

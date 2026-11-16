@@ -26,7 +26,7 @@ from src.llm.assistant import CLARIFY_INTRO, decide, speaker, tool_flag
 from src.llm.skills import Skill
 from src.llm.skills import apply as apply_skill
 from src.llm.skills import for_job as skill_for_job
-from src.llm.specialists import resolve as resolve_specialist
+from src.llm.specialists import Specialist, resolve as resolve_specialist
 from src.llm.usage import job_totals, job_usage
 from src.tools.answer_export import run_answer_export
 from src.tools.compare_sites import run_compare_sites
@@ -96,9 +96,12 @@ def _clarify(config: Config, job_id: str, query: str, questions: list, on_progre
     _finish(config, job_id, [])
 
 
-def _answerer(payload: dict, query: str, skill: Skill | None, *, config: Config, conversation, on_progress):
+def _answerer(payload: dict, query: str, skill: Skill | None, *, config: Config, conversation,
+              on_progress) -> tuple[Specialist | None, bool]:
     """Who answers (src/llm/specialists.py): the skill's specialist when it names one, else the one pinned in the chat
-    bar or picked by the model — with the skill's instructions and tools applied (src/llm/skills.py)."""
+    bar or picked by the model — with the skill's instructions and tools applied (src/llm/skills.py).
+    Also whether the model picked it: only then may a tool it lacks move the job to another specialist (O69);
+    a skill or the user's own choice is kept."""
     pinned = skill is not None and bool(skill.specialist)
     specialist, how = resolve_specialist(skill.specialist if pinned else payload.get("specialist"), query,
                                          config=config, conversation=conversation)
@@ -106,9 +109,9 @@ def _answerer(payload: dict, query: str, skill: Skill | None, *, config: Config,
         on_progress({"type": "specialist_chosen", "id": specialist.id, "name": specialist.name,
                      "accent": specialist.accent, "how": "skill" if pinned else how})
     if skill is None:
-        return specialist
+        return specialist, how == "auto"
     on_progress({"type": "skill_chosen", "name": skill.name, "title": skill.title})
-    return apply_skill(skill, specialist)
+    return apply_skill(skill, specialist), False
 
 
 def _finish(config: Config, job_id: str, errors: list[str], *, failed: bool | None = None) -> None:
@@ -245,8 +248,8 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
 
         # Deep research toggle: skip tool routing and research the topic across many sources (text-only).
         if str(payload.get("depth") or "").strip().lower() == "deep" and not (has_images or images):
-            specialist = _answerer(payload, query, skill, config=config, conversation=conversation,
-                                   on_progress=on_progress)
+            specialist, _picked = _answerer(payload, query, skill, config=config, conversation=conversation,
+                                            on_progress=on_progress)
             result = run_chat(
                 query, config=config, model_plan=model_plan, on_progress=on_progress, images=[],
                 conversation=conversation, account_id=str(user_id) if user_id is not None else None,
@@ -257,8 +260,8 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
 
         # Options toggle: offer a few candidate approaches to pick from, instead of one answer (text-only).
         if bool(payload.get("options")) and not (has_images or images):
-            specialist = _answerer(payload, query, skill, config=config, conversation=conversation,
-                                   on_progress=on_progress)
+            specialist, _picked = _answerer(payload, query, skill, config=config, conversation=conversation,
+                                            on_progress=on_progress)
             result = run_chat(
                 query, config=config, model_plan=model_plan, on_progress=on_progress, images=[],
                 conversation=conversation, account_id=str(user_id) if user_id is not None else None,
@@ -271,14 +274,14 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
         specialist = None
         learning = False                 # the router's verdict: the user is learning a topic → a quiz suits
         if intent == "auto":
-            specialist = _answerer(payload, query, skill, config=config, conversation=conversation,
-                                   on_progress=on_progress)
+            specialist, picked = _answerer(payload, query, skill, config=config, conversation=conversation,
+                                           on_progress=on_progress)
             # the model answers directly (streamed, done) or picks a tool with its arguments
             # a follow-up (picked an approach card, or answered a clarify form) routes normally — web
             # search included — but must not ask to clarify again (no loop).
             decision = decide(query, job_id=job_id, config=config, conversation=conversation,
                               on_progress=on_progress, specialist=specialist,
-                              clarify_ok=not bool(payload.get("followup")), refine=refine)
+                              clarify_ok=not bool(payload.get("followup")), refine=refine, may_hand_over=picked)
             if decision.answered:
                 _finish(config, job_id, decision.errors)
                 return

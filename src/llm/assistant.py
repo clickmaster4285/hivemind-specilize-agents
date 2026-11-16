@@ -447,8 +447,11 @@ def decide(
     specialist: Specialist | None = None,
     clarify_ok: bool = True,
     refine: str | None = None,
+    may_hand_over: bool = False,
 ) -> Decision:
     """One model call with the tools: a direct answer streams into the chat; a tool call returns.
+    may_hand_over: the specialist was picked by the model (not a skill or the user's choice), so a tool it lacks
+    moves the job to the specialist that has it (O69).
     With a specialist: its instructions join the prompt and only its tools are offered.
     clarify_ok=False (a follow-up to an approach/clarify) drops the ask_clarification tool, so the
     model routes normally (web search still available) but cannot ask to clarify again."""
@@ -462,9 +465,13 @@ def decide(
 
     emit({"type": "status", "message": "Thinking…"})
     clarify_ok = clarify_ok and not _just_clarified(conversation)
-    # the router sees every tool, so it can name one this specialist lacks; the job then goes to one that has it
-    route = route_message(query, config, conversation, tools=tool_schemas(config, None))
-    specialist = hand_over(route.tool if route.route == TOOL else "", specialist)
+    # a picked specialist: the router sees every tool, so it can name one this specialist lacks, and the job goes
+    # to one that has it. A skill or the user's choice keeps its own tools (the keyword-plan skill went to the
+    # site audit when the router saw every tool, O72)
+    own_tools = specialist.tools if specialist else None
+    route = route_message(query, config, conversation, tools=tool_schemas(config, None if may_hand_over else own_tools))
+    if may_hand_over:
+        specialist = hand_over(route.tool if route.route == TOOL else "", specialist)
     tools = tool_schemas(config, specialist.tools if specialist else None)
     agent = {"agent_id": "assistant", **speaker(specialist), "role": "Direct reply", "stage": "chat", "model": model}
     routed = pre_route(route, query, config, specialist, clarify_ok=clarify_ok,
@@ -500,7 +507,7 @@ def decide(
     allowed = set(specialist.tools) | {"about_multeagent", "ask_clarification"} if specialist else None
     for call in calls:
         tool = BY_NAME.get(call["name"])
-        if (tool and allowed is not None and tool.name not in allowed
+        if (may_hand_over and tool and allowed is not None and tool.name not in allowed
                 and hand_over(tool.name, specialist) is not specialist):
             allowed.add(tool.name)            # another specialist has it: run it rather than answer without it (O69)
         if tool and tool.available(config) and (allowed is None or tool.name in allowed):
@@ -574,8 +581,11 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
         skill = built_in.get(case.get("skill", ""))
         if skill is not None:
             sp = skills.apply(skill, next((c for c in choices if c.id == skill.specialist), sp))
-        route = route_message(case["text"], config, conversation, tools=tool_schemas(config, None))
-        sp = hand_over(route.tool if route.route == TOOL else "", sp, choices)
+        picked = specialists and skill is None             # as the worker: a skill keeps its own tools
+        route = route_message(case["text"], config, conversation,
+                              tools=tool_schemas(config, None if picked else (sp.tools if sp else None)))
+        if picked:
+            sp = hand_over(route.tool if route.route == TOOL else "", sp, choices)
         offered = tool_schemas(config, sp.tools if sp else None)
         routed = pre_route(route, case["text"], config, sp)
         if routed is not None:

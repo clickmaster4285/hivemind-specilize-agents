@@ -171,7 +171,8 @@ def test_a_server_follow_up_runs_instead_of_being_answered_from_memory(monkeypat
     cfg = dataclasses.replace(CFG, security_scan_enabled=True)
     _fake_model(monkeypatch, text="PM2 is not installed",
                 calls=[{"name": "operate_server", "arguments": {"server": "uk", "task": "pm2 restart all"}}])
-    d = assistant.decide("next run pm2 restart all", job_id="o69a", config=cfg, specialist=defaults["development"])
+    d = assistant.decide("next run pm2 restart all", job_id="o69a", config=cfg, specialist=defaults["development"],
+                         may_hand_over=True)
     assert not d.answered and (d.tool, d.args["task"]) == ("operate_server", "pm2 restart all")
 
 
@@ -190,6 +191,24 @@ def test_the_router_naming_a_server_tool_offers_it_to_the_tool_choice(monkeypatc
 
     monkeypatch.setattr(assistant, "route_message", route)
     monkeypatch.setattr("src.llm.llm_client.LLMClient.chat_tools", chat_tools)
-    d = assistant.decide("next run pm2 restart all", job_id="o69b", config=cfg, specialist=defaults["development"])
+    d = assistant.decide("next run pm2 restart all", job_id="o69b", config=cfg, specialist=defaults["development"],
+                         may_hand_over=True)
     assert "operate_server" in routed_with[0] and "operate_server" in offered[0]
     assert d.tool == "operate_server"
+
+
+def test_a_skill_or_chosen_specialist_keeps_its_own_tools(monkeypatch, defaults):
+    """O72: the keyword-plan skill went to the site audit once the router saw every tool."""
+    cfg = dataclasses.replace(CFG, security_scan_enabled=True)
+    routed_with: list[set[str]] = []
+
+    def route(query, config, conversation=None, *, tools=None, **_):
+        routed_with.append({t["function"]["name"] for t in tools})
+        return assistant.Route(route=assistant.TOOL, tool="operate_server", args={"task": "pm2 restart all"})
+
+    monkeypatch.setattr(assistant, "route_message", route)
+    _fake_model(monkeypatch, text="Run it on your server yourself.",
+                calls=[{"name": "operate_server", "arguments": {"task": "pm2 restart all"}}])
+    d = assistant.decide("next run pm2 restart all", job_id="o72", config=cfg, specialist=defaults["development"])
+    assert "operate_server" not in routed_with[0]           # the router sees the specialist's own tools
+    assert d.tool != "operate_server"                         # and the job is not moved
