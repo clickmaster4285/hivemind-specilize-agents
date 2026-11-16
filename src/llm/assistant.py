@@ -378,6 +378,23 @@ def _just_clarified(conversation: list[dict[str, str]] | None) -> bool:
     return bool(last) and str(last.get("content") or "").strip() == CLARIFY_INTRO
 
 
+def hand_over(tool_name: str, specialist: Specialist | None,
+              choices: list[Specialist] | None = None) -> Specialist | None:
+    """The specialist to go on with when `tool_name` is wanted: the current one if it has the tool, else the first
+    enabled specialist that has it. The Development specialist has no server login, so "next run pm2 restart all"
+    was answered from memory ("PM2 is not installed") instead of run (ISSUES_LOG O69)."""
+    if specialist is None or not tool_name or tool_name in specialist.tools:
+        return specialist
+    from src.llm.specialists import SpecialistStore
+
+    pool = choices if choices is not None else SpecialistStore().enabled()
+    other = next((s for s in sorted(pool, key=lambda s: s.sort_order) if tool_name in s.tools), None)
+    if other is not None:
+        logger.info("assistant: %s goes from the %s specialist to the %s specialist", tool_name, specialist.name,
+                    other.name)
+    return other or specialist
+
+
 def _routed_tool(route: Route, config: Config, specialist: Specialist | None) -> Decision | None:
     """The router named a tool (O61): run it straight away, skipping the ~20 s tool choice, when the tool is one
     the tool choice would offer here and every required argument is filled; else None (the tool choice)."""
@@ -436,14 +453,16 @@ def decide(
 
     emit = on_progress or (lambda event: None)
     model = config.model_fast or config.llm_model
-    agent = {"agent_id": "assistant", **speaker(specialist), "role": "Direct reply", "stage": "chat", "model": model}
     started = time.perf_counter()
     opened = {"done": False}
 
     emit({"type": "status", "message": "Thinking…"})
     clarify_ok = clarify_ok and not _just_clarified(conversation)
+    # the router sees every tool, so it can name one this specialist lacks; the job then goes to one that has it
+    route = route_message(query, config, conversation, tools=tool_schemas(config, None))
+    specialist = hand_over(route.tool if route.route == TOOL else "", specialist)
     tools = tool_schemas(config, specialist.tools if specialist else None)
-    route = route_message(query, config, conversation, tools=tools)
+    agent = {"agent_id": "assistant", **speaker(specialist), "role": "Direct reply", "stage": "chat", "model": model}
     routed = pre_route(route, query, config, specialist, clarify_ok=clarify_ok,
                        previous=previous_question(conversation))
     if routed is not None:
@@ -477,6 +496,9 @@ def decide(
     allowed = set(specialist.tools) | {"about_multeagent", "ask_clarification"} if specialist else None
     for call in calls:
         tool = BY_NAME.get(call["name"])
+        if (tool and allowed is not None and tool.name not in allowed
+                and hand_over(tool.name, specialist) is not specialist):
+            allowed.add(tool.name)            # another specialist has it: run it rather than answer without it (O69)
         if tool and tool.available(config) and (allowed is None or tool.name in allowed):
             if tool.name == "ask_clarification":
                 questions = _parse_clarify(call["arguments"])
@@ -541,18 +563,22 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
     rows = []
     for case in cases:
         t = time.perf_counter()
-        sp = pick(case["text"], config=config, specialists=choices) if specialists else None
+        # previous: the message before this one in the chat (a follow-up such as "next run pm2 restart all")
+        conversation = [{"role": "user", "content": case["previous"]}] if case.get("previous") else None
+        sp = pick(case["text"], config=config, conversation=conversation, specialists=choices) if specialists else None
         # skill: a built-in skill applied as /name would (its specialist answers, its instructions and tools)
         skill = built_in.get(case.get("skill", ""))
         if skill is not None:
             sp = skills.apply(skill, next((c for c in choices if c.id == skill.specialist), sp))
+        route = route_message(case["text"], config, conversation, tools=tool_schemas(config, None))
+        sp = hand_over(route.tool if route.route == TOOL else "", sp, choices)
         offered = tool_schemas(config, sp.tools if sp else None)
-        routed = pre_route(route_message(case["text"], config, tools=offered), case["text"], config, sp)
+        routed = pre_route(route, case["text"], config, sp)
         if routed is not None:
             got, args, reply = routed.tool, routed.args, ""
         else:
             # the first call is what is scored: a calculate call counts as the choice (it is not worked out)
-            reply, calls = client.chat_tools(messages=messages_for(case["text"], config, None, model, sp),
+            reply, calls = client.chat_tools(messages=messages_for(case["text"], config, conversation, model, sp),
                                              tools=offered, model=model,
                                              temperature=0.0)
             got, args = (calls[0]["name"], calls[0]["arguments"]) if calls else (None, {})

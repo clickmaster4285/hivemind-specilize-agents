@@ -147,3 +147,49 @@ def test_a_quiz_only_when_the_user_is_learning(monkeypatch, learning):
     events = []
     assistant.decide("teach me about korea's cities", job_id="aq", config=cfg, on_progress=events.append)
     assert any("quiz" in e for e in events if e["type"] == "answer_extras") is learning
+
+
+# ── O69: a tool the picked specialist lacks goes to the one that has it ───
+@pytest.fixture
+def defaults(monkeypatch):
+    from src.llm.specialists import SpecialistStore, default_specialists
+
+    specialists = {s.id: s for s in default_specialists()}
+    monkeypatch.setattr(SpecialistStore, "enabled", lambda self: list(specialists.values()))
+    return specialists
+
+
+def test_hand_over_finds_the_specialist_with_the_tool(defaults):
+    dev, it = defaults["development"], defaults["it"]
+    assert "operate_server" not in dev.tools
+    assert assistant.hand_over("operate_server", dev) is it
+    assert assistant.hand_over("web_search", dev) is dev            # it has it: stays
+    assert assistant.hand_over("", dev) is dev and assistant.hand_over("operate_server", None) is None
+
+
+def test_a_server_follow_up_runs_instead_of_being_answered_from_memory(monkeypatch, defaults):
+    cfg = dataclasses.replace(CFG, security_scan_enabled=True)
+    _fake_model(monkeypatch, text="PM2 is not installed",
+                calls=[{"name": "operate_server", "arguments": {"server": "uk", "task": "pm2 restart all"}}])
+    d = assistant.decide("next run pm2 restart all", job_id="o69a", config=cfg, specialist=defaults["development"])
+    assert not d.answered and (d.tool, d.args["task"]) == ("operate_server", "pm2 restart all")
+
+
+def test_the_router_naming_a_server_tool_offers_it_to_the_tool_choice(monkeypatch, defaults):
+    cfg = dataclasses.replace(CFG, security_scan_enabled=True)
+    routed_with: list[set[str]] = []
+    offered: list[set[str]] = []
+
+    def route(query, config, conversation=None, *, tools=None, **_):
+        routed_with.append({t["function"]["name"] for t in tools})
+        return assistant.Route(route=assistant.TOOL, tool="operate_server", args={"task": "pm2 restart all"})
+
+    def chat_tools(self, *, messages, tools, **_):
+        offered.append({t["function"]["name"] for t in tools})
+        return "", [{"name": "operate_server", "arguments": {"server": "uk", "task": "pm2 restart all"}}]
+
+    monkeypatch.setattr(assistant, "route_message", route)
+    monkeypatch.setattr("src.llm.llm_client.LLMClient.chat_tools", chat_tools)
+    d = assistant.decide("next run pm2 restart all", job_id="o69b", config=cfg, specialist=defaults["development"])
+    assert "operate_server" in routed_with[0] and "operate_server" in offered[0]
+    assert d.tool == "operate_server"

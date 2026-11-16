@@ -7,6 +7,7 @@
 #   tool    the tool the model must call; a list = any of these; null = answer directly, no tool
 #   expect  (optional) arguments the call must carry, compared without case ("" = left empty)
 #   skill   (optional) a built-in skill applied as /name would (its specialist, instructions and tools)
+#   previous (optional) the message before this one in the chat, for follow-ups
 # Add every real message that was answered with the wrong tool.
 
 cases:
@@ -60,6 +61,13 @@ cases:
   - text: "My server is slow and nginx keeps restarting — find out why"
     tool: diagnose_server
   - text: "Create a folder /srv/backups on my server and give it to the www-data user"
+    tool: operate_server
+  # follow-ups in a server chat that the Development specialist answered from memory (O69, 2026-11-16)
+  - text: "next run pm2 restart all"
+    previous: "next in the server go to this folder named Clickmastersoftware go to this and run this git pull origin master and then npm run build"
+    tool: operate_server
+  - text: "Clickmastersoftware go to this and run this git pull origin master and then npm run build if any issue came tell me"
+    previous: "in the setting i add a server name uk, login and go and /var/www and then ls and tell me"
     tool: operate_server
   - text: "Access the NVR's web interface and tell me all the cameras"
     tool: nvr_cameras
