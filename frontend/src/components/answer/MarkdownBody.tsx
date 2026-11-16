@@ -276,7 +276,8 @@ export default function MarkdownBody({ content, pending, sources }: Props) {
           h4: ({ children }) => <h5 className={md.h4}>{children}</h5>,
           p: ({ children }) => <p className={md.p}>{children}</p>,
           ul: ({ children }) => <ul className={md.ul}>{children}</ul>,
-          ol: ({ children }) => <ol className={md.ol}>{children}</ol>,
+          // keep `start`: an answer split at a pictured list item goes on at "2." instead of restarting at "1."
+          ol: ({ children, start }) => <ol className={md.ol} start={start}>{children}</ol>,
           li: ({ children }) => <li className={md.li}>{children}</li>,
           strong: ({ children }) => <strong className={md.strong}>{children}</strong>,
           em: ({ children }) => <em>{children}</em>,

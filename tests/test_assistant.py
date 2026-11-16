@@ -79,7 +79,8 @@ def test_direct_answer_gets_post_answer_extras(monkeypatch):
 
 @pytest.mark.parametrize("found", [[{"filename": "web_01.jpg", "mime": "image/jpeg", "anchor": "seoul"}], []])
 def test_image_placeholders_come_first_then_images_clear_them(monkeypatch, found):
-    answer = "## Seoul\nPalaces and markets.\n\n## Busan\nBeaches and temples. " + "More detail. " * 10
+    # each section names its heading: only a heading that names one thing gets pictures (ISSUES_LOG O53)
+    answer = "## Seoul\nSeoul has palaces and markets.\n\n## Busan\nBusan has beaches. " + "More detail. " * 10
     _fake_model(monkeypatch, text=answer)
     monkeypatch.setattr("src.tools.web_images.gather_web_images", lambda *a, **kw: found)
     cfg = dataclasses.replace(CFG, suggestions_enabled=False, quiz_enabled=False, web_images_enabled=True)

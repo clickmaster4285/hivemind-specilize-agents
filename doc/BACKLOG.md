@@ -570,7 +570,8 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
         4.5 → 1.35 s ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) "The date goes last")
   - [ ] Suggestions, quiz and chat summaries after each answer (17–19 s); diagram rules only when a diagram
         could help (~930 tokens)
-- [ ] **Pictures only where they fit (O53):** only section headings that name one thing get images
+- [ ] **Pictures only where they fit (O53, O75):** only section headings that name one thing get images; named
+      bold list items get one each — built 2026-11-16, waiting on the user's look
 - [x] **No facts from other questions (O54)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)
 - [x] **Follow-ups without clarifying (O55)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) Layer 5)
 - [x] **One source per page (O56)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)

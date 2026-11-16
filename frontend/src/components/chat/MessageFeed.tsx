@@ -231,15 +231,19 @@ function normAnchor(text: string): string {
     .trim();
 }
 
-/** Split an answer into sections at Markdown headings (## / ### …), keeping each heading line with the
- *  body that follows it. Fenced code is left intact. The first section (before any heading) has heading "". */
-function splitSections(md: string): { heading: string; text: string }[] {
-  const out: { heading: string; text: string }[] = [];
-  let heading = "";
+/** A line that starts with a bold label ("1. **Istanbul**: …", "- **Seoul:** …") — the backend's _BOLD_ITEM_RE. */
+const BOLD_ITEM_RE = /^\s*(?:[-*•]|\d+[.)])?\s*\*\*(.+?)\*\*/;
+
+/** Split an answer into sections at Markdown headings (## / ### …) and at bold list items that have pictures
+ *  (`itemKeys`, O75), keeping each such line with the body that follows it. `key` is its anchor (normAnchor);
+ *  the first section (before any) has key "". Fenced code is left intact. */
+function splitSections(md: string, itemKeys: Set<string>): { key: string; text: string }[] {
+  const out: { key: string; text: string }[] = [];
+  let key = "";
   let buf: string[] = [];
   let fence: string | null = null;
   const headingRe = /^\s{0,3}#{1,4}\s+(.+?)\s*#*\s*$/;
-  const flush = () => out.push({ heading, text: buf.join("\n") });
+  const flush = () => out.push({ key, text: buf.join("\n") });
   for (const line of md.split("\n")) {
     if (fence) {
       buf.push(line);
@@ -253,9 +257,11 @@ function splitSections(md: string): { heading: string; text: string }[] {
       continue;
     }
     const h = line.match(headingRe);
-    if (h) {
+    const item = h ? null : line.match(BOLD_ITEM_RE);
+    const itemKey = item ? normAnchor(item[1]) : "";
+    if (h || (itemKey && itemKeys.has(itemKey))) {
       flush();
-      heading = h[1].trim();
+      key = h ? normAnchor(h[1].trim()) : itemKey;
       buf = [line];
     } else {
       buf.push(line);
@@ -329,8 +335,8 @@ function ImagesPlaceholder() {
 }
 
 /** The assistant answer, with its web images placed under the section each one illustrates (context-aware):
- *  images are grouped by their anchor and dropped in right after the matching heading, so a React diagram
- *  sits under "React" and Istanbul photos under "Istanbul". Unanchored images lead the answer; any whose
+ *  images are grouped by their anchor and dropped in right after the matching heading or bold list item, so a
+ *  React diagram sits under "React" and an Istanbul photo after "1. **Istanbul**". Unanchored images lead the answer; any whose
  *  section isn't found trail at the end so nothing is lost. Sections still waiting for photos (announced by
  *  the backend, or fetched but not loaded yet) show placeholders. While streaming / imageless, plain Markdown. */
 function AnswerContent({ item, webImgs, loading }: { item: FeedItem; webImgs: ChatImage[]; loading: boolean }) {
@@ -348,18 +354,18 @@ function AnswerContent({ item, webImgs, loading }: { item: FeedItem; webImgs: Ch
     else byAnchor.set(key, [img]);
   }
   const used = new Set<string>();
-  const sections = splitSections(item.body);
+  const sections = splitSections(item.body, new Set([...byAnchor.keys(), ...waiting]));
   const intro = byAnchor.get("");
   if (intro) used.add("");
   const nodes = sections.map((s, i) => {
-    const key = s.heading ? normAnchor(s.heading) : "";
-    const imgs = s.heading && !used.has(key) ? byAnchor.get(key) : undefined;
+    const key = s.key;
+    const imgs = key && !used.has(key) ? byAnchor.get(key) : undefined;
     if (imgs) used.add(key);
     return (
       <Fragment key={i}>
         <MarkdownBody content={s.text} sources={item.sources} />
         {i === 0 && intro ? <AnswerImages images={intro} /> : null}
-        {imgs ? <AnswerImages images={imgs} /> : s.heading && waiting.has(key) ? <ImagesPlaceholder /> : null}
+        {imgs ? <AnswerImages images={imgs} /> : key && waiting.has(key) ? <ImagesPlaceholder /> : null}
       </Fragment>
     );
   });

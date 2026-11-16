@@ -16,6 +16,7 @@ import socket
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import NamedTuple
 from urllib.parse import urlsplit
 
 import requests
@@ -28,11 +29,15 @@ _ALLOWED = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "i
 _MAX_BYTES = 5 * 1024 * 1024
 _SEARCH_TIMEOUT = 10
 _FETCH_TIMEOUT = 8
-# context-aware gathering: one image search per section heading, so a React diagram lands under "React"
+# context-aware gathering: one image search per named thing, so a React diagram lands under "React"
 # and Istanbul photos under "Istanbul" — not one bulk search for the whole answer.
-MAX_TOPICS = 8                   # at most this many section/entity searches (keeps it fast)
-PER_ANCHOR = 4                   # images kept per section
+MAX_TOPICS = 8                   # at most this many searches (keeps it fast)
+PER_ANCHOR = 4                   # images kept under a heading that names one thing
+PER_ITEM = 1                     # images kept per named list item: one each keeps a list readable (O75)
 MAX_IMAGES = 12                  # overall cap across the answer
+MIN_TOPICS = 2                   # fewer named things than this → nothing to illustrate per topic
+CANDIDATES_PER_KEPT = 2          # search results fetched per picture kept: some fail to download or aren't images
+_JOINING_WORD_LEN = 3            # "of" / "the" / "and" may stay lowercase inside a name
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,4}\s+(.+?)\s*#*\s*$", re.M)
 _BOLD_ITEM_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])?\s*\*\*(.+?)\*\*", re.M)
 _NAME_WORD_RE = re.compile(r"[A-Za-z0-9][\w.+#-]*")
@@ -59,14 +64,14 @@ def _search_term(text: str) -> str:
 
 def _sections(answer: str) -> list[tuple[str, str]]:
     """[(heading, body)] split at Markdown headings; body is the text until the next heading. The intro
-    before the first heading is dropped (no heading to anchor to)."""
+    before the first heading has heading "" (its bold items can still be anchors, O75)."""
     out: list[tuple[str, str]] = []
     heading, start, text = "", 0, answer or ""
     for m in _HEADING_RE.finditer(text):
         out.append((heading, text[start:m.start()]))
         heading, start = m.group(1).strip(), m.end()
     out.append((heading, text[start:]))
-    return [(h, b) for h, b in out if h]
+    return [(h, b) for h, b in out if h or b.strip()]
 
 
 def _mentions(word: str, text: str) -> int:
@@ -95,10 +100,25 @@ def _names_its_section(term: str, body: str, others: list[str], answer: str) -> 
     )
 
 
-def _members(body: str) -> list[str]:
-    """The proper-noun-looking bold items a section lists (Seoul, Busan, HTML5…), as search terms."""
-    terms = (_search_term(bold) for bold in _BOLD_ITEM_RE.findall(body))
-    return [t for t in terms if len(t) >= 3 and t[:1].isupper()]
+def _is_name(term: str, answer: str) -> bool:
+    """Is a bold item's label a named thing (Istanbul, Hagia Sophia, Temple of Artemis), judged from the answer
+    itself? Its first word is a name word (_name_words), and it has no lowercase word longer than a joining
+    word ("of", "the") — so "Best time to visit" or "Why it matters" stay labels, not things to picture."""
+    words = _NAME_WORD_RE.findall(term)
+    return (bool(words) and words[0] in _name_words(words[0], answer)
+            and not any(w.islower() and len(w) > _JOINING_WORD_LEN for w in words))
+
+
+
+def _members(body: str, answer: str) -> list[tuple[str, str]]:
+    """(anchor_key, search_term) for each bold item of `body` that names a thing (Seoul, Busan, Ephesus). The
+    key is the bold label's, so the UI places the item's picture right after that list item."""
+    out: list[tuple[str, str]] = []
+    for bold in _BOLD_ITEM_RE.findall(body):
+        term = _search_term(bold)
+        if len(term) >= 3 and _is_name(term, answer):
+            out.append((_norm_anchor(bold), term))
+    return out
 
 
 def _subject(query: str, answer: str) -> str:
@@ -121,36 +141,36 @@ def _with_subject(term: str, subject: str) -> str:
     return " ".join([term, *extra]).strip()
 
 
-def _topics(answer: str, query: str = "") -> list[tuple[str, str]]:
-    """(anchor_key, search_term) pairs for the answer, each anchored to its section so the UI places the photos
-    there. Every section's first search is its heading (Seoul, Jeju Island, MongoDB). A heading that isn't one
-    named thing (Top Cities, Busan: The Coastal City when the section never says "Busan") gets the answer's
-    subject for context, and its bold members (Seoul, Busan…) fill any spare searches. The budget is shared
-    fairly: every section gets its first search before any gets a second. Deduped, capped."""
+class Topic(NamedTuple):
+    anchor: str                  # _norm_anchor of the heading or bold label the pictures go under
+    term: str                    # the image search
+    keep: int                    # pictures kept for it
+
+
+def _topics(answer: str, query: str = "") -> list[Topic]:
+    """What to illustrate, each anchored where the UI places its pictures. Only named things get pictures
+    (ISSUES_LOG O53): a heading that names one thing (Seoul, Jeju Island, MongoDB) is searched as written. A
+    heading that doesn't ("The Math", "Who Controls the Ban?", "Top Cities") gets none itself; its bold items
+    that name things (Seoul, Busan) get one picture each, searched with the answer's subject ("Busan Korea") —
+    as do the bold items of an answer with no headings at all (Turkey: Istanbul, Cappadocia, Ephesus, O75).
+    One search per term across the answer, in answer order, capped."""
     sections = _sections(answer)
     subject = _subject(query, answer)
-    plan: list[tuple[str, list[str]]] = []
+    candidates: list[Topic] = []
     for i, (heading, body) in enumerate(sections):
-        hkey = _norm_anchor(heading)
         term = _search_term(heading)
-        if not hkey or len(term) < 3:
-            continue
         others = [b for j, (_h, b) in enumerate(sections) if j != i]
-        if _names_its_section(term, body, others, answer):
-            terms = [term]
+        if heading and len(term) >= 3 and _names_its_section(term, body, others, answer):
+            candidates.append(Topic(_norm_anchor(heading), term, PER_ANCHOR))
         else:
-            terms = [_with_subject(t, subject) for t in [term, *_members(body)]]
-        plan.append((hkey, list(dict.fromkeys(terms))))
-    out: list[tuple[str, str]] = []
-    searched: set[str] = set()                           # one search per term across the whole answer
-    for rank in range(max((len(terms) for _k, terms in plan), default=0)):
-        for hkey, terms in plan:
-            if rank < len(terms) and terms[rank].lower() not in searched:
-                searched.add(terms[rank].lower())
-                out.append((hkey, terms[rank]))
-                if len(out) >= MAX_TOPICS:
-                    return out
-    return out
+            candidates += [Topic(key, _with_subject(item, subject), PER_ITEM) for key, item in _members(body, answer)]
+    out: list[Topic] = []
+    searched: set[str] = set()
+    for topic in candidates:
+        if topic.anchor and topic.term.lower() not in searched:
+            searched.add(topic.term.lower())
+            out.append(topic)
+    return out[:MAX_TOPICS]
 
 
 def _is_public(url: str) -> bool:
@@ -217,10 +237,10 @@ def _fetch(url: str) -> tuple[str, bytes] | None:
 
 def wants_images(answer: str) -> bool:
     """Decide — from the ANSWER itself, not a fixed list of query keywords — whether images help.
-    Pictures suit a structured answer about depictable things (several real section headings to anchor
-    them under); they don't help a greeting, a one-liner, a refusal, or a mostly-code reply. This is how
-    the tool self-selects, so it works for travel, roadmaps, products, history… without a hand-kept list."""
-    if len(_topics(answer)) < 2:                         # no clear sections → nothing to illustrate per topic
+    Pictures suit an answer about several named things (headings or bold list items to anchor them under);
+    they don't help a greeting, a one-liner, a refusal, or a mostly-code reply. This is how the tool
+    self-selects, so it works for travel, roadmaps, products, history… without a hand-kept list."""
+    if len(_topics(answer)) < MIN_TOPICS:
         return False
     # an answer that shows commands or code is a how-to: a server's PM2 reply got news thumbnails and "what
     # next?" stock art (ISSUES_LOG O71); the old "code is 40% of it" cut let a few command blocks through
@@ -237,27 +257,25 @@ def image_anchors(answer: str) -> list[str]:
     loading placeholders under exactly these headings. [] when the answer isn't worth illustrating."""
     if not wants_images(answer):
         return []
-    return list(dict.fromkeys(anchor for anchor, _term in _topics(answer)))
+    return list(dict.fromkeys(topic.anchor for topic in _topics(answer)))
 
 
 def gather_web_images(query: str, answer: str, job_id: str, config: Config) -> list[dict[str, str]]:
     """Context-aware image gathering: if the answer is worth illustrating (wants_images), search once per
-    section heading, fetch the candidates, and tag each saved image with the `anchor` of the section it
-    belongs to so the UI can place it there. → saved metadata (or [] when images don't suit the answer).
-    Whether to illustrate is decided from the answer alone; `query` only lends a vague heading its subject."""
+    named thing (_topics), fetch the candidates, and tag each saved image with the `anchor` of the heading or
+    list item it belongs to so the UI can place it there. → saved metadata (or [] when images don't suit the
+    answer). Whether to illustrate is decided from the answer alone; `query` only lends a list item its subject."""
     if not wants_images(answer):
         return []
-    plan = _topics(answer, query)                        # (anchor_key, search_term); several may share an anchor
+    plan = _topics(answer, query)
+    keep = {topic.anchor: topic.keep for topic in plan}
     with ThreadPoolExecutor(max_workers=min(MAX_TOPICS, len(plan))) as pool:
-        found = list(pool.map(lambda t: (t[0], search_images(t[1], config, PER_ANCHOR * 2)), plan))
-    # Round-robin twice: within a section, so several entities (Seoul, Busan) each contribute one photo before
-    # a second of any; then across sections, so every section gets its first photo before any gets a second
-    # — the overall cap must not be used up by the first few sections.
-    grouped: dict[str, list[list[str]]] = {}
-    for anchor, urls in found:
-        grouped.setdefault(anchor, []).append(urls)
-    per_section = [[(anchor, url) for url in _round_robin(url_lists)] for anchor, url_lists in grouped.items()]
-    candidates = _round_robin(per_section)
+        found = list(pool.map(
+            lambda t: [(t.anchor, url) for url in search_images(t.term, config, t.keep * CANDIDATES_PER_KEPT)],
+            plan))
+    # round-robin across topics, so every topic gets its first photo before any gets a second — the overall
+    # cap must not be used up by the first few
+    candidates = _round_robin(found)
     if not candidates:
         return []
     # fetch all candidates concurrently — one slow or blocked image must not hold up the rest
@@ -270,7 +288,7 @@ def gather_web_images(query: str, answer: str, job_id: str, config: Config) -> l
     for anchor, got in fetched:                          # keep the round-robin order; cap per section + overall
         if len(saved) >= MAX_IMAGES:
             break
-        if not got or per_anchor.get(anchor, 0) >= PER_ANCHOR:
+        if not got or per_anchor.get(anchor, 0) >= keep[anchor]:
             continue
         mime, blob = got
         stored = f"web_{len(saved) + 1:02d}{_ALLOWED[mime]}"
