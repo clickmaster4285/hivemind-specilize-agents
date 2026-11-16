@@ -6,6 +6,7 @@ import LiveStatus from "@/components/chat/LiveStatus";
 import MarkdownBody from "@/components/answer/MarkdownBody";
 import MessageAvatar from "@/components/chat/MessageAvatar";
 import ConfirmCard from "@/components/chat/ConfirmCard";
+import PromptRail, { promptAnchorId } from "@/components/chat/PromptRail";
 import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, SourceList, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 import { msgAction } from "@/lib/ui";
@@ -19,6 +20,8 @@ const colCls = "mx-auto flex w-full max-w-[1040px] flex-col gap-5";
 // Within this many pixels of the end counts as "at the bottom": the streamed answer is followed only then, so
 // scrolling up to read is not undone by each new piece of text (ISSUES_LOG O80).
 const BOTTOM_SLACK_PX = 48;
+// A question counts as "in view" (highlighted in the prompt rail, O78) once its top is this far into the feed.
+const ACTIVE_OFFSET_PX = 120;
 const jumpCls =
   "absolute bottom-3 left-1/2 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border " +
   "border-line bg-panel text-text shadow-[0_2px_8px_rgba(0,0,0,0.25)] hover:bg-panel-2";
@@ -90,6 +93,8 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
   const bottomRef = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   const [atBottom, setAtBottom] = useState(true);
+  const [activePrompt, setActivePrompt] = useState<string | null>(null);
+  const prompts = feed.filter((item) => item.kind === "user").map((item) => ({ id: item.id, text: item.body }));
   const last = feed[feed.length - 1];
   const toBottom = (smooth = false) => {
     following.current = true;
@@ -100,6 +105,15 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
     const near = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX;
     following.current = near;
     setAtBottom(near);
+    // the last question whose top has scrolled past the offset is the one being read (null = the newest)
+    const passed = prompts.filter((p) => {
+      const anchor = document.getElementById(promptAnchorId(p.id));
+      return anchor !== null && anchor.offsetTop <= el.scrollTop + ACTIVE_OFFSET_PX;
+    });
+    setActivePrompt(near ? null : (passed[passed.length - 1]?.id ?? prompts[0]?.id ?? null));
+  };
+  const jumpTo = (id: string) => {
+    document.getElementById(promptAnchorId(id))?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
   const firstId = feed[0]?.id;
   useEffect(() => {
@@ -147,8 +161,9 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
         const isError = item.kind === "system" && (item.meta === "error" || item.title === "Error");
         const isLastError = isError && index === feed.length - 1;
         return (
+          <Fragment key={item.id}>
+          {item.kind === "user" && <span id={promptAnchorId(item.id)} aria-hidden />}
           <MessageRow
-            key={item.id}
             item={item}
             isError={isError}
             fallbackJobId={activeJobId}
@@ -169,11 +184,13 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
             onPickSuggestion={onPickSuggestion}
             isLastAgent={index === lastAgentIdx}
           />
+          </Fragment>
           );
         })}
         <div ref={bottomRef} aria-hidden />
       </div>
     </div>
+    <PromptRail prompts={prompts} active={activePrompt} onJump={jumpTo} />
     {!atBottom && (
       <button type="button" className={jumpCls} aria-label="Jump to the latest message" title="Jump to the latest message"
         onClick={() => toBottom(true)}>

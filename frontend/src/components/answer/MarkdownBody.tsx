@@ -6,6 +6,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 // tables, strikethrough, task lists: without it a | table | shows as raw text
 import remarkGfm from "remark-gfm";
 
+import CodeBlock from "@/components/answer/CodeBlock";
 import MermaidDiagram from "@/components/answer/MermaidDiagram";
 import NetworkDiagram from "@/components/answer/NetworkDiagram";
 import { mdPre } from "@/lib/ui";
@@ -69,6 +70,14 @@ function ExternalImage({ src, alt }: { src: string; alt: string }) {
       [external image not loaded: {alt || "image"} — {host}]
     </a>
   );
+}
+
+/** A fenced block's language tag and code text (an untagged block has language ""), or null for a <pre> that is not
+ *  a fenced block. */
+function fenced(children: ReactNode): { language: string; code: string } | null {
+  if (!isValidElement<{ className?: string; children?: ReactNode }>(children)) return null;
+  const language = /language-(\S+)/.exec(children.props.className ?? "")?.[1] ?? "";
+  return { language, code: String(children.props.children ?? "").replace(/\n$/, "") };
 }
 
 /** The code of a fenced block whose language tag matches `lang`, or null for any other <pre>. */
@@ -248,6 +257,10 @@ export default function MarkdownBody({ content, pending, sources }: Props) {
             if (mermaid !== null) return <MermaidDiagram code={mermaid} />;
             const net = fencedCode(children, "netdiagram");
             if (net !== null) return <NetworkDiagram code={net} />;
+            const block = fenced(children);
+            if (block !== null) {
+              return <CodeBlock code={block.code} language={block.language}>{children}</CodeBlock>;
+            }
             return <pre className={mdPre}>{children}</pre>;
           },
           img: ({ src, alt }) => {

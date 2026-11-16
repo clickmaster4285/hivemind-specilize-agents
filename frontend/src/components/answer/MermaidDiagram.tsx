@@ -4,6 +4,7 @@ import type { MermaidConfig } from "mermaid";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import SvgPanZoom from "@/components/answer/SvgPanZoom";
+import { saveText, saveUrl } from "@/lib/download";
 import { useResolvedTheme, type ResolvedTheme } from "@/lib/theme";
 import { btn, diagram } from "@/lib/ui";
 
@@ -92,15 +93,6 @@ function withBackground(svg: string, background: string): string {
   if (doc.querySelector("parsererror") || root.nodeName !== "svg") return svg;
   root.setAttribute("style", `${root.getAttribute("style") ?? ""};background-color:${background}`);
   return new XMLSerializer().serializeToString(root);
-}
-
-function download(name: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 // PNG pixels per diagram unit: 3× the diagram's own size stays sharp when zoomed in a document or a slide
@@ -227,13 +219,12 @@ export default function MermaidDiagram({ code }: Props) {
           Open full size
         </button>
         <button type="button" className={btn("ghost", "sm")} disabled={!svg}
-          onClick={() => download("diagram.svg",
-            new Blob([withBackground(svg, background)], { type: "image/svg+xml" }))}>
+          onClick={() => saveText(withBackground(svg, background), "diagram.svg", "image/svg+xml")}>
           Download SVG
         </button>
         <button type="button" className={btn("ghost", "sm")} disabled={!svg}
           onClick={() => svgToPng(svg, background)
-            .then((b) => download("diagram.png", b))
+            .then((b) => saveUrl(URL.createObjectURL(b), "diagram.png"))
             .catch((e) => setError(String(e)))}>
           Download PNG
         </button>
