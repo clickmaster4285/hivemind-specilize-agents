@@ -16,6 +16,31 @@ MATH_RULE = """Work every calculation out with the calculate tool, never in your
 as plain text with ordinary symbols (2 GB × 8 = 16 Gb, 16 Gb ÷ 4 Gb/s = 4 s), never LaTeX (no $…$, \\frac or
 \\text): the chat cannot display it."""
 
+# Mermaid 12's use-case diagram (syntax read from its grammar, ISSUES_LOG O62): shared by the chat's rules and the
+# diagram tool (src/tools/diagram_gen.py), which has its own prompt and once wrote PlantUML's `useCaseDiagram`.
+USECASE_RULES = """- Declare actors in one line: `actor Customer, Admin` (a two-word actor in quotes: `actor "IT admin"`).
+- Put the use cases inside `systemBoundary <id>["System name"]` … `end`, one per line as `<id>("Short task")`:
+  2–3 words, a longer label spills out of its ellipse. No emoji here.
+- Link an actor to a use case with `Customer --> browse`. A use case that always runs another:
+  `checkout ..> : include pay` (`: extend` for an optional one).
+A shop's use cases, done right:
+```mermaid
+usecase-beta
+  direction LR
+  actor Customer, Admin
+  systemBoundary shop["Online shop"]
+    browse("Browse products")
+    checkout("Check out")
+    pay("Pay by card")
+    stock("Manage stock")
+  end
+  Customer --> browse
+  Customer --> checkout
+  Admin --> stock
+  checkout ..> : include pay
+```
+"""
+
 DIAGRAM_RULES = """When you DO draw a Mermaid diagram, keep it SIMPLE and VALID — a broken or cluttered diagram is worse
 than none:
 - Small: at most ~7 nodes, one direction (`flowchart LR` or `flowchart TD`). No legend box, no
@@ -63,28 +88,7 @@ architecture-beta
 ```
 For WHO DOES WHAT in a system (people or roles and the tasks they do there: a use-case diagram), use
 `usecase-beta`:
-- Declare actors in one line: `actor Customer, Admin` (a two-word actor in quotes: `actor "IT admin"`).
-- Put the use cases inside `systemBoundary <id>["System name"]` … `end`, one per line as `<id>("Short task")`:
-  2–3 words, a longer label spills out of its ellipse. No emoji here.
-- Link an actor to a use case with `Customer --> browse`. A use case that always runs another:
-  `checkout ..> : include pay` (`: extend` for an optional one).
-A shop's use cases, done right:
-```mermaid
-usecase-beta
-  direction LR
-  actor Customer, Admin
-  systemBoundary shop["Online shop"]
-    browse("Browse products")
-    checkout("Check out")
-    pay("Pay by card")
-    stock("Manage stock")
-  end
-  Customer --> browse
-  Customer --> checkout
-  Admin --> stock
-  checkout ..> : include pay
-```
-Use the emoji `flowchart` above for processes, steps, flows and hierarchies — and whenever you are not sure
+""" + USECASE_RULES + """Use the emoji `flowchart` above for processes, steps, flows and hierarchies — and whenever you are not sure
 an `architecture-beta` icon name or its syntax is right, since a valid emoji flowchart beats a broken
 topology."""
 

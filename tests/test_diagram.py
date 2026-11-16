@@ -218,3 +218,13 @@ def test_stop_ends_a_diagram(monkeypatch):
     output, errors, _ = run_diagram("draw arch diagram", job_id="j-stop", config=CFG, on_progress=events.append)
     assert "Stopped" in output and errors == []
     assert [e for e in events if e["type"] == "agent_done"][0]["role"] == "Stopped"
+
+
+def test_mermaid_12_types_pass_the_first_line_check():
+    """O62: the diagram tool wrote PlantUML's useCaseDiagram; usecase-beta and architecture-beta are valid."""
+    from src.tools.diagram_gen import DIAGRAM_SYSTEM, check_mermaid
+
+    assert check_mermaid("usecase-beta\n  actor Staff\n  login(\"Sign in\")\n  Staff --> login") == []
+    assert check_mermaid("architecture-beta\n  service s(mdi:server)[Server]") == []
+    assert check_mermaid("useCaseDiagram\n  actor Staff")              # still refused, with the reason
+    assert "usecase-beta" in DIAGRAM_SYSTEM and "checkout ..> : include pay" in DIAGRAM_SYSTEM

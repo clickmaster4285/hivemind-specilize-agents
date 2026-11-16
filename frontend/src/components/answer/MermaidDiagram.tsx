@@ -209,7 +209,7 @@ export default function MermaidDiagram({ code }: Props) {
           .
         </div>
       ) : svg ? (
-        <SvgPanZoom svg={svg} />
+        <SvgPanZoom svg={svg} background={background} />
       ) : (
         <div className={diagram.loading}>Drawing…</div>
       )}

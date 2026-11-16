@@ -17,6 +17,7 @@ from typing import Any
 
 from src.core.config import Config
 from src.core.conversation import format_conversation_block, normalize_conversation
+from src.llm.diagram_rules import USECASE_RULES
 
 ProgressCallback = Callable[[dict[str, Any]], None]
 
@@ -32,6 +33,7 @@ Pick the diagram type that fits the request:
 - states and transitions → stateDiagram-v2
 - brainstorming ideas around one topic → mindmap (children indented under their parent)
 - project plan with dates → gantt; history or milestones → timeline
+- people or roles and the tasks they do in a system (a use-case diagram: actors, use cases) → usecase-beta
 
 "Each X has Y" means every X gets its own Y: draw a small, complete example (e.g. 3 classes, each
 with its own teacher, each teacher with 2 students), not one shared list.
@@ -52,6 +54,8 @@ Rules for flowcharts:
   or the internet as the starting point.
 - Many identical items (10 PCs): draw one node labelled "10 × PC", not ten nodes.
 
+Rules for use-case diagrams (usecase-beta, Mermaid 12; never PlantUML's useCaseDiagram or @startuml):
+""" + USECASE_RULES + """
 The user may write in Hinglish or another language: diagram labels in English (keep technical terms).
 Ignore picture-style words (isometric, blueprint, 3D, 8k, colours, background): every diagram uses
 the app's standard look, so do not add styling or mention it in the notes.
@@ -88,6 +92,7 @@ NOTES:
 DIAGRAM_TYPES = (
     "flowchart", "graph", "sequenceDiagram", "classDiagram", "stateDiagram-v2", "stateDiagram",
     "erDiagram", "mindmap", "gantt", "timeline", "journey", "pie", "quadrantChart", "block-beta",
+    "architecture-beta", "usecase-beta",       # Mermaid 12 types the app draws (ISSUES_LOG O62)
 )
 _BLOCK_RE = re.compile(r"```\s*mermaid\s*\n(.*?)```", re.S | re.I)
 _TITLE_RE = re.compile(r"^\s*TITLE:\s*(.+)$", re.M)

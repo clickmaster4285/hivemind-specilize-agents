@@ -23,7 +23,9 @@ function aspectOf(svg: string): { w: number; h: number } | null {
   return w > 0 && h > 0 ? { w, h } : null;
 }
 
-export default function SvgPanZoom({ svg }: { svg: string }) {
+/** background: the panel behind the diagram, the same colour it was drawn for (a dark Mermaid diagram on a
+ *  white panel was hard to read, ISSUES_LOG O62). */
+export default function SvgPanZoom({ svg, background = "#ffffff" }: { svg: string; background?: string }) {
   const box = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
   const [t, setT] = useState<Transform>({ x: 0, y: 0, k: 1 });
@@ -118,11 +120,12 @@ export default function SvgPanZoom({ svg }: { svg: string }) {
   return (
     <div
       ref={box}
-      className="relative overflow-hidden rounded-lg border border-line bg-white [&:fullscreen]:!aspect-auto [&:fullscreen]:!h-screen [&:fullscreen]:!max-h-none"
+      className="relative select-none overflow-hidden rounded-lg border border-line [&:fullscreen]:!aspect-auto [&:fullscreen]:!h-screen [&:fullscreen]:!max-h-none"
       style={{
         // the box matches the diagram's shape (so nothing is cropped); capped so a very tall one can't take over the chat.
         // width must be explicit: with width:auto, aspect-ratio + max-height shrinks the box's WIDTH instead of its height.
         width: "100%",
+        background, // with select-none on the box: dragging to move no longer selects the labels' text (O62)
         ...(aspect ? { aspectRatio: `${aspect.w} / ${aspect.h}` } : { height: "22rem" }),
         maxHeight: "80vh",
         minHeight: "11rem",
