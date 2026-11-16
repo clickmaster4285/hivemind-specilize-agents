@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, memo, useEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, memo, useEffect, useRef, useState, type CSSProperties, type UIEvent } from "react";
 
 import LiveStatus from "@/components/chat/LiveStatus";
 import MarkdownBody from "@/components/answer/MarkdownBody";
@@ -16,6 +16,12 @@ import { msgAction } from "@/lib/ui";
 const scrollCls =
   "flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden px-6 pt-4 pb-5 [overscroll-behavior:contain]";
 const colCls = "mx-auto flex w-full max-w-[1040px] flex-col gap-5";
+// Within this many pixels of the end counts as "at the bottom": the streamed answer is followed only then, so
+// scrolling up to read is not undone by each new piece of text (ISSUES_LOG O80).
+const BOTTOM_SLACK_PX = 48;
+const jumpCls =
+  "absolute bottom-3 left-1/2 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border " +
+  "border-line bg-panel text-text shadow-[0_2px_8px_rgba(0,0,0,0.25)] hover:bg-panel-2";
 const captionCls =
   "m-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[0.72rem] leading-[1.25] text-muted";
 
@@ -79,11 +85,30 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Keep the newest message in view: on open (feed replaced), on new turns, and while an answer streams.
+  // Follow the newest message only while the reader is at the bottom (O80): scrolling up to read stops it; a new
+  // question, another chat, or the jump button (O79) starts it again.
   const bottomRef = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
+  const [atBottom, setAtBottom] = useState(true);
   const last = feed[feed.length - 1];
+  const toBottom = (smooth = false) => {
+    following.current = true;
+    bottomRef.current?.scrollIntoView({ block: "end", behavior: smooth ? "smooth" : "auto" });
+  };
+  const onScroll = (e: UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK_PX;
+    following.current = near;
+    setAtBottom(near);
+  };
+  const firstId = feed[0]?.id;
   useEffect(() => {
+    // another chat opened, or the user asked something new: follow again from the bottom
+    following.current = true;
     bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [firstId, lastUserIdx]);
+  useEffect(() => {
+    if (following.current) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [feed.length, last?.id, last?.body?.length, last?.pending, last?.streaming]);
 
   if (feed.length === 0) {
@@ -102,7 +127,8 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
   }
 
   return (
-    <div className={scrollCls}>
+    <div className="relative flex min-h-0 w-full flex-1 flex-col">
+    <div className={scrollCls} onScroll={onScroll}>
       <div className={colCls}>
         {feed.map((item, index) => {
         // skip a user bubble that repeats the one just before it (same text, no images)
@@ -147,6 +173,13 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
         })}
         <div ref={bottomRef} aria-hidden />
       </div>
+    </div>
+    {!atBottom && (
+      <button type="button" className={jumpCls} aria-label="Jump to the latest message" title="Jump to the latest message"
+        onClick={() => toBottom(true)}>
+        ⌄
+      </button>
+    )}
     </div>
   );
 }
