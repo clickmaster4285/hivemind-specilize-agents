@@ -587,7 +587,7 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
         if picked:
             sp = hand_over(route.tool if route.route == TOOL else "", sp, choices)
         offered = tool_schemas(config, sp.tools if sp else None)
-        routed = pre_route(route, case["text"], config, sp)
+        routed = pre_route(route, case["text"], config, sp, clarify_ok=skill is None)   # as the worker (O73)
         if routed is not None:
             got, args, reply = routed.tool, routed.args, ""
         else:

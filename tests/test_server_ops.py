@@ -370,3 +370,15 @@ def test_both_operate_prompts_run_what_the_user_asks_and_report_only_what_they_s
     for prompt in (so.OPERATE_SYSTEM, so.OPERATE_SYSTEM_WIN):
         text = prompt.format(access="You have root.", mode_note=so.MODE_NOTE["confirm"])
         assert so.OPERATE_RULES in text and "Never skip it" in text and "Report only what the command output" in text
+
+
+def test_older_outputs_are_shortened_for_the_next_round():
+    """O52: each round re-sent every earlier output in full."""
+    long = "x" * (so.OLD_OUTPUT_CHARS * 3)
+    messages = [{"role": "system", "content": "s"}, {"role": "user", "content": "task"}]
+    for n in range(so.KEEP_FULL_OUTPUTS + 2):
+        messages += [so._assistant_call("", f"cmd{n}"), {"role": "tool", "content": long}]
+    compact = so._compact(messages)
+    outputs = [m["content"] for m in compact if m["role"] == "tool"]
+    assert all(len(o) < len(long) for o in outputs[:2]) and outputs[-so.KEEP_FULL_OUTPUTS:] == [long] * so.KEEP_FULL_OUTPUTS
+    assert all(m["content"] == long for m in messages if m["role"] == "tool")     # the stored conversation stays whole

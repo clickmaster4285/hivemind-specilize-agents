@@ -619,7 +619,7 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [ ] **Server operate and routing (O64–O71, user's chat 2026-11-16):** a hung command fails the whole job (O64: part 1 done 2026-11-16, it goes on; part 2 why);
       raw `<details>` (O65); confirm cards stay live (O66); read-only chains asked for approval (O67); the folder
       does not carry between commands (O68) — O65–O68 built 2026-11-16, waiting for a look; follow-up server tasks answered instead of run, server state invented
-      (O69: hand-over built 2026-11-16, eval 37/40 with --specialists; pm2 "which server" live check waits); O72 done (37/40); O73 a skill with no tools routed to clarify (minor); a requested restart judged unnecessary (O70: rules built 2026-11-16, live check waits); pictures in server answers, stuck "re-checking…" (O71: built 2026-11-16, look waits)
+      (O69: hand-over built 2026-11-16, eval 37/40 with --specialists; pm2 "which server" live check waits); O72 done (37/40); O73 built (no clarify with a skill); a requested restart judged unnecessary (O70: rules built 2026-11-16, live check waits); pictures in server answers, stuck "re-checking…" (O71: built 2026-11-16, look waits)
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)
 

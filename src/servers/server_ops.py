@@ -400,6 +400,21 @@ class DiagnoseResult:
     stopped: bool = False
 
 
+# Each round sent every earlier output again: 12 commands → ~46k tokens in for one answer (ISSUES_LOG O52, O70).
+KEEP_FULL_OUTPUTS = 3      # the latest outputs the model sees whole; it already read the older ones in their round
+OLD_OUTPUT_CHARS = 800     # of an older output kept: its start (exit code, first lines), enough to recall what it showed
+
+
+def _compact(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The conversation for the next round, with all but the last KEEP_FULL_OUTPUTS command outputs cut to their
+    start. The stored conversation stays whole (the forced final report reads it all)."""
+    outputs = [i for i, m in enumerate(messages) if m["role"] == "tool"]
+    old = set(outputs[:-KEEP_FULL_OUTPUTS])
+    return [{**m, "content": m["content"][:OLD_OUTPUT_CHARS] + "\n… (earlier output, shortened)"}
+            if i in old and len(m["content"]) > OLD_OUTPUT_CHARS else m
+            for i, m in enumerate(messages)]
+
+
 def _assistant_call(text: str, command: str | None) -> dict[str, Any]:
     args = {"command": command} if command is not None else {}
     return {"role": "assistant", "content": text,
@@ -433,7 +448,8 @@ def diagnose(
             if not should_continue():
                 result.stopped = True
                 break
-            text, calls = client.chat_tools(messages=messages, tools=[run_tool], model=model, temperature=0.1)
+            text, calls = client.chat_tools(messages=_compact(messages), tools=[run_tool], model=model,
+                                            temperature=0.1)
             if not calls:
                 result.report = text
                 break
@@ -626,7 +642,8 @@ def operate(
             if not should_continue():
                 result.stopped = True
                 break
-            text, calls = client.chat_tools(messages=messages, tools=[run_tool], model=model, temperature=0.1)
+            text, calls = client.chat_tools(messages=_compact(messages), tools=[run_tool], model=model,
+                                            temperature=0.1)
             if not calls:
                 result.report = text
                 break

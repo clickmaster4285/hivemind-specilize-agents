@@ -288,7 +288,9 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
             # search included — but must not ask to clarify again (no loop).
             decision = decide(query, job_id=job_id, config=config, conversation=conversation,
                               on_progress=on_progress, specialist=specialist,
-                              clarify_ok=not bool(payload.get("followup")), refine=refine, may_hand_over=picked)
+                              # a skill already says what is wanted: no clarifying questions (ISSUES_LOG O73)
+                              clarify_ok=not bool(payload.get("followup")) and skill is None, refine=refine,
+                              may_hand_over=picked)
             if decision.answered:
                 _finish(config, job_id, decision.errors)
                 return

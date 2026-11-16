@@ -212,3 +212,12 @@ def test_a_skill_or_chosen_specialist_keeps_its_own_tools(monkeypatch, defaults)
     d = assistant.decide("next run pm2 restart all", job_id="o72", config=cfg, specialist=defaults["development"])
     assert "operate_server" not in routed_with[0]           # the router sees the specialist's own tools
     assert d.tool != "operate_server"                         # and the job is not moved
+
+
+def test_no_clarifying_questions_when_clarify_is_off(monkeypatch):
+    """O73: a message sent with a skill (clarify_ok=False in the worker) is never asked clarifying questions."""
+    asked: list[str] = []
+    monkeypatch.setattr(assistant, "_ask_clarifying", lambda *a, **k: asked.append("x") or [{"q": 1}])
+    route = assistant.Route(route=assistant.CLARIFY)
+    assert assistant.pre_route(route, "To my landlord: fix the heater", CFG, None, clarify_ok=False) is None
+    assert asked == []
