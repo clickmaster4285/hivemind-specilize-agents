@@ -614,7 +614,7 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
   - [x] Fewer summary calls: fold to half the room the summary leaves, not half the budget (20 → 8 summary
         rounds in v2's chat) — done 2026-11-14
   - [ ] Later: recall across the user's own chats
-- [ ] **Server operate and routing (O64–O71, user's chat 2026-11-16):** a hung command fails the whole job (O64);
+- [ ] **Server operate and routing (O64–O71, user's chat 2026-11-16):** a hung command fails the whole job (O64: part 1 done 2026-11-16, it goes on; part 2 why);
       raw `<details>` (O65); confirm cards stay live (O66); read-only chains asked for approval (O67); the folder
       does not carry between commands (O68); follow-up server tasks answered instead of run, server state invented
       (O69); a requested restart judged unnecessary (O70); pictures in server answers, stuck "re-checking…" (O71)

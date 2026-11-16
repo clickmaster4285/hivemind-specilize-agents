@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import pytest
 
+from src.servers import linux_audit as la
 from src.servers import server_ops as so
 from src.core.config import Config
 
@@ -66,6 +67,8 @@ class FakeShell:
         self.ran.append(command)
         for key, val in self.outputs.items():
             if key in command:
+                if isinstance(val, Exception):
+                    raise val
                 return val
         return (0, "ok", "")
 
@@ -289,3 +292,35 @@ def test_windows_destructive_is_blocked_even_in_trusted(monkeypatch):
     assert asked == []                                                   # never offered — blocked outright
     assert result.changes == 0
     assert ("Restart-Computer -Force", "refused") in logged
+
+
+# ── O64: a silent command no longer fails the whole job ──────────────────
+def test_a_silent_command_times_out_and_the_job_goes_on(monkeypatch):
+    seen: list[str] = []
+    real = FakeLLM.chat_tools
+
+    def spy(self, *, messages, **kw):
+        seen.append(messages[-1]["content"])
+        return real(self, messages=messages, **kw)
+
+    monkeypatch.setattr(FakeLLM, "chat_tools", spy)
+    result, shell, _ = _operate(
+        monkeypatch, "trusted",
+        script=[("Restart.", "pm2 restart all"),
+                ("Check.", "pm2 list"),
+                ("pm2 restart hung; pm2 list shows both apps online.", None)],
+        confirm=lambda cid, cmd: True,
+        shell_outputs={"restart": la.CommandTimeout("no output"), "list": (0, "online", "")})
+    assert [r.outcome for r in result.runs] == ["timed out", "exit 0"]
+    assert seen[1] == so.TIMED_OUT_NOTE                       # the model was told, and went on
+    assert "both apps online" in result.report and shell.ran[-1] == "pm2 list"
+    assert "`pm2 restart all` — timed out" in so._commands_block(result.runs)
+
+
+def test_a_server_silent_on_the_access_check_is_a_plain_error(monkeypatch):
+    shell = FakeShell({})
+    shell.detect_access = lambda: (_ for _ in ()).throw(la.CommandTimeout("no output"))
+    _patch_session(monkeypatch, shell)
+    login = so.ServerLogin(id="1", label="uk", host="94.0.0.1", port=22, username="root", password="p")
+    with pytest.raises(so.AuditError, match="did not answer the first check"):
+        so.RemoteSession(login)

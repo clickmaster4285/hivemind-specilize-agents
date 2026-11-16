@@ -36,7 +36,12 @@ from src.servers.win_commands import ps_wrap
 logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 10
-COMMAND_TIMEOUT = 25
+COMMAND_TIMEOUT = 25            # s a command may go without any output before we stop waiting for it
+
+
+class CommandTimeout(TimeoutError):
+    """A command sent no output for COMMAND_TIMEOUT seconds (ISSUES_LOG O64). Its channel is closed; the remote
+    process may still be running."""
 TEST_LOGIN_TIMEOUT = 22         # hard cap on "Add & test login" so the request never hangs the browser
 FAILED_LOGINS_ALERT = 20        # failed SSH logins in 24 h that count as an ongoing guessing attack
 LOCAL_ADDRESSES = ("127.", "::1", "[::1]", "localhost")
@@ -164,8 +169,12 @@ class Shell:
             stdin.write(stdin_text)
             stdin.flush()
         stdin.channel.shutdown_write()
-        out = stdout.read().decode("utf-8", "replace")
-        err = stderr.read().decode("utf-8", "replace")
+        try:
+            out = stdout.read().decode("utf-8", "replace")
+            err = stderr.read().decode("utf-8", "replace")
+        except TimeoutError as exc:                 # socket.timeout: silent for COMMAND_TIMEOUT
+            stdout.channel.close()                  # stop waiting; the session stays usable for the next command
+            raise CommandTimeout(f"no output for {COMMAND_TIMEOUT} s") from exc
         return stdout.channel.recv_exit_status(), out, err
 
     def detect_sudo(self) -> None:

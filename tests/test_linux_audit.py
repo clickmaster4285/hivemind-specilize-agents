@@ -268,3 +268,30 @@ def test_api_adds_lists_and_removes_without_returning_secrets(api):
     assert api.post("/api/servers", json={"host": "0.0.0.0", "username": "u", "password": "x"}).status_code == 400
     assert api.delete(f"/api/servers/{added.json()['id']}").json()["status"] == "removed"
     assert api.get("/api/servers").json() == []                         # saved until removed, not until logout
+
+
+def test_a_silent_command_closes_its_channel_and_raises_command_timeout():
+    import socket
+
+    closed: list[bool] = []
+
+    class Channel:
+        def shutdown_write(self):
+            pass
+
+        def close(self):
+            closed.append(True)
+
+    class Silent:
+        channel = Channel()
+
+        def read(self):
+            raise socket.timeout("timed out")       # what paramiko raises after COMMAND_TIMEOUT with no output
+
+    class SilentClient:
+        def exec_command(self, command, timeout=None):
+            return Silent(), Silent(), Silent()
+
+    with pytest.raises(la.CommandTimeout, match=f"{la.COMMAND_TIMEOUT} s"):
+        la.Shell(SilentClient()).raw("pm2 logs")
+    assert closed and issubclass(la.CommandTimeout, TimeoutError)    # old `except TimeoutError` callers still match

@@ -21,8 +21,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.core.config import Config
-from src.servers.linux_audit import AuditError, Shell, connect
+from src.servers.linux_audit import COMMAND_TIMEOUT, AuditError, CommandTimeout, Shell, connect
 from src.llm.llm_client import LLMClient
+from src.llm.prompt_filter import mask_text
 from src.servers.server_vault import ServerLogin, VaultError
 from src.servers.win_commands import classify_windows_command, is_destructive_windows
 
@@ -30,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 MAX_ROUNDS = 12                 # how many commands the agent may run per question
 MAX_OUTPUT_CHARS = 4000         # of one command's output kept for the model
+LOG_COMMAND_CHARS = 200         # of a timed-out command written to the API log (secrets masked first)
+TIMED_OUT_NOTE = (f"TIMED OUT: no output for {COMMAND_TIMEOUT} s, so I stopped waiting (it may still be running on "
+                  "the server). Do not run it again as it is; use a command that finishes on its own (no follow, "
+                  "no pager, no prompt), or say what the user should run themselves.")
 
 # Programs that only read. A command may only run if EVERY program in it is here (classify_command).
 READ_ONLY: frozenset[str] = frozenset({
@@ -173,6 +178,17 @@ class CommandRun:
     code: int | None = None
     output: str = ""
     refused: str = ""           # set when the classifier blocked it
+    timed_out: bool = False     # no output for COMMAND_TIMEOUT s (O64): stopped waiting, the job goes on
+
+    @property
+    def outcome(self) -> str:
+        """For the Commands list."""
+        return "refused" if self.refused else "timed out" if self.timed_out else f"exit {self.code}"
+
+    @property
+    def observation(self) -> str:
+        """What the model is told after the command ran."""
+        return TIMED_OUT_NOTE if self.timed_out else f"exit {self.code}\n{self.output}"
 
 
 # Commands refused even in "trusted" mode and even if you click Run — the catastrophes a confirm box
@@ -228,10 +244,22 @@ class RemoteSession:
 
     def __init__(self, login: ServerLogin):
         self.login = login
-        self.client, _ = connect(login)
-        self.shell = Shell(self.client, password=login.password, os_family=login.os_family)
-        self.shell.detect_access()
+        self._log_in()
         self.runs: list[CommandRun] = []
+
+    def _log_in(self) -> None:
+        """Connect and learn what the account may do (root, sudo). A server that logs us in but then does not
+        answer that first check is reported in plain words, not as a bare TimeoutError (O64)."""
+        self.client, _ = connect(self.login)
+        self.shell = Shell(self.client, password=self.login.password, os_family=self.login.os_family)
+        try:
+            self.shell.detect_access()
+        except CommandTimeout as exc:
+            self.client.close()
+            logger.warning("server_ops: %s logged in but the access check got %s", self.login.host, exc)
+            raise AuditError(f"logged in to {self.login.host}, but it did not answer the first check (who am I, "
+                             f"may I use sudo) within {COMMAND_TIMEOUT} s. The server may be very busy; "
+                             "try again in a minute") from exc
 
     def _reconnect(self) -> None:
         """A long operate/diagnose session can be dropped by the server (idle, MaxStartups). Log back in
@@ -241,9 +269,7 @@ class RemoteSession:
         except Exception:  # noqa: BLE001 — already broken; closing is best-effort
             pass
         logger.info("server_ops reconnecting to %s after a dropped session", self.login.host)
-        self.client, _ = connect(self.login)
-        self.shell = Shell(self.client, password=self.login.password, os_family=self.login.os_family)
-        self.shell.detect_access()
+        self._log_in()
 
     def _raw(self, command: str) -> tuple[int, str, str]:
         import paramiko
@@ -255,8 +281,16 @@ class RemoteSession:
             return self.shell.raw(command)
 
     def execute(self, command: str) -> CommandRun:
-        """Run the command with no read-only check (the caller has already decided it may run)."""
-        code, out, err = self._raw(command)
+        """Run the command with no read-only check (the caller has already decided it may run). A command that
+        goes silent comes back as a timed-out run, so the model can go on instead of the job failing (O64)."""
+        try:
+            code, out, err = self._raw(command)
+        except CommandTimeout:
+            logger.warning("server_ops: no output for %d s on %s, stopped waiting: %s", COMMAND_TIMEOUT,
+                           self.login.host, mask_text(command)[0][:LOG_COMMAND_CHARS])
+            run = CommandRun(command=command, timed_out=True)
+            self.runs.append(run)
+            return run
         text = (out + (("\n" + err) if err.strip() else "")).strip()
         if len(text) > MAX_OUTPUT_CHARS:
             text = text[:MAX_OUTPUT_CHARS] + f"\n… (output cut at {MAX_OUTPUT_CHARS} characters)"
@@ -396,7 +430,7 @@ def diagnose(
             result.runs.append(run)
             observation = (f"REFUSED: {run.refused}. This server is read-only; do not try to change it. "
                            "Use another read-only command, or write your findings." if run.refused
-                           else f"exit {run.code}\n{run.output}")
+                           else run.observation)
             messages.append(_assistant_call(text, command))
             messages.append({"role": "tool", "content": observation})
         else:
@@ -412,7 +446,7 @@ def diagnose(
 
 # ── as a chat job ──────────────────────────────────────────────────────────
 def _commands_block(runs: list[CommandRun]) -> str:
-    return "\n".join(f"- `{run.command}` — {'refused' if run.refused else f'exit {run.code}'}" for run in runs)
+    return "\n".join(f"- `{run.command}` — {run.outcome}" for run in runs)
 
 
 def run_server_diagnose(
@@ -570,7 +604,7 @@ def operate(
 
             if classify_for(command, login.os_family) is None:
                 run = session.execute(command)              # read-only: runs freely
-                observation = f"exit {run.code}\n{run.output}"
+                observation = run.observation
             else:
                 observation, run = _handle_change(session, command, login, confirm, audit, result)
             run_for_ui = run or CommandRun(command=command, refused=observation.split(".")[0])
@@ -604,7 +638,7 @@ def _handle_change(session, command, login, confirm, audit, result) -> tuple[str
         run = session.execute(command)
         audit(command, "auto", run)
         result.changes += 1
-        return (f"exit {run.code}\n{run.output}", run)
+        return (run.observation, run)
     # confirm mode
     approved = confirm(_uuid.uuid4().hex[:12], command)
     if approved is None:
@@ -616,7 +650,7 @@ def _handle_change(session, command, login, confirm, audit, result) -> tuple[str
     run = session.execute(command)
     audit(command, "confirmed", run)
     result.changes += 1
-    return (f"exit {run.code}\n{run.output}", run)
+    return (run.observation, run)
 
 
 def run_server_operate(
