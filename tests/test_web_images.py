@@ -99,3 +99,7 @@ def test_wants_images_is_answer_driven_not_query_keywords():
     # a code-dominated answer is skipped (stock photos would be noise)
     code = "## Setup\n```py\n" + "x = 1\n" * 60 + "```\n\n## Run\n```py\n" + "y = 2\n" * 60 + "```\n"
     assert wants_images(code) is False
+    # O71: a how-to with a few command blocks, mostly prose, gets no stock photos either
+    howto = ("## Current Situation\nThe app was built and nginx serves it. " * 8 + "\n\n## What You Can Do\n"
+             + "Install PM2 and start the app. " * 8 + "\n```bash\nnpm install -g pm2\n```\n")
+    assert wants_images(howto) is False

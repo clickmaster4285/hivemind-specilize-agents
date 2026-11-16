@@ -530,6 +530,15 @@ def run_server_diagnose(
 
 
 # ── operate: changes allowed, gated by the server's mode (SERVER_ACCESS_DECISION.md §8) ────────────
+# Shared by the Linux and Windows prompts (ISSUES_LOG O70): asked "if you run sudo systemctl restart nginx", the model
+# ran 12 checks, called the restart "not necessary" and printed it instead; it said "Nginx is serving the static
+# files" (the app ran under PM2) and called `ls -la` dates "created". No braces: the prompts go through .format().
+OPERATE_RULES = """- A command or change the user asks for, run it: this server's mode decides, and the user approves or cancels.
+  Never skip it because you think it is not needed; say that in your report instead, after running it.
+- Report only what the command output showed. Do not guess how things are set up beyond it (which program serves a
+  site, what a date means: `ls -l` shows when a file last changed, not when it was created).
+- For a status or "did it work" question, stop as soon as the outputs answer it."""
+
 OPERATE_SYSTEM = """You are an IT engineer working on a Linux server over SSH. {access}
 Do the user's task with run_command, one command at a time, reading each output before the next.
 You MAY change the server (install, edit config, restart services) when the task needs it.
@@ -541,6 +550,7 @@ Rules:
   folder, put both in one command: `cd /var/www/app && npm run build`.
 - If a change is refused or cancelled, do not retry it blindly — explain and stop, or try another way.
 - Make the smallest change that does the job. Check your work afterwards (e.g. systemctl status).
+""" + OPERATE_RULES + """
 - At the end, write what you did, what changed, and how to verify or undo it.
 - Use real values from the output. Never invent."""
 
@@ -557,6 +567,7 @@ Rules:
   use full paths (C:\\inetpub\\site\\index.html).
 - If a change is refused or cancelled, do not retry it blindly — explain and stop, or try another way.
 - Make the smallest change that does the job. Check your work afterwards (e.g. Get-Service, Test-Path).
+""" + OPERATE_RULES + """
 - At the end, write what you did, what changed, and how to verify or undo it. Use real values; never invent."""
 
 MODE_NOTE = {

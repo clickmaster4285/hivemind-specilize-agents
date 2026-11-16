@@ -363,3 +363,10 @@ def test_each_confirm_answer_is_saved_as_an_event(monkeypatch):
     so.run_server_operate("restart things", job_id="j", config=cfg, on_progress=events.append, user_id=7)
     resolved = [(e["command_id"], e["answer"]) for e in events if e["type"] == "confirm_resolved"]
     assert resolved == [("id-systemctl", "run"), ("id-rm", "cancel"), ("id-pm2", "timeout")]
+
+
+def test_both_operate_prompts_run_what_the_user_asks_and_report_only_what_they_saw():
+    """O70: a restart the user asked for was judged unnecessary and only printed."""
+    for prompt in (so.OPERATE_SYSTEM, so.OPERATE_SYSTEM_WIN):
+        text = prompt.format(access="You have root.", mode_note=so.MODE_NOTE["confirm"])
+        assert so.OPERATE_RULES in text and "Never skip it" in text and "Report only what the command output" in text

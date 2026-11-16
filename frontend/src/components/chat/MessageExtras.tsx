@@ -716,7 +716,9 @@ export function SourceList({ item }: { item: FeedItem }) {
                 <td className={`${td} whitespace-nowrap text-muted`}>{host || s.publisher || ""}</td>
                 <td className={`${td} whitespace-nowrap text-right text-muted`}>
                   {s.refreshing
-                    ? "re-checking…"
+                    ? // a fact about when the answer was written: the refresh runs in the background and this
+                      // event is never updated, so "re-checking…" stayed forever (ISSUES_LOG O71)
+                      `${s.checked_at ? `${timeAgo(s.checked_at)} · ` : ""}update started`
                     : s.updated_at
                       ? s.updated_at
                       : s.checked_at

@@ -222,8 +222,9 @@ def wants_images(answer: str) -> bool:
     the tool self-selects, so it works for travel, roadmaps, products, history… without a hand-kept list."""
     if len(_topics(answer)) < 2:                         # no clear sections → nothing to illustrate per topic
         return False
-    body = re.sub(r"```[\s\S]*?```", "", answer or "")   # drop fenced code
-    return len(body) >= 0.6 * max(1, len(answer or ""))  # skip code-dominated answers (stock photos add noise)
+    # an answer that shows commands or code is a how-to: a server's PM2 reply got news thumbnails and "what
+    # next?" stock art (ISSUES_LOG O71); the old "code is 40% of it" cut let a few command blocks through
+    return "```" not in (answer or "")
 
 
 def _round_robin[T](lists: list[list[T]]) -> list[T]:

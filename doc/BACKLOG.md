@@ -36,7 +36,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
 | [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
 | [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
-| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 (user checks diagrams); O63 chat recall done (11/11); O64–O71 server operate and routing (2026-11-16 chat) |
+| [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 done; O63 chat recall done (11/11); O64–O71 server operate and routing (2026-11-16 chat) |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
@@ -587,12 +587,12 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [ ] **Mermaid 12 (O62):** pinned 12.3.0, the dagre layout and classic look kept (done 2026-11-14); left: the user
       checks diagrams and PNG / SVG downloads in the app; then compare ELK and `neo` and keep what reads better;
       use-case diagrams in the diagram rules
-  - [ ] Diagram look (user, 2026-11-14: after the O63 eval v2): mermaid.live draws the same code better, with
+  - [x] Diagram look (user, 2026-11-14: after the O63 eval v2): mermaid.live draws the same code better, with
         `neo`, group borders in colour and a dark theme. Ours: `neutral`, `classic`, `dagre`. Try `neo` + a
         theme that follows the app (`redux-color` / `redux-dark-color`), the default layout vs dagre on 5
         diagram types; downloads with a matching background
         — built 2026-11-16 (neo, redux-color / redux-dark-color, Mermaid's default layout, backgrounds;
-        use-case diagrams in the rules); waiting: the user's look in the app
+        use-case diagrams in the rules); user tested in the app — done 2026-11-16
 - [x] **Chat recall (O63) — done 2026-11-16:** a long chat's folded turns come back when the new message needs them; built 2026-11-14 (user's
       go), migration applied, eval v2 11/11 with recall; summary prompt reworded; waiting: the user's bench_recall run. No new software: Postgres + pgvector, embedding on the CPU
   - [x] Index each finished exchange (question + answer, chat and user id) in a pgvector table, in the background
@@ -619,7 +619,7 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [ ] **Server operate and routing (O64–O71, user's chat 2026-11-16):** a hung command fails the whole job (O64: part 1 done 2026-11-16, it goes on; part 2 why);
       raw `<details>` (O65); confirm cards stay live (O66); read-only chains asked for approval (O67); the folder
       does not carry between commands (O68) — O65–O68 built 2026-11-16, waiting for a look; follow-up server tasks answered instead of run, server state invented
-      (O69: hand-over built 2026-11-16, eval 37/40 with --specialists; pm2 "which server" live check waits); O72 done (37/40); O73 a skill with no tools routed to clarify (minor); a requested restart judged unnecessary (O70); pictures in server answers, stuck "re-checking…" (O71)
+      (O69: hand-over built 2026-11-16, eval 37/40 with --specialists; pm2 "which server" live check waits); O72 done (37/40); O73 a skill with no tools routed to clarify (minor); a requested restart judged unnecessary (O70: rules built 2026-11-16, live check waits); pictures in server answers, stuck "re-checking…" (O71: built 2026-11-16, look waits)
 
 ### L21. Docs that are easy to find and maintain — ✅ done 2026-11-11 (ISSUES_LOG O41)
 

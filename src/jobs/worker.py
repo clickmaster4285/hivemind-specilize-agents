@@ -96,6 +96,11 @@ def _clarify(config: Config, job_id: str, query: str, questions: list, on_progre
     _finish(config, job_id, [])
 
 
+# An answer's bubble takes its job from these events: without one (the assistant's direct reply) the UI fell back to
+# the chat's newest job, and an earlier answer's pictures were asked for under the wrong job: 404 (ISSUES_LOG O71).
+ANSWER_EVENTS = frozenset({"agent_start", "agent_done"})
+
+
 def _answerer(payload: dict, query: str, skill: Skill | None, *, config: Config, conversation,
               on_progress) -> tuple[Specialist | None, bool]:
     """Who answers (src/llm/specialists.py): the skill's specialist when it names one, else the one pinned in the chat
@@ -191,6 +196,8 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
     keep_after_stop = {"agent_done", "session_done"}
 
     def on_progress(event: dict[str, Any]) -> None:
+        if event.get("type") in ANSWER_EVENTS and not event.get("job_id"):
+            event = {**event, "job_id": job_id}
         closing = event.get("type") in keep_after_stop
         if not closing and _is_cancelled(job_id):
             return
