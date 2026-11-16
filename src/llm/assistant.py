@@ -62,6 +62,10 @@ class Tool:
 MARKET_ARG = ("two-letter country code of the market the user named (PK for Pakistan, GB for the UK, US, …), "
               "'worldwide' if they said global or worldwide; empty if they named none")
 
+# The server tools find the login themselves: the only one added, else the one named, else they ask with the list
+# (server_vault.find). The model asked "which server?" instead of calling (eval 2026-11-16, ISSUES_LOG O69).
+SERVER_ARG = ("the server's name or IP if the user named one; else leave it empty: the tool uses the only server "
+              "added, or asks which with the list. Never ask the user which server yourself")
 TOOLS: tuple[Tool, ...] = (
     Tool("search_knowledge_base", "kb",
          "Search MulteAgent's own trusted documents ({sources}) and answer with citations. Use when the question "
@@ -106,7 +110,7 @@ TOOLS: tuple[Tool, ...] = (
          "read-only: ufw / iptables firewall, open ports with programs, SSH settings (root and password login), "
          "missing security updates, failed SSH logins and fail2ban. Use for 'audit my server', 'check ufw on "
          "web01', 'is my Linux server hardened'.",
-         {"server": "the server's name or IP as the user added it; empty = the only one added"},
+         {"server": SERVER_ARG},
          (), lambda c: c.security_scan_enabled),
     Tool("nvr_cameras", "nvr_cameras",
          "Log in to a camera recorder (NVR/DVR, Hikvision or Dahua) added this session in Settings → Devices and "
@@ -128,7 +132,7 @@ TOOLS: tuple[Tool, ...] = (
          "output and keeps going until it can explain the issue, then reports the cause and the fix. Use for "
          "'log in to web01 and check why nginx is down', 'why is the server slow', 'is the disk full on db01'. "
          "It cannot change anything (read-only); applying a fix is a separate confirmed step.",
-         {"server": "the server's name or IP as the user added it; empty = the only one added"},
+         {"server": SERVER_ARG},
          (), lambda c: c.security_scan_enabled),
     Tool("operate_server", "server_operate",
          "Log in to one of the user's Linux servers (Settings → Devices) and DO WORK that may change it: "
@@ -139,7 +143,7 @@ TOOLS: tuple[Tool, ...] = (
          "/var/www on web01', 'create index.html and write Hello World in that folder', 'run deploy.sh', "
          "'restart nginx', 'install htop'. When the user is already working on a server, keep using this for "
          "follow-up file and command tasks — do NOT use create_document, which only makes a local download.",
-         {"server": "the server's name or IP as the user added it; empty = the only one added",
+         {"server": SERVER_ARG,
           "task": "what to do on the server (a command, a file to create/run, or the change to make)"}, ("task",),
          lambda c: c.security_scan_enabled),
     Tool("generate_image", "image_gen", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
