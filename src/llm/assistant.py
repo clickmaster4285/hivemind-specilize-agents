@@ -26,7 +26,7 @@ import yaml
 from src.jobs import live
 from src.core.config import ROOT, Config
 from src.core.conversation import split_summary
-from src.llm.diagram_rules import DIAGRAM_RULES, MATH_RULE, NETDIAGRAM_RULES
+from src.llm.diagram_rules import MATH_RULE, diagram_block
 from src.llm.router import CLARIFY, NOT_LISTED, NOT_RUN, SEARCH, TOOL, Route, previous_question, route_message
 from src.tools.calculator import CALCULATE_TOOL, chat_tools_with_calculator
 
@@ -214,10 +214,12 @@ TOOLS: tuple[Tool, ...] = (
 BY_NAME = {t.name: t for t in TOOLS}
 
 
-def tool_flag(args: dict[str, Any], name: str) -> bool:
+def tool_flag(args: dict[str, Any], name: str, default: bool = False) -> bool:
     """A yes/no tool argument (the schema asks for 'yes'): web_search's `news` (search the news too, ISSUES_LOG
-    O47) and `calculation`, set by the router (the answer needs the calculate tool, O57)."""
-    return str(args.get(name) or "").strip().lower() == "yes"
+    O47), `calculation` (the answer needs the calculate tool, O57) and `diagram` (O52), set by the router.
+    default: when the argument is absent (the tool choice, not the router, started the search)."""
+    value = str(args.get(name) or "").strip().lower()
+    return value == "yes" if value else default
 
 SYSTEM = """{identity}
 
@@ -246,7 +248,7 @@ diagram where plain prose is clearer.
 To denote a component, status or step lightly, use a relevant emoji inline — 🖥️ server, 🗄️ database,
 📁 file, ⚙️ process, 🌐 network, 🔒 security, 📦 package, ✅/⚠️/❌ status, → flow. Prefer a few apt icons
 over a diagram when a diagram would be overkill.
-""" + MATH_RULE + "\n" + DIAGRAM_RULES
+""" + MATH_RULE
 
 _sources_cache: dict[str, Any] = {"at": 0.0, "text": ""}
 _sources_lock = threading.Lock()
@@ -290,7 +292,9 @@ def messages_for(
     query: str, config: Config, conversation: list[dict[str, str]] | None, model: str,
     specialist: Specialist | None = None,
     refine_note: str | None = None,
+    diagrams: bool = True,
 ) -> list[dict]:
+    """diagrams: the router's `diagram` flag; off, the ~900-token diagram rules become one line (O52)."""
     from src.tools.about import identity_line
     from src.core.clock import date_line
 
@@ -300,9 +304,9 @@ def messages_for(
         # them made it answer from memory instead of searching or drawing — eval 25/27 → see BACKLOG)
         identity += (f"\n\n{specialist.prompt_block()}\nThe tool rules below always apply to you too: when a "
                      "tool can do the thing or look it up, call the tool instead of explaining how to do it.")
-    # NETDIAGRAM_RULES carries JSON braces, so it is appended AFTER .format (never inside a .format template)
+    # the diagram rules carry JSON braces, so they are appended AFTER .format (never inside a .format template);
     # the date last, so the long fixed part stays a cached prefix (O52)
-    system = SYSTEM.format(identity=identity) + NETDIAGRAM_RULES + f"\n\n{date_line()}"
+    system = SYSTEM.format(identity=identity) + diagram_block(diagrams) + f"\n\n{date_line()}"
     msgs = [{"role": "system", "content": system}]
     summary, turns = split_summary(conversation or [])
     if summary:          # a long chat's earlier part, folded into a summary (BACKLOG L12) — always kept
@@ -425,7 +429,7 @@ def pre_route(route: Route, query: str, config: Config, specialist: Specialist |
     if route.route == SEARCH and _web_allowed(config, specialist):
         logger.info("assistant: the router sends this to web_search")
         args = ({"query": route.query or query} | ({"news": "yes"} if route.news else {})
-                | ({"calculation": "yes"} if route.calculation else {}))
+                | ({"calculation": "yes"} if route.calculation else {}) | ({} if route.diagram else {"diagram": "no"}))
         return Decision(False, "web_search", "web_search", args, learning=route.learning)
     # an under-specified recommendation: multiple-choice questions first (the model is unreliable at calling
     # a tool for this, so a dedicated call writes the choices)
@@ -493,7 +497,7 @@ def decide(
         text, calls = chat_tools_with_calculator(
             LLMClient(config),
             messages=messages_for(query, config, conversation, model, specialist,
-                                  refine_note=build_refine_note(refine) if refine else None),
+                                  refine_note=build_refine_note(refine) if refine else None, diagrams=route.diagram),
             tools=tools, model=model,
             on_delta=on_delta, should_continue=lambda: not live.is_stopped(job_id),
         )
@@ -592,7 +596,8 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
             got, args, reply = routed.tool, routed.args, ""
         else:
             # the first call is what is scored: a calculate call counts as the choice (it is not worked out)
-            reply, calls = client.chat_tools(messages=messages_for(case["text"], config, conversation, model, sp),
+            reply, calls = client.chat_tools(messages=messages_for(case["text"], config, conversation, model, sp,
+                                                                   diagrams=route.diagram),
                                              tools=offered, model=model,
                                              temperature=0.0)
             got, args = (calls[0]["name"], calls[0]["arguments"]) if calls else (None, {})

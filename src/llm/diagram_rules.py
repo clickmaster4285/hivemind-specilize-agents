@@ -1,7 +1,7 @@
 """One source of truth for the Mermaid diagram rules every answer path shares.
 
-Both the direct assistant answer (``assistant.SYSTEM``) and the web-synthesis answer
-(``web_search.WEB_SYSTEM``) can emit a ```mermaid block, so both must carry the same hard-won
+Both the direct assistant answer (``assistant.messages_for``) and the web-synthesis answer
+(``web_search.answer_from_web``) can emit a ```mermaid block, so both join the same hard-won
 rules — SIMPLE, emoji-on-every-node, parse-safe labels. The model benchmark (2026-10-28,
 doc/RESPONSE_QUALITY.md) showed these rules, not a bigger model, are what make diagrams render
 100% valid; keeping them in one place stops the two prompts from drifting apart.
@@ -139,3 +139,14 @@ structured document:
 NEVER draw a single Mermaid flowchart that holds all the sites, many subgraphs, or every VLAN at once — it
 auto-lays-out into unreadable spaghetti. Big designs = tables (+ small focused diagrams), never one giant
 diagram."""
+
+
+# Most answers draw nothing, yet every direct and web answer carried ~900 tokens of diagram rules plus the netdiagram
+# rules (ISSUES_LOG O52). The router's `diagram` flag picks one of these; it defaults to on, so a failed router keeps
+# the rules.
+NO_DIAGRAM_RULE = "This answer needs no diagram: do not write a ```mermaid or ```netdiagram block."
+
+
+def diagram_block(on: bool) -> str:
+    """The diagram part of an answer prompt: the full rules when a drawing could help, else one line."""
+    return f"\n\n{DIAGRAM_RULES}{NETDIAGRAM_RULES}" if on else f"\n\n{NO_DIAGRAM_RULE}"

@@ -188,6 +188,7 @@ def run_chat(
     web_news: bool = False,
     web_query: str = "",
     web_calculation: bool = False,
+    web_diagram: bool = True,
     learning: bool = False,
     deep: bool = False,
     options: bool = False,
@@ -200,6 +201,7 @@ def run_chat(
     web_news=True: a question about recent events — the search takes SearXNG's news results first.
     web_query: the model's search words (web_search's `query`); empty = search the question as typed.
     web_calculation=True: the answer needs a number worked out (router): the web answer is told to use calculate.
+    web_diagram=False: the router saw no use for a drawing: the web answer's prompt skips the diagram rules (O52).
     learning=True: the user is learning a topic (src/llm/router.py), so the answer gets a quiz.
 
     The answer streams into src/live.py (shown in the browser as it is written); the Stop button
@@ -320,6 +322,7 @@ def run_chat(
                     on_progress, {"type": "status", "agent_id": "assistant", "message": message}
                 ),
                 conversation_block=sourced, news=web_news, search_query=web_query, calculation=web_calculation,
+                diagram=web_diagram,
             )
             return text, {"grounded": bool(sources), "sources": sources}
 

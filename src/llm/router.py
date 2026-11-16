@@ -38,7 +38,7 @@ The assistant's tools (* = required argument):
 
 Reply with ONE JSON object and nothing else:
 {{"route": "tool" or "search" or "clarify" or "model", "tool": "", "args": {{}}, "query": "",
-"news": true or false, "learning": true or false, "calculation": true or false}}
+"news": true or false, "learning": true or false, "calculation": true or false, "diagram": true or false}}
 
 route:
 - A file the user wants made (Excel, PDF, Word, PowerPoint) is always "tool" create_document, even when its
@@ -75,6 +75,9 @@ news: true when the question is about recent events (the last days, weeks or mon
 scandal, case or announcement about a person or company.
 learning: true when the user wants to learn or understand a topic (an explanation, a lesson, how something
 works); false for news, quick facts, tasks and chat.
+diagram: true when the answer should show structure as a drawing: the user asks for a diagram, flowchart, chart of
+parts or a network layout, or how something with parts, steps or a flow works (an architecture, a process, a
+hierarchy). false for plain facts, short answers, writing, code, news, calculations and chat.
 calculation: true when the answer needs a number worked out (a download or travel time, a cost, a total, a
 conversion between units)."""
 
@@ -88,6 +91,7 @@ class Route:
     calculation: bool = False  # the answer needs a number worked out: the calculate tool is asked for (O57)
     tool: str = ""             # for TOOL: the tool's name; pre_route checks it is offered and its arguments given
     args: dict[str, str] = field(default_factory=dict)
+    diagram: bool = True       # the answer may draw: its prompt carries the diagram rules (O52); on unless said off
 
 
 def _flag(value: Any) -> bool:
@@ -117,7 +121,8 @@ def parse_route(raw: str) -> Route:
     args = {str(k): _arg_text(v) for k, v in raw_args.items() if _arg_text(v)}
     return Route(route, str(data.get("query") or "").strip() if route == SEARCH else "",
                  _flag(data.get("news")), _flag(data.get("learning")), _flag(data.get("calculation")),
-                 str(data.get("tool") or "").strip() if route == TOOL else "", args)
+                 str(data.get("tool") or "").strip() if route == TOOL else "", args,
+                 diagram=_flag(data["diagram"]) if "diagram" in data else True)
 
 
 def tool_lines(tools: list[dict[str, Any]]) -> str:

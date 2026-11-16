@@ -22,7 +22,7 @@ import requests
 
 from src.core.clock import date_line
 from src.core.config import Config
-from src.llm.diagram_rules import DIAGRAM_RULES, MATH_RULE, NETDIAGRAM_RULES
+from src.llm.diagram_rules import MATH_RULE, diagram_block
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ Rules:
   data flow, INCLUDE a small Mermaid diagram (a ```mermaid fenced block) — it is the clearest way to show
   structure, and it is grounded in the cited sources. Skip it only for a plain fact or an unstructured
   list.
-- """ + MATH_RULE + "\n\n" + DIAGRAM_RULES
+- """ + MATH_RULE
 
 
 # The GTA answer did 1,696 ÷ 100 = 16.96 hours (right: 4.71 h): the model skipped the unit steps and never called
@@ -293,12 +293,14 @@ def answer_from_web(
     news: bool = False,
     search_query: str = "",
     calculation: bool = False,
+    diagram: bool = True,
 ) -> tuple[str, list[dict]]:
     """→ (answer with [n] citations, sources for the UI). news=True: news results too (see search).
     search_query: the search words the model wrote in web_search's `query` — typos fixed, a follow-up's subject
     filled in from the conversation (ISSUES_LOG O49); the question itself when empty. They find and rank the
     pages; the model still answers the question as asked. calculation=True (the router saw a number to work out):
-    CALCULATION_NOTE goes right after the question, where the model heeds it most."""
+    CALCULATION_NOTE goes right after the question, where the model heeds it most. diagram=False (the router saw no
+    use for a drawing): one line instead of the diagram rules (O52)."""
     words = search_query.strip() or question
     t0 = time.perf_counter()
     status("Searching the news…" if news else "Searching the web…")
@@ -319,9 +321,8 @@ def answer_from_web(
     )
     user = (f"{context_lead(conversation_block)}## Sources\n\n{numbered}\n\n## Question\n{question}"
             + (f"\n\n{CALCULATION_NOTE}" if calculation else ""))
-    # NETDIAGRAM_RULES has JSON braces → append after .format, never inside the template
     # the date last, so the fixed rules stay a cached prefix (O52)
-    text = chat(system=WEB_SYSTEM + NETDIAGRAM_RULES + f"\n\n{date_line(now)}", user=user, model=model,
+    text = chat(system=WEB_SYSTEM + diagram_block(diagram) + f"\n\n{date_line(now)}", user=user, model=model,
                 temperature=0.2)
     # P0 tool-phase split (doc/RESPONSE_QUALITY.md): where the web-search wait goes.
     logger.info(

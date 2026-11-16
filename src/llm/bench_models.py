@@ -35,6 +35,7 @@ from pathlib import Path
 from src.core.clock import date_line
 from src.core.config import Config
 from src.llm import assistant
+from src.llm.diagram_rules import diagram_block
 from src.llm.llm_client import LLMClient
 from src.tools.answer_options import generate_options
 from src.tools.quiz import generate_quiz
@@ -234,7 +235,8 @@ def bench_model(model: str, config: Config, runs: int, judge_model: str) -> tupl
     client = LLMClient(config, model=model)
     judge = LLMClient(config, model=judge_model)
     identity = f"You are MulteAgent, a local IT assistant (model: {model})."
-    system = assistant.SYSTEM.format(identity=identity) + f"\n\n{date_line()}"
+    # the diagram rules joined as the app joins them when the router expects a drawing (O52)
+    system = assistant.SYSTEM.format(identity=identity) + diagram_block(True) + f"\n\n{date_line()}"
     blocks: list[tuple[str, str]] = []  # (global id, code) for the headless validator
 
     # 1) Diagrams

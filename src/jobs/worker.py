@@ -399,6 +399,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                 web_search=intent == "web_search",
                 web_news=intent == "web_search" and tool_flag(tool_args, "news"),
                 web_calculation=intent == "web_search" and tool_flag(tool_args, "calculation"),
+                web_diagram=tool_flag(tool_args, "diagram", default=True),
                 web_query=str(tool_args.get("query") or ""),
                 learning=learning,
                 specialist=specialist,
