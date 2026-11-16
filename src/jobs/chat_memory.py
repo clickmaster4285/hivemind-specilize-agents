@@ -33,29 +33,17 @@ from src.llm.llm_client import LLMClient
 log = logging.getLogger(__name__)
 
 SUMMARY_SYSTEM = """You keep the memory of a long chat between a user and an AI assistant. Update the
-summary so the chat can continue without the full text. Stay under {words} words: the chat's exact words come
-back separately when a later message needs them, so the summary is the gist, not a transcript.
+summary so the chat can continue without the full text.
 Keep word for word, exactly as written: the user's own setup and facts (addresses, serial numbers, ports, device
 and host names, versions, paths and shares, schedules and times, speeds, people and deadlines), each decision and
-what it changed (old → new), and the specific values the assistant gave for the user's setup (commands, names it
-suggested, settings). Carry them over from the summary so far unless the chat replaced them.
-When over the limit, shorten the general topics first (an explanation, guide, plan or checklist becomes a few
-words naming it), never the user's facts. Drop small talk and anything superseded. Write short bullet points
-under: **Goal**, **Key facts and decisions**, **Open questions** (leave a heading out when empty). Output only
-the summary, in the language of the chat."""
-# Why (ISSUES_LOG O63, eval v2): the old wording kept "key facts" in general, and the summary spent most of its
-# ~1,400–1,600 tokens on explanations (a checklist, a patching plan) while dropping a different few of the user's
-# own facts each run (a serial, a backup time, an IP, a camera channel). Rewording alone did not hold (user's
-# runs): keeping the facts word for word got 11/11 at 1,932 tokens; "one line per general topic" got one long
-# line each, 2,180 tokens and 8/11. Recall brought every fact back in all three runs, so the summary now has a
-# word limit and carries the gist; the exact words come from recall.
-SUMMARY_SHARE = 0.2      # of the history budget: with RECALL_SHARE 0.25 the recent turns keep over half of it
-WORDS_PER_TOKEN = 0.75   # rough for English; the model is told a limit in words, which it follows better than tokens
-
-
-def summary_words(config: Config) -> int:
-    """The word limit the summary prompt states (~645 words at LLM_NUM_CTX 12288)."""
-    return int(history_budget(config) * SUMMARY_SHARE * WORDS_PER_TOKEN)
+what it changed (old → new), and the specific values the assistant gave (commands, names it suggested, settings).
+Never drop one of these to save space, and carry them over from the summary so far unless the chat replaced them.
+Shorten the rest: a general explanation, guide or checklist becomes one line naming its topic. Drop small talk
+and anything superseded. Write short bullet points under: **Goal**, **Key facts and decisions**, **Open questions**
+(leave a heading out when empty). Output only the summary, in the language of the chat."""
+# Why (ISSUES_LOG O63, eval v2, user's runs 2026-11-14/16): the old wording kept "key facts" in general and got
+# 8/11 from the summary alone (1,369 tokens). This wording got 11/11 at 1,932 tokens, the best of four: "one line
+# per general topic" gave 8/11 at 2,180, and a stated word limit was ignored (3,037). With recall: 11/11 in all.
 
 
 def history_budget(config: Config) -> int:
@@ -109,14 +97,13 @@ def summarize(previous: str, turns: list[dict[str, str]], *, config: Config, mod
     chat = chat or LLMClient(config).chat
     piece_budget = config.llm_num_ctx // 2                       # the other half: instructions + the summary
     summary, piece, size = previous.strip(), [], 0
-    system = SUMMARY_SYSTEM.format(words=summary_words(config))
 
     def fold() -> None:
         nonlocal summary, piece, size
         text = "\n\n".join(f"### {t['role'].title()}\n{t['content']}" for t in piece)
         user = (f"## Summary so far\n{summary or '(none yet)'}\n\n## New part of the chat\n{text}\n\n"
                 "Write the updated summary.")
-        summary = chat(system=system, user=user, model=model, temperature=0.2).strip()
+        summary = chat(system=SUMMARY_SYSTEM, user=user, model=model, temperature=0.2).strip()
         piece, size = [], 0
 
     for turn in turns:
