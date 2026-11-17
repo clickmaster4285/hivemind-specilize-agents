@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState } from "react";
 
 import SkillModal from "@/components/settings/skills/SkillModal";
 import type { SkillsApi } from "@/hooks/useSkills";
@@ -14,7 +14,14 @@ import { btn } from "@/lib/ui";
 // Inline Tailwind building blocks (styling stays with the component), matching the other Settings sections.
 const heading = "text-base font-semibold [font-family:var(--font-display)]";
 const hint = "text-xs leading-relaxed text-muted";
-const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-line bg-panel-2 px-3 py-2.5";
+// a skill card in the two-column grid (the user's ask, 2026-11-17): the whole card opens the skill
+const card =
+  "group relative flex min-h-[7.5rem] cursor-pointer flex-col gap-1.5 rounded-xl border border-line bg-panel-2 p-3.5 pr-10 hover:border-[color-mix(in_srgb,var(--copper)_45%,var(--line))]";
+const grid = "m-0 grid list-none grid-cols-2 gap-3 p-0 max-[760px]:grid-cols-1";
+const chip = "rounded-full border border-line px-2 py-0.5 text-[0.68rem] text-muted";
+const menuRow = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[0.8rem] text-text hover:bg-hover disabled:opacity-50 disabled:hover:bg-transparent";
+/** The ⋮ menu's width, to open it leftwards from the button so it stays inside the card's column. */
+const MENU_WIDTH_PX = 176;
 const field =
   "w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm text-text placeholder:text-muted outline-none focus:border-copper";
 const pill = (on: boolean) =>
@@ -28,17 +35,123 @@ type View = "yours" | "discover";
 /** undefined = closed; skill null = a new one */
 type Editing = { skill: Skill | null; readOnly: boolean } | undefined;
 
-/** One skill's line: title, /name, what it does — and its actions on the right. */
-function SkillRow({ skill, children }: { skill: Skill; children: ReactNode }) {
+/** One action in a card's ⋮ menu. */
+type Action = { label: string; onClick: () => void; danger?: boolean; disabled?: boolean; title?: string };
+
+/** The ⋮ button and its menu: every action of a card in one place, so the cards stay calm. */
+function CardMenu({ actions }: { actions: Action[] }) {
+  const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   return (
-    <li className={`${rowCard} ${skill.enabled ? "" : "opacity-60"}`}>
-      <span className="min-w-0">
-        <span className="block truncate text-sm">
-          <strong>{skill.title}</strong> <span className="text-muted">/{skill.name}</span>
-        </span>
-        <small className="line-clamp-1 text-xs text-muted">{skill.description}</small>
+    <>
+      <button
+        type="button"
+        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-hover hover:text-text"
+        title="Actions"
+        aria-label="Actions"
+        aria-haspopup="menu"
+        aria-expanded={at !== null}
+        onClick={(e) => {
+          e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          setAt(at ? null : { x: r.right, y: r.bottom });
+        }}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden>
+          <circle cx="12" cy="5" r="1.7" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.7" fill="currentColor" />
+          <circle cx="12" cy="19" r="1.7" fill="currentColor" />
+        </svg>
+      </button>
+      {at ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 cursor-default"
+            aria-hidden
+            tabIndex={-1}
+            onClick={(e) => {
+              e.stopPropagation();
+              setAt(null);
+            }}
+          />
+          <div
+            role="menu"
+            className="fixed z-50 rounded-lg border border-line bg-panel p-1 shadow-shadow"
+            style={{ top: at.y + 4, left: Math.max(8, at.x - MENU_WIDTH_PX), width: MENU_WIDTH_PX }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {actions.map((a) => (
+              <button
+                key={a.label}
+                type="button"
+                role="menuitem"
+                disabled={a.disabled}
+                title={a.title}
+                className={`${menuRow} ${a.danger ? "text-danger-text" : ""}`}
+                onClick={() => {
+                  setAt(null);
+                  a.onClick();
+                }}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+    </>
+  );
+}
+
+/** One skill as a card: title, /name, what it does (two lines), its category and state; ⋮ holds the actions. */
+function SkillCard({
+  skill,
+  actions,
+  onOpen,
+  badge,
+  toggle,
+}: {
+  skill: Skill;
+  actions: Action[];
+  onOpen: () => void;
+  badge?: string;
+  toggle?: { on: boolean; disabled: boolean; onChange: (on: boolean) => void };
+}) {
+  return (
+    <li
+      className={`${card} ${skill.enabled ? "" : "opacity-60"}`}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onOpen();
+      }}
+      tabIndex={0}
+      aria-label={`${skill.title}, /${skill.name}`}
+    >
+      <span className="block truncate text-sm">
+        <strong>{skill.title}</strong> <span className="text-muted">/{skill.name}</span>
       </span>
-      <span className="flex shrink-0 items-center gap-1.5">{children}</span>
+      <small className="line-clamp-2 text-xs leading-relaxed text-muted">{skill.description}</small>
+      <span className="mt-auto flex items-center gap-2 pt-1">
+        {skill.category ? <span className={chip}>{skill.category}</span> : null}
+        {badge ? <span className={chip}>{badge}</span> : null}
+        {toggle ? (
+          <label
+            className="ml-auto flex items-center gap-1.5 text-xs text-muted"
+            title="On: /name runs it"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              role="switch"
+              checked={toggle.on}
+              disabled={toggle.disabled}
+              onChange={(e) => toggle.onChange(e.target.checked)}
+            />
+            {toggle.on ? "On" : "Off"}
+          </label>
+        ) : null}
+      </span>
+      <CardMenu actions={actions} />
     </li>
   );
 }
@@ -90,46 +203,36 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
 
   function yoursRow(s: Skill) {
     const id = s.id as number;          // skills in Yours always have an id
-    return (
-      <SkillRow key={id} skill={s}>
-        <label className="flex items-center gap-1 text-xs text-muted" title="On: /name runs it">
-          <input
-            type="checkbox"
-            checked={s.enabled}
-            disabled={!canChange(s)}
-            onChange={(e) => void attempt(() => skills.setEnabled(id, e.target.checked))}
-          />
-          On
-        </label>
-        <button type="button" className={btn("ghost", "sm")} onClick={() => setEditing({ skill: s, readOnly: !canChange(s) })}>
-          {canChange(s) ? "Edit" : "View"}
-        </button>
-        <button
-          type="button"
-          className={btn("ghost", "sm")}
-          title="Download as SKILL.md"
-          onClick={() =>
-            void attempt(async () => {
-              const file = await downloadSkill(id);
-              saveUrl(file.url, file.filename);
-            })
-          }
-        >
-          ⬇
-        </button>
-        {canChange(s) ? (
-          <button
-            type="button"
-            className={btn("ghost", "sm")}
-            title="Delete"
-            onClick={() => {
+    const open = () => setEditing({ skill: s, readOnly: !canChange(s) });
+    const actions: Action[] = [
+      { label: canChange(s) ? "Edit" : "View", onClick: open },
+      {
+        label: "Download SKILL.md",
+        onClick: () =>
+          void attempt(async () => {
+            const file = await downloadSkill(id);
+            saveUrl(file.url, file.filename);
+          }),
+      },
+      ...(canChange(s)
+        ? [{
+            label: "Delete",
+            danger: true,
+            onClick: () => {
               if (confirm(`Delete the skill “${s.title}”?`)) void attempt(() => skills.remove(id));
-            }}
-          >
-            ×
-          </button>
-        ) : null}
-      </SkillRow>
+            },
+          }]
+        : []),
+    ];
+    return (
+      <SkillCard
+        key={id}
+        skill={s}
+        actions={actions}
+        onOpen={open}
+        badge={s.team ? "Team" : undefined}
+        toggle={{ on: s.enabled, disabled: !canChange(s), onChange: (on) => void attempt(() => skills.setEnabled(id, on)) }}
+      />
     );
   }
 
@@ -190,7 +293,7 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
       {view === "yours" ? (
         <>
           <h5 className="text-sm font-semibold">Team</h5>
-          <ul className="flex flex-col gap-2">
+          <ul className={grid}>
             {team.map(yoursRow)}
             {team.length === 0 ? (
               <li className={hint}>
@@ -199,7 +302,7 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
             ) : null}
           </ul>
           <h5 className="text-sm font-semibold">Created by you</h5>
-          <ul className="flex flex-col gap-2">
+          <ul className={grid}>
             {mine.map(yoursRow)}
             {mine.length === 0 ? (
               <li className={hint}>None yet — create one, upload a SKILL.md, or add one from Discover.</li>
@@ -225,28 +328,26 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
               </button>
             ))}
           </div>
-          <ul className="flex flex-col gap-2">
+          <ul className={grid}>
             {found.map((s) => (
-              <SkillRow key={s.name} skill={s}>
-                <span className="hidden text-xs text-muted sm:inline">{s.category}</span>
-                <button type="button" className={btn("ghost", "sm")} onClick={() => setEditing({ skill: s, readOnly: true })}>
-                  View
-                </button>
-                <button
-                  type="button"
-                  className={btn("ghost", "sm")}
-                  disabled={s.added}
-                  title={s.added ? "Already in Yours" : forTeam ? "Add for the whole team" : "Add to your skills"}
-                  onClick={() =>
-                    void attempt(async () => {
-                      await skills.add(s.name, forTeam);
-                      await fetchCatalog();
-                    })
-                  }
-                >
-                  {s.added ? "Added ✓" : "+ Add"}
-                </button>
-              </SkillRow>
+              <SkillCard
+                key={s.name}
+                skill={s}
+                onOpen={() => setEditing({ skill: s, readOnly: true })}
+                badge={s.added ? "Added ✓" : undefined}
+                actions={[
+                  { label: "View", onClick: () => setEditing({ skill: s, readOnly: true }) },
+                  {
+                    label: s.added ? "Already in Yours" : forTeam ? "Add for the whole team" : "Add to your skills",
+                    disabled: s.added,
+                    onClick: () =>
+                      void attempt(async () => {
+                        await skills.add(s.name, forTeam);
+                        await fetchCatalog();
+                      }),
+                  },
+                ]}
+              />
             ))}
             {found.length === 0 ? <li className={hint}>No skill matches.</li> : null}
           </ul>
