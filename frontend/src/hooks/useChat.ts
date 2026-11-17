@@ -77,10 +77,11 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
     setActiveJobId(null);
   }
 
+  /** An empty screen with no chat behind it yet: the chat (and its list row, titled from the question) is made
+   *  by the first message in `send`. Making the row here put an empty "New chat" in the list on every click,
+   *  and the first message then kept that title. */
   function newChat() {
-    const id = newId();
-    history.noteThread(id, "New chat", history.projectId);
-    history.selectThread(id);
+    history.selectThread(null);
     clear();
     setEditingFromId(null);
     setRunning(false);

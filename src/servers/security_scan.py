@@ -29,6 +29,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from src.core.config import Config
+from src.servers import cve_db, nmap_versions
+from src.servers.cve_db import CveHit
 from src.servers.net_scan import PRIVATE_NETS, ScanError, local_subnet, validate_subnet
 
 logger = logging.getLogger(__name__)
@@ -39,6 +41,16 @@ TCP_TIMEOUT = 0.5
 BANNER_TIMEOUT = 2.0
 MANY_PORTS = 12
 MAX_SERVICE_ROWS = 30          # longer service lists go to the Excel file only
+# Software versions by nmap -sV and their known CVEs (V1, doc/SECURITY_TOOLS_DECISION.md §10): nmap reads a host's
+# open ports in ~5–15 s (measured 11.6 s for 3 ports), so a few hosts at once, in a budget of its own after the port
+# check's; a host still unread when it ends keeps the version its greeting announced
+VERSIONS_TIME_LIMIT_SECONDS = 180
+NMAP_HOSTS_AT_ONCE = 8
+NMAP_HOST_TIMEOUT_SECONDS = 60
+MAX_CVE_ROWS = 20              # longer vulnerability lists go to the Excel file only
+# CVSS v3 qualitative bands (FIRST.org): 9.0+ critical, 7.0+ high, 4.0+ medium — critical and high are our "high"
+CVSS_HIGH = 7.0
+CVSS_MEDIUM = 4.0
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 HIGH, MEDIUM, LOW, INFO = "high", "medium", "low", "info"
@@ -124,6 +136,7 @@ class Service:
     name: str
     product: str = ""          # "OpenSSH 8.9p1", "nginx/1.18.0"
     tls: str = ""              # certificate status for TLS ports
+    cves: list[CveHit] = field(default_factory=list)   # known CVEs for the version nmap read, worst first
 
 
 @dataclass
@@ -161,6 +174,7 @@ class SecurityResult:
     seconds: float
     stopped: bool = False
     timed_out: bool = False
+    notes: list[str] = field(default_factory=list)     # what the version / CVE step could not do
 
 
 # ── what to check ────────────────────────────────────────────────────────
@@ -387,6 +401,26 @@ def host_findings(host: HostReport) -> list[Finding]:
     return out
 
 
+def cve_risk(score: float | None) -> str:
+    return HIGH if (score or 0) >= CVSS_HIGH else MEDIUM if (score or 0) >= CVSS_MEDIUM else LOW
+
+
+def vulnerability_findings(host: HostReport) -> list[Finding]:
+    """One finding per service whose version has known CVEs, rated by the worst one."""
+    out: list[Finding] = []
+    for s in host.services:
+        if not s.cves:
+            continue
+        worst = s.cves[0]
+        n = len(s.cves)
+        out.append(Finding(
+            cve_risk(worst.score), host.ip, s.port, f"{n} known CVE{'s' if n != 1 else ''} for {s.product}",
+            f"Worst: {worst.id} (CVSS {worst.score if worst.score is not None else '?'}) — {worst.summary[:160]}",
+            "Update this software. If it came with the OS (Ubuntu, Debian …), its vendor may already have fixed it "
+            "without a new version number — check the server's updates (server audit)"))
+    return out
+
+
 def local_findings(view: LocalView, label: str = "this PC") -> list[Finding]:
     out: list[Finding] = []
     for profile, enabled in view.firewall.items():
@@ -417,6 +451,50 @@ def _host_key(report: HostReport) -> tuple:
         return (0, ipaddress.ip_address(report.ip))
     except ValueError:
         return (1, report.ip)
+
+
+# ── versions and CVEs ───────────────────────────────────────────────────
+def read_versions(reports: list[HostReport], config: Config, *, should_continue: Callable[[], bool],
+                  progress: Callable[[str], None]) -> list[str]:
+    """nmap -sV on each host's open ports → exact versions → their CVEs from the offline list. Returns notes
+    about what could not be done (no nmap, no CVE list, time limit)."""
+    hosts = [r for r in reports if r.services]
+    if not hosts:
+        return []
+    if not nmap_versions.available():
+        return ["Versions come from what services announce: nmap is not installed, so no CVE matching was done."]
+    notes: list[str] = []
+    progress(f"Reading software versions with nmap on {len(hosts)} host{'s' if len(hosts) != 1 else ''}…")
+    started = time.monotonic()
+    read = 0
+    pool = ThreadPoolExecutor(max_workers=min(NMAP_HOSTS_AT_ONCE, len(hosts)))
+    try:
+        futures = {pool.submit(nmap_versions.detect, r.ip, [s.port for s in r.services],
+                               NMAP_HOST_TIMEOUT_SECONDS): r for r in hosts}
+        for fut in as_completed(futures, timeout=VERSIONS_TIME_LIMIT_SECONDS):
+            if not should_continue():
+                break
+            report, detected = futures[fut], fut.result()
+            read += 1
+            progress(f"Reading software versions with nmap… {read}/{len(hosts)}")
+            for service in report.services:
+                found = detected.get(service.port)
+                if found is None:
+                    continue
+                service.product = found.label or service.product
+                hits = {h.id: h for cpe in found.cpes for h in cve_db.lookup(config.cve_db_path, cpe)}
+                service.cves = sorted(hits.values(), key=lambda h: (-(h.score or 0), h.id))
+    except TimeoutError:
+        pass                                   # the hosts not read keep their announced versions
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
+    if read < len(hosts):
+        notes.append(f"Versions read by nmap on {read} of {len(hosts)} hosts "
+                     f"(stopped or {VERSIONS_TIME_LIMIT_SECONDS} s limit); the rest show what they announce.")
+    if cve_db.status(config.cve_db_path) is None:
+        notes.append("No CVE list yet, so versions were not matched to known vulnerabilities: an admin runs "
+                     "`python -m src.servers.cve_db --update` once (about 400 MB from nvd.nist.gov).")
+    return notes
 
 
 # ── the check ────────────────────────────────────────────────────────────
@@ -478,16 +556,21 @@ def check(
         finally:
             pool.shutdown(wait=False, cancel_futures=True)
 
+    notes: list[str] = []
+    if not stopped and not timed_out:
+        notes = read_versions(outside, config, should_continue=should_continue, progress=progress)
+
     for r in reports:
         r.services.sort(key=lambda s: s.port)
         if r.ip in mine:                                       # this PC inside a network check: inside view
             r.local = local_view()
             r.local.api_port = config.api_port
             r.name = r.name or socket.gethostname()
-    findings = [f for r in reports for f in (local_findings(r.local, r.ip) if r.local else host_findings(r))]
+    findings = [f for r in reports
+                for f in (local_findings(r.local, r.ip) if r.local else host_findings(r) + vulnerability_findings(r))]
     reports.sort(key=_host_key)
     return SecurityResult(label, reports, sorted(findings, key=_order), round(time.monotonic() - started, 1),
-                          stopped, timed_out)
+                          stopped, timed_out, notes)
 
 
 # ── presentation ─────────────────────────────────────────────────────────
@@ -522,6 +605,20 @@ def grouped_rows(result: SecurityResult) -> list[list[str]]:
 def service_rows(result: SecurityResult) -> list[list[str]]:
     return [[r.ip, r.name or "—", str(s.port), s.name, s.product or "—", s.tls or "—"]
             for r in result.hosts if not r.local for s in r.services]
+
+
+def cve_summary_rows(result: SecurityResult) -> list[list[str]]:
+    """One row per service with known CVEs (how many, and the worst), worst services first."""
+    found = [(r, s) for r in result.hosts for s in r.services if s.cves]
+    found.sort(key=lambda rs: (-(rs[1].cves[0].score or 0), -len(rs[1].cves)))
+    return [[RISK_LABEL[cve_risk(s.cves[0].score)], r.ip, str(s.port), s.product, str(len(s.cves)),
+             f"{s.cves[0].id} ({s.cves[0].score if s.cves[0].score is not None else '?'})"] for r, s in found]
+
+
+def cve_rows(result: SecurityResult) -> list[list[str]]:
+    """Every CVE of every service (the Excel sheet)."""
+    return [[r.ip, str(s.port), s.product, h.id, "" if h.score is None else str(h.score), h.severity, h.summary]
+            for r in result.hosts for s in r.services for h in s.cves]
 
 
 # names for common Windows ports that need no finding (display only)
@@ -559,7 +656,8 @@ def summary(result: SecurityResult) -> str:
 
 
 NOTES = ("Read-only check: nothing was changed. From outside, a closed port can mean 'nothing runs' or 'a firewall "
-         "blocks it'; versions come from what services announce and may be hidden. This PC is checked from the inside "
+         "blocks it'; versions come from nmap or what services announce and may be hidden; a CVE matched by version "
+         "is possible, not proven (OS vendors patch without changing the number). This PC is checked from the inside "
          "(scanning its own address would bypass Windows Firewall). The fixes are advice — run them yourself.")
 
 
@@ -577,6 +675,13 @@ def markdown(result: SecurityResult) -> str:
     else:
         parts.append("### Findings\n" + _table(["Risk", "Host", "Port", "Finding", "Why it matters", "What to do"],
                                                 finding_rows(result)))
+    vulns = cve_summary_rows(result)
+    if vulns:
+        shown = vulns[:MAX_CVE_ROWS]
+        more = f" — {len(vulns) - len(shown)} more and every CVE in the Excel file" if len(vulns) > len(shown) else \
+            " — every CVE is in the Excel file"
+        parts.append(f"### Known vulnerabilities (possible, matched by software version{more})\n" + _table(
+            ["Risk", "Host", "Port", "Software", "CVEs", "Worst (CVSS)"], shown))
     services = service_rows(result)
     if services and len(services) <= MAX_SERVICE_ROWS:
         parts.append("### Open services\n" + _table(["Host", "Name", "Port", "Service", "Version / product",
@@ -599,6 +704,7 @@ def markdown(result: SecurityResult) -> str:
                      "not reachable from other devices.")
         lines += [f"_{note}_" for note in view.notes]
         parts.append("\n\n".join(lines))
+    parts += [f"_{note}_" for note in result.notes]
     parts.append(f"_{NOTES}_")
     return "\n\n".join(parts)
 
@@ -608,12 +714,16 @@ def xlsx_bytes(result: SecurityResult) -> bytes:
 
     from openpyxl import Workbook
     from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
 
     wb = Workbook()
     sheets = [("Findings", ["Risk", "Host", "Port", "Finding", "Why it matters", "What to do"], finding_rows(result),
                (10, 16, 7, 40, 50, 60)),
               ("Open services", ["Host", "Name", "Port", "Service", "Version / product", "Certificate"],
                service_rows(result), (16, 24, 7, 20, 40, 40))]
+    if any(s.cves for r in result.hosts for s in r.services):
+        sheets.append(("Vulnerabilities", ["Host", "Port", "Software", "CVE", "CVSS", "Severity", "Summary"],
+                       cve_rows(result), (16, 7, 32, 18, 7, 10, 90)))
     for r in result.hosts:
         if r.local:
             sheets.append(("This PC", ["Address", "Port", "Program", "Reachable from network", "Known as"],
@@ -626,8 +736,8 @@ def xlsx_bytes(result: SecurityResult) -> bytes:
             ws.append([re.sub(r"^[🔴🟠🟡⚪] ", "", c) for c in row])
         for cell in ws[1]:
             cell.font = Font(bold=True)
-        for col, width in zip("ABCDEF", widths):
-            ws.column_dimensions[col].width = width
+        for col, width in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(col)].width = width
         ws.freeze_panes = "A2"
     buf = BytesIO()
     wb.save(buf)

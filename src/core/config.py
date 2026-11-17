@@ -10,6 +10,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+# the offline CVE list (src/servers/cve_db.py): built by an admin command, ignored by git like the rest of data/
+DEFAULT_CVE_DB = ROOT / "data" / "cve" / "nvd.sqlite"
 # used when JWT_SECRET is unset; the API refuses to start with it (src.core.auth.check_secret)
 DEV_JWT_SECRET = "change-me-multeagent-dev-secret-32b+"
 load_dotenv(ROOT / ".env")
@@ -112,6 +114,8 @@ class Config:
     verify_answers: bool = True
     # security_check tool (src/security_scan.py): ports, services, certificates, this PC's firewall — admins only
     security_scan_enabled: bool = True
+    # the offline CVE list security_check matches software versions against (src/servers/cve_db.py)
+    cve_db_path: Path = DEFAULT_CVE_DB
     # SDXL lives in system RAM (CPU offload): free it after this many idle minutes (0 = keep loaded)
     image_idle_unload_minutes: int = 10
     # SDXL runs in its own process (python -m src.images.image_service) so the API never holds the model
@@ -259,6 +263,7 @@ class Config:
             brain_scheduler_minutes=max(5, int(os.getenv("BRAIN_SCHEDULER_MINUTES", "30"))),
             brain_fresh_hours=max(0.1, float(os.getenv("BRAIN_FRESH_HOURS", "24"))),
             verify_answers=os.getenv("VERIFY_ANSWERS", "true").strip().lower() not in {"0", "false", "no", "off"},
+            cve_db_path=Path(os.getenv("CVE_DB", str(DEFAULT_CVE_DB))),
             security_scan_enabled=os.getenv("SECURITY_SCAN_ENABLED", "true").strip().lower()
             not in {"0", "false", "no", "off"},
             image_idle_unload_minutes=max(0, int(os.getenv("IMAGE_IDLE_UNLOAD_MINUTES", "10"))),

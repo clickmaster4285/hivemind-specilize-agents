@@ -7,6 +7,7 @@ import {
   IconSettings,
 } from "@/components/app/NavIcons";
 import type { HistoryApi } from "@/hooks/useHistory";
+import { searchChats, type ChatSearchHit } from "@/lib/api";
 import { DEVICES_PATH, LIBRARY_PATH, PLUGINS_PATH, PROJECTS_PATH, SETTINGS_PATH } from "@/lib/routes";
 import { groupThreads, threadDate, type ThreadView } from "@/lib/threadGroups";
 import type { ChatThread } from "@/lib/threads";
@@ -57,6 +58,19 @@ const navItem = (on: boolean, collapsed: boolean) =>
 const filterRow = (on: boolean) =>
   `flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[0.8rem] hover:bg-hover ${on ? "text-text" : "text-muted"}`;
 
+
+/** Searching every message waits until typing pauses this long, and needs this many letters (one letter finds
+ *  everything; the server ignores shorter words too — MIN_TERM_CHARS in src/jobs/chat_search.py). */
+const SEARCH_PAUSE_MS = 300;
+const SEARCH_MIN_CHARS = 2;
+
+/** A search hit as a chat the feed can open (its messages come from the hit's own list of ids). */
+function hitThread(hit: ChatSearchHit): ChatThread {
+  return {
+    id: hit.thread_id, title: hit.title, jobIds: hit.job_ids, projectId: hit.project_id, pinned: hit.pinned,
+    deletedAt: null, updatedAt: hit.updated_at,
+  };
+}
 
 function Dots() {
   return (
@@ -231,10 +245,34 @@ function ThreadList({
   const [card, setCard] = useState<{ thread: ChatThread; x: number; y: number } | null>(null);
   const hoverTimer = useRef<number | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
+  // matches inside messages (questions and answers of every chat), for the text they were searched with
+  const [found, setFound] = useState<{ q: string; hits: ChatSearchHit[] } | null>(null);
+  const q = history.filter.trim();
+  const searchable = searching && q.length >= SEARCH_MIN_CHARS;
 
   useEffect(() => {
     if (searching) searchRef.current?.focus();
   }, [searching]);
+
+  useEffect(() => {
+    if (!searchable) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      searchChats(q).then(
+        (hits) => { if (!cancelled) setFound({ q, hits }); },
+        () => { if (!cancelled) setFound({ q, hits: [] }); },
+      );
+    }, SEARCH_PAUSE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchable, q]);
+
+  // a chat already listed by its title is not repeated under "In messages"
+  const listed = new Set(history.filteredThreads.map((t) => t.id));
+  const messageHits = searchable && found?.q === q ? found.hits.filter((h) => !listed.has(h.thread_id)) : [];
+  const searchingNow = searchable && found?.q !== q;
 
   function hoverStart(thread: ChatThread, el: HTMLElement) {
     if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
@@ -332,9 +370,9 @@ function ThreadList({
         </div>
       ) : null}
       <ul className={list} onScroll={hoverEnd}>
-        {groups.length === 0 ? (
+        {groups.length === 0 && !messageHits.length ? (
           <li className="px-[0.4rem] py-[0.6rem] text-[0.8rem] text-muted">
-            {history.filter || view.pinnedOnly ? "No chats match." : "No chats yet. Start a new one."}
+            {searchingNow ? "Searching messages…" : history.filter || view.pinnedOnly ? "No chats match." : "No chats yet. Start a new one."}
           </li>
         ) : (
           groups.map((group) => (
@@ -377,6 +415,22 @@ function ThreadList({
             </li>
           ))
         )}
+        {messageHits.length ? (
+          <li>
+            <h3 className={groupLabel}>In messages</h3>
+            <ul className="m-0 flex list-none flex-col gap-[0.1rem] p-0">
+              {messageHits.map((hit) => (
+                <li key={hit.thread_id}>
+                  <button type="button" className={`${navBase} block px-[0.55rem] py-[0.4rem]`}
+                          onClick={() => onOpen(history.threads.find((t) => t.id === hit.thread_id) || hitThread(hit))}>
+                    <span className={navMainTitle}>{hit.title}</span>
+                    <span className="mt-[0.1rem] line-clamp-2 block text-[0.72rem] text-muted">{hit.snippet}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ) : null}
       </ul>
       {card ? (
         <div

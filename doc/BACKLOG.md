@@ -41,8 +41,8 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
 | [L24](#l24-ui-like-the-big-chat-apps--planned-2026-11-17-issues_log-o86) | UI like the big chat apps | U1–U8 built; connectors later | user's screenshots of DeepSeek, ChatGPT, Claude |
-| [L25](#l25-vulnerability-finders--explained-2026-11-17-issues_log-o87) | Vulnerability finders (nmap + CVEs, Nuclei, Trivy, OpenVAS) | explained, user to decide | [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md) |
-| [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | planned, user to decide | NousResearch hermes-agent (MIT) |
+| [L25](#l25-vulnerability-finders--explained-2026-11-17-issues_log-o87) | Vulnerability finders (nmap + CVEs, Nuclei, Trivy, OpenVAS) | V1 built; V2–V4 later | [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md) |
+| [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H3 built; H1, H2 later | NousResearch hermes-agent (MIT) |
 
 ---
 
@@ -685,7 +685,7 @@ all four proposed sets plus ideas from skills.sh, Anthropic's skills / knowledge
 The user's ask: understand each tool first, then a plan, then decide, then build one by one. What each does, its
 limits, needs and the proposed order: [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md).
 
-- [ ] V1 nmap -sV + offline NVD CVE list in `security_check` (and better device names in `network_scan`)
+- [x] V1 nmap -sV + offline NVD CVE list in `security_check` — built 2026-11-17 ([§11](SECURITY_TOOLS_DECISION.md)); next: nmap names in `network_scan`
 - [ ] V3 Trivy: Docker images on this PC; then Linux servers via an SBOM read over SSH (accuracy measured first)
 - [ ] V2 Nuclei with a reviewed read-only template allow-list
 - [ ] V4 OpenVAS in Docker — only if V1–V3 leave gaps
@@ -701,7 +701,7 @@ Telegram / email gateway). Plan, not built:
 | H2 | Skills learned from tasks | writes a skill after a complex task and refines it | 46 built-in + user skills (SKILL.md) | after a job with several successful tool steps, a "Save as skill" action: the model drafts a SKILL.md (name, when to use, steps) from the job's tool trace and opens the skill editor filled in; the user edits and saves — nothing saved on its own |
 | H3 | Search across all chats | full-text search + summaries over past sessions | sidebar search over the titles of the latest 100 jobs; chat recall (brain.chat_passages) for chats since O63 | `GET /api/search?q=`: Postgres full-text over questions and answers (all chats, owner only) plus the semantic match from chat_passages; results with a snippet open the chat at that message; also fixes "older chats than the latest 100 don't open" |
 
-- [ ] H3 search all chats (smallest, fixes a known limit)
+- [x] H3 search all chats — built 2026-11-17 (word search; the semantic match from chat_passages later)
 - [ ] H1 scheduled tasks
 - [ ] H2 skills from tasks
 

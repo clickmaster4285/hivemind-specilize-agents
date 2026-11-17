@@ -12,6 +12,7 @@ from src.core.auth import get_current_user, get_db
 from src.core.config import Config
 from src.core.models_db import User
 from src.jobs import history_store
+from src.jobs.chat_search import DEFAULT_RESULTS, search_chats
 from src.jobs.chat_memory import compact_chat, memory_status, summarize_chat
 from src.llm.llm_client import LLMError
 from web.schemas import (
@@ -32,6 +33,17 @@ def get_history(
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     return history_store.list_history(db, user.id)
+
+
+@router.get("/api/search")
+def search_endpoint(
+    q: str,
+    limit: int = DEFAULT_RESULTS,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[dict[str, Any]]:
+    """Search the caller's own chats, questions and answers (BACKLOG L26 H3; admins too see only their own)."""
+    return search_chats(db, user.id, q, limit)
 
 
 @router.post("/api/history/import")

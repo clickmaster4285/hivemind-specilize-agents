@@ -494,6 +494,24 @@ export async function listLibrary(): Promise<LibraryFile[]> {
   return request("/api/library");
 }
 
+/** One chat found by a search of every message (GET /api/search, BACKLOG L26 H3): its newest matching message,
+ *  a snippet around the hit, and all its message ids, so a chat older than the loaded list still opens. */
+export type ChatSearchHit = {
+  thread_id: string;
+  title: string;
+  project_id: string | null;
+  pinned: boolean;
+  job_ids: string[];
+  job_id: string;
+  snippet: string;
+  in: "question" | "answer";
+  updated_at: string;
+};
+
+export async function searchChats(q: string): Promise<ChatSearchHit[]> {
+  return request(`/api/search?q=${encodeURIComponent(q)}`);
+}
+
 /** Record the user's 👍/👎 (and optional note) on one answer. */
 export async function sendFeedback(jobId: string, rating: "up" | "down", note?: string): Promise<void> {
   await request("/api/feedback", { method: "POST", body: JSON.stringify({ job_id: jobId, rating, note }) });

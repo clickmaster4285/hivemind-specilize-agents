@@ -363,3 +363,29 @@ checks, but it is heavy, slow to set up, has its own UI and user accounts, and i
 Questions before building: (a) start with V1? (b) may the CVE list download from nvd.nist.gov daily? (c) for V3 on
 servers, SBOM over SSH only (read-only), or may Trivy be copied to a server? (d) who sees results — admins only, as
 today?
+
+---
+
+## 11. Built (2026-11-17) — V1: exact versions and known CVEs in `security_check`
+
+The user's choice (2026-11-17): "start with V1 nmap".
+
+- **Versions** ([nmap_versions.py](../src/servers/nmap_versions.py)): after the port check, nmap -sV reads each host's
+  open ports — `nmap -sT -sV --version-intensity 7 -Pn -n --host-timeout 60s -p <open ports> -oX - <ip>`, a fixed
+  list, no NSE scripts, no root, 8 hosts at once, 180 s for this step. Only software CPEs (`cpe:/a:`) are kept: an OS
+  CPE without a version would match every kernel CVE.
+- **The CVE list** ([cve_db.py](../src/servers/cve_db.py)): the NVD JSON 2.0 feeds in one SQLite file
+  (`CVE_DB`, default `data/cve/nvd.sqlite`, not in git). `python -m src.servers.cve_db --update`: every year's
+  feed the first time (~400 MB), then only the "modified" feed (8 days of changes); `--status` shows the date.
+  Rejected CVEs are removed. Nothing leaves the PC during a check.
+- **Matching**: a CVE's software criteria give an exact version (2.3's update field joined: `8.9` + `p1`) or a range
+  (start/end, included/excluded); versions compare part by part (numbers as numbers). A software CPE with no
+  version (`cpe:/a:postgresql:postgresql`) is never guessed.
+- **Report**: "Known vulnerabilities (possible, matched by software version)" — per service the number of CVEs and
+  the worst; a finding rated by the worst CVSS (7.0+ high, 4.0+ medium, else low) whose fix says OS packages may
+  be patched without a new number; the Excel file gets a Vulnerabilities sheet with every CVE. Without nmap or the
+  list, the answer says so and the check works as before.
+- **Checked**: 8 offline tests (sample nmap XML, a small feed); the real modified feed (10,866 CVEs, 3.8 s, 4 MB);
+  nmap on this PC's own ports (Uvicorn, PostgreSQL — no version, so no CVEs).
+
+**Still to do:** the user's first `--update` and a check on the LAN; nmap's names for `network_scan`'s devices.
