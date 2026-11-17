@@ -3,10 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  IconFolder, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch, IconSettings,
+  IconFilter, IconFolder, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch, IconSettings,
 } from "@/components/app/NavIcons";
 import type { HistoryApi } from "@/hooks/useHistory";
-import { groupThreads, threadDate } from "@/lib/threadGroups";
+import { groupThreads, threadDate, type ThreadView } from "@/lib/threadGroups";
 import type { ChatThread } from "@/lib/threads";
 import { brandMark, btn, iconBtn } from "@/lib/ui";
 
@@ -42,8 +42,11 @@ const navMainSub = "block text-[0.72rem] text-muted mt-[0.15rem]";
 const menuRow = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[0.8rem] text-text hover:bg-hover";
 const groupLabel = "px-[0.55rem] pb-[0.15rem] pt-[0.6rem] text-[0.7rem] font-medium text-muted";
 // a nav entry (New chat, Search, Projects, Plugins): icon + label, or the icon alone on the collapsed rail
+const navOn = "!bg-panel-2 text-text";
 const navItem = (on: boolean, collapsed: boolean) =>
-  `${navBase} flex items-center gap-[0.6rem] py-[0.45rem] text-[0.86rem] ${collapsed ? "justify-center px-0" : "px-[0.6rem]"} ${on ? navActive : ""}`;
+  `${navBase} flex items-center gap-[0.6rem] py-[0.45rem] text-[0.86rem] ${collapsed ? "justify-center px-0" : "px-[0.6rem]"} ${on ? navOn : ""}`;
+const filterRow = (on: boolean) =>
+  `flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[0.8rem] hover:bg-hover ${on ? "text-text" : "text-muted"}`;
 
 /** The hover card waits this long, so moving the pointer down the list doesn't flash a card on every row. */
 const HOVER_CARD_DELAY_MS = 450;
@@ -78,8 +81,6 @@ export default function ChatSidebar({
   onSignOut,
 }: Props) {
   const [tab, setTab] = useState<"history" | "projects">("history");
-  const [searching, setSearching] = useState(false);
-  const [focusSearch, setFocusSearch] = useState(0);
   const expandThen = (fn: () => void) => () => {
     if (collapsed) onToggleCollapsed();
     fn();
@@ -118,19 +119,6 @@ export default function ChatSidebar({
         </button>
         <button
           type="button"
-          className={navItem(searching, collapsed)}
-          title="Search chats"
-          onClick={expandThen(() => {
-            setTab("history");
-            setSearching(true);
-            setFocusSearch((n) => n + 1);
-          })}
-        >
-          <IconSearch />
-          {collapsed ? null : <span>Search</span>}
-        </button>
-        <button
-          type="button"
           className={navItem(tab === "projects" && !collapsed, collapsed)}
           title="Projects"
           onClick={expandThen(() => setTab(tab === "projects" && !collapsed ? "history" : "projects"))}
@@ -138,7 +126,7 @@ export default function ChatSidebar({
           <IconFolder />
           {collapsed ? null : <span>Projects</span>}
         </button>
-        <button type="button" className={navItem(pluginsOpen, collapsed)} title="Plugins" onClick={onOpenPlugins}>
+        <button type="button" className={navItem(pluginsOpen && tab !== "projects", collapsed)} title="Plugins" onClick={onOpenPlugins}>
           <IconPlug />
           {collapsed ? null : <span>Plugins</span>}
         </button>
@@ -160,17 +148,7 @@ export default function ChatSidebar({
           }}
         />
       ) : (
-        <ThreadList
-          history={history}
-          searching={searching}
-          focusSearch={focusSearch}
-          onCloseSearch={() => {
-            setSearching(false);
-            history.setFilter("");
-          }}
-          onOpen={onOpenThread}
-          onDelete={onDeleteThread}
-        />
+        <ThreadList history={history} onOpen={onOpenThread} onDelete={onDeleteThread} />
       )}
 
       <AccountMenu
@@ -267,7 +245,7 @@ function ProjectList({
         <li>
           <button
             type="button"
-            className={`${navBase} px-[0.65rem] py-[0.55rem] ${history.projectId ? "" : navActive}`}
+            className={`${navBase} px-[0.65rem] py-[0.45rem] text-[0.86rem] ${history.projectId ? "" : navOn}`}
             onClick={() => onSelect(null)}
           >
             All chats
@@ -300,19 +278,21 @@ function ProjectList({
 
 function ThreadList({
   history,
-  searching,
-  focusSearch,
-  onCloseSearch,
   onOpen,
   onDelete,
 }: {
   history: HistoryApi;
-  searching: boolean;
-  focusSearch: number;
-  onCloseSearch: () => void;
   onOpen: (thread: ChatThread) => void;
   onDelete: (thread: ChatThread) => void;
 }) {
+  // search and the filter menu sit in the list's own header, like Claude's Recents (the user's ask, 2026-11-17)
+  const [searching, setSearching] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [view, setView] = useState<ThreadView>({ group: "date", sort: "recent", pinnedOnly: false });
+  const closeSearch = () => {
+    setSearching(false);
+    history.setFilter("");
+  };
   // the per-chat ⋮ menu — one at a time, positioned from the button so the scrolling list can't clip it
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const menuThread = history.filteredThreads.find((t) => t.id === menu?.id) || null;
@@ -323,7 +303,7 @@ function ThreadList({
 
   useEffect(() => {
     if (searching) searchRef.current?.focus();
-  }, [searching, focusSearch]);
+  }, [searching]);
 
   function hoverStart(thread: ChatThread, el: HTMLElement) {
     if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
@@ -336,18 +316,73 @@ function ThreadList({
     setCard(null);
   }
 
-  const groups = groupThreads(history.filteredThreads);
+  const groups = groupThreads(history.filteredThreads, view);
+  const filtered = view.group !== "date" || view.sort !== "recent" || view.pinnedOnly;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-[0.35rem] overflow-hidden">
-      {history.activeProject ? (
-        <div className={sectionHead}>
-          <h2 className={sectionTitle}>{history.activeProject.name}</h2>
-          <button type="button" className={btn("ghost", "sm")} onClick={() => history.selectProject(null)}>
-            All chats
+      <div className={`${sectionHead} relative px-[0.4rem] pt-[0.4rem]`}>
+        <h2 className="m-0 min-w-0 truncate text-[0.75rem] font-medium text-muted">
+          {history.activeProject ? history.activeProject.name : "Recents"}
+        </h2>
+        <span className="flex shrink-0 items-center gap-0.5">
+          {history.activeProject ? (
+            <button type="button" className={btn("ghost", "sm")} onClick={() => history.selectProject(null)}>
+              All chats
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={searching ? iconBtn("on") : iconBtn()}
+            title="Search chats"
+            aria-label="Search chats"
+            aria-pressed={searching}
+            onClick={() => (searching ? closeSearch() : setSearching(true))}
+          >
+            <IconSearch />
           </button>
-        </div>
-      ) : null}
+          <button
+            type="button"
+            className={filterOpen || filtered ? iconBtn("on") : iconBtn()}
+            title="Filter and sort"
+            aria-label="Filter and sort"
+            aria-haspopup="menu"
+            aria-expanded={filterOpen}
+            onClick={() => setFilterOpen((v) => !v)}
+          >
+            <IconFilter />
+          </button>
+        </span>
+        {filterOpen ? (
+          <>
+            <button type="button" className="fixed inset-0 z-40 cursor-default" aria-hidden tabIndex={-1} onClick={() => setFilterOpen(false)} />
+            <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-56 rounded-xl border border-line bg-panel p-1.5 shadow-shadow">
+              <p className="px-2.5 pb-0.5 pt-1 text-[0.66rem] uppercase tracking-wide text-muted">Group by</p>
+              {(["date", "none"] as const).map((g) => (
+                <button key={g} type="button" role="menuitemradio" aria-checked={view.group === g}
+                        className={filterRow(view.group === g)} onClick={() => setView({ ...view, group: g })}>
+                  {g === "date" ? "Date" : "None"}
+                  {view.group === g ? <span aria-hidden>✓</span> : null}
+                </button>
+              ))}
+              <p className="px-2.5 pb-0.5 pt-2 text-[0.66rem] uppercase tracking-wide text-muted">Sort by</p>
+              {(["recent", "title"] as const).map((o) => (
+                <button key={o} type="button" role="menuitemradio" aria-checked={view.sort === o}
+                        className={filterRow(view.sort === o)} onClick={() => setView({ ...view, sort: o })}>
+                  {o === "recent" ? "Last activity" : "Title"}
+                  {view.sort === o ? <span aria-hidden>✓</span> : null}
+                </button>
+              ))}
+              <div className="my-1 border-t border-line" />
+              <button type="button" role="menuitemcheckbox" aria-checked={view.pinnedOnly}
+                      className={filterRow(view.pinnedOnly)} onClick={() => setView({ ...view, pinnedOnly: !view.pinnedOnly })}>
+                Pinned only
+                {view.pinnedOnly ? <span aria-hidden>✓</span> : null}
+              </button>
+            </div>
+          </>
+        ) : null}
+      </div>
       {searching ? (
         <div className="flex items-center gap-1">
           <input
@@ -357,10 +392,10 @@ function ThreadList({
             value={history.filter}
             onChange={(e) => history.setFilter(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") onCloseSearch();
+              if (e.key === "Escape") closeSearch();
             }}
           />
-          <button type="button" className={iconBtn()} title="Close search" aria-label="Close search" onClick={onCloseSearch}>
+          <button type="button" className={iconBtn()} title="Close search" aria-label="Close search" onClick={closeSearch}>
             ×
           </button>
         </div>
@@ -368,7 +403,7 @@ function ThreadList({
       <ul className={list} onScroll={hoverEnd}>
         {groups.length === 0 ? (
           <li className="px-[0.4rem] py-[0.6rem] text-[0.8rem] text-muted">
-            {history.filter ? "No chats match." : "No chats yet. Start a new one."}
+            {history.filter || view.pinnedOnly ? "No chats match." : "No chats yet. Start a new one."}
           </li>
         ) : (
           groups.map((group) => (

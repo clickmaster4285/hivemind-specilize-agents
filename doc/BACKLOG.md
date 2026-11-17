@@ -666,6 +666,8 @@ all four proposed sets plus ideas from skills.sh, Anthropic's skills / knowledge
 
 - [x] U1–U4 — built 2026-11-17 (waiting on the user's look)
 - [x] Plugins placeholder page (/plugins) — built 2026-11-17
+- [x] Follow-up 2026-11-17 (user's screenshots): search + filter menu in the chat list header; /plugins = All · Connectors ·
+      Skills (skills moved from Settings); Settings without Models and Skills; quieter nav highlight
 - [x] U8 — 29 new skills: ad-copy, social-post, landing-page-copy, product-description, lighthouse-fix-plan,
       accessibility-audit, docker-compose-writer, k8s-troubleshoot, security-review, backup-plan, summarize-document,
       translate, proposal-quote, job-description, contract-review, product-spec, deploy-checklist, threat-model,

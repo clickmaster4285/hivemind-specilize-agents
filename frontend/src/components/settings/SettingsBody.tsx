@@ -3,14 +3,11 @@
 import { useState } from "react";
 
 import ServersSection from "@/components/settings/ServersSection";
-import SkillsSection from "@/components/settings/skills/SkillsSection";
 import SpecialistModal from "@/components/settings/SpecialistModal";
 import UsageSection from "@/components/settings/UsageSection";
 import UsersSection from "@/components/settings/users/UsersSection";
 import { useServers } from "@/hooks/useServers";
 import { useUsers } from "@/hooks/useUsers";
-import type { ModelsApi } from "@/hooks/useModels";
-import type { SkillsApi } from "@/hooks/useSkills";
 import type { SpecialistsApi } from "@/hooks/useSpecialists";
 import type { AuthUser, Specialist } from "@/lib/types";
 import { btn } from "@/lib/ui";
@@ -21,21 +18,11 @@ const heading = "text-base font-semibold [font-family:var(--font-display)]";
 const hint = "text-xs leading-relaxed text-muted";
 const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-line bg-panel-2 px-3 py-2.5";
 
-type TabId = "users" | "servers" | "usage" | "models" | "agents" | "skills";
+type TabId = "users" | "servers" | "usage" | "agents";
 
-/** The Settings content, organised into tabs: Users and Devices (admins only), Usage, Models, Agents, Skills.
- *  One section shows at a time; the shell provides the navbar + sidebar. */
-export default function SettingsBody({
-  user,
-  specialists,
-  models,
-  skills,
-}: {
-  user: AuthUser;
-  specialists: SpecialistsApi;
-  models: ModelsApi;
-  skills: SkillsApi;
-}) {
+/** The Settings content, organised into tabs: Users (admins), Devices, Usage, Agents. Skills live on the Plugins
+ *  page. One section shows at a time; the shell provides the navbar + sidebar. */
+export default function SettingsBody({ user, specialists }: { user: AuthUser; specialists: SpecialistsApi }) {
   const isAdmin = user.role === "admin";
   // the modules an admin gave this user (admins have all): each one is a tab
   const has = (module: string) => Boolean(user.modules?.includes(module));
@@ -45,19 +32,17 @@ export default function SettingsBody({
   // undefined = modal closed, null = new specialist
   const [editing, setEditing] = useState<Specialist | null | undefined>(undefined);
 
-  // Admins get Users; Devices, Usage, Skills follow the user's modules; everyone gets Models, Agents.
+  // Admins get Users; Devices and Usage follow the user's modules; everyone gets Agents. Skills moved to the
+  // Plugins page and Models was dropped (one model, picked per message) — the user's ask, 2026-11-17.
   // The first visible tab is the default.
   const tabs: { id: TabId; label: string }[] = [
     ...(isAdmin ? [{ id: "users" as const, label: "Users" }] : []),
     ...(canDevices ? [{ id: "servers" as const, label: "Devices" }] : []),
     ...(has("usage") ? [{ id: "usage" as const, label: "Usage" }] : []),
-    { id: "models", label: "Models" },
     { id: "agents", label: "Agents" },
-    ...(has("skills") ? [{ id: "skills" as const, label: "Skills" }] : []),
   ];
   const [tab, setTab] = useState<TabId>(tabs[0].id);
 
-  const liveModels = models.models.filter((m) => m.enabled && m.available !== false);
 
   return (
     <div className="mx-auto w-full max-w-4xl p-6">
@@ -98,34 +83,6 @@ export default function SettingsBody({
       {tab === "usage" && has("usage") ? (
         <section className={panel}>
           <UsageSection />
-        </section>
-      ) : null}
-
-      {/* Models */}
-      {tab === "models" ? (
-        <section className={panel}>
-          <div className="flex items-center justify-between gap-3">
-            <h4 className={heading}>Models</h4>
-            <button type="button" className={btn("ghost", "sm")} onClick={() => void models.refresh(true)}>
-              Sync
-            </button>
-          </div>
-          <ul className="flex flex-col gap-2">
-            {liveModels.map((m) => (
-              <li key={m.name} className={rowCard}>
-                <div className="min-w-0">
-                  <strong className="block truncate text-sm">{m.name}</strong>
-                  <small className="text-xs text-muted">
-                    {m.role}
-                    {m.vision ? " · vision" : ""}
-                    {m.image_gen ? " · image generation" : ""}
-                  </small>
-                </div>
-              </li>
-            ))}
-            {liveModels.length === 0 ? <li className={hint}>No models available yet.</li> : null}
-          </ul>
-          <p className={hint}>The model route is chosen automatically for each message.</p>
         </section>
       ) : null}
 
@@ -174,13 +131,6 @@ export default function SettingsBody({
               Restore defaults
             </button>
           ) : null}
-        </section>
-      ) : null}
-
-      {/* Skills (BACKLOG L14) */}
-      {tab === "skills" && has("skills") ? (
-        <section className={panel}>
-          <SkillsSection skills={skills} specialists={specialists} />
         </section>
       ) : null}
 

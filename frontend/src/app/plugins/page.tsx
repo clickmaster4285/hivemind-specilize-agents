@@ -1,8 +1,11 @@
 "use client";
 
-import { useApp } from "@/components/app/AppProvider";
+import { useState } from "react";
 
-/** Connectors planned for later (the user's choice, 2026-11-17: a placeholder page now, real connectors later). */
+import { useApp } from "@/components/app/AppProvider";
+import SkillsSection from "@/components/settings/skills/SkillsSection";
+
+/** Connectors planned for later (the user's choice, 2026-11-17: a placeholder now, real connectors later). */
 const PLANNED = [
   { name: "Gmail", about: "Read and draft email" },
   { name: "Google Drive", about: "Find and read your documents" },
@@ -12,30 +15,75 @@ const PLANNED = [
   { name: "Google Search Console", about: "Your site's search performance" },
 ];
 
-/** /plugins (BACKLOG L24 U5): where connections to the user's other tools will live. A placeholder for now. */
+type Tab = "all" | "connectors" | "skills";
+
+const tabBtn = (on: boolean) =>
+  `rounded-lg px-3 py-1.5 text-[0.85rem] ${on ? "bg-panel-2 text-text" : "text-muted hover:text-text"}`;
+
+/** /plugins (BACKLOG L24 U5): connectors and skills in one place, like Claude's Plugins — All · Connectors ·
+ *  Skills. Skills moved here from Settings (the user's ask, 2026-11-17); connectors are planned, not built. */
 export default function PluginsPage() {
   const app = useApp();
-  if (!app.auth.user) return null; // the shell shows the login when signed out
-  return (
-    <div className="mx-auto w-full max-w-[880px] px-4 py-8">
-      <h1 className="m-0 text-[1.6rem] [font-family:var(--font-display)]">Plugins</h1>
-      <p className="mt-1 text-[0.9rem] text-muted">Connect MulteAgent to the tools you already use.</p>
+  const [tab, setTab] = useState<Tab>("all");
+  const [search, setSearch] = useState("");
+  const user = app.auth.user;
+  if (!user) return null; // the shell shows the login when signed out
+  const canSkills = Boolean(user.modules?.includes("skills"));
+  const needle = search.trim().toLowerCase();
+  const connectors = PLANNED.filter((p) => !needle || `${p.name} ${p.about}`.toLowerCase().includes(needle));
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "connectors", label: "Connectors" },
+    ...(canSkills ? [{ id: "skills" as const, label: "Skills" }] : []),
+  ];
 
-      <div className="mt-6 rounded-xl border border-dashed border-line bg-panel-2 px-4 py-3 text-[0.85rem] text-muted">
-        Connectors are not available yet. These are planned:
+  return (
+    <div className="mx-auto w-full max-w-[960px] px-4 py-8">
+      <h1 className="m-0 text-[1.6rem] [font-family:var(--font-display)]">Plugins</h1>
+      <p className="mt-1 text-[0.9rem] text-muted">What MulteAgent can connect to and the skills it can use.</p>
+
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <input
+          className="min-w-[14rem] flex-1 rounded-lg border border-line bg-panel-2 px-3 py-2 text-[0.88rem] text-text outline-none"
+          placeholder={tab === "skills" ? "Search in the skills list below" : "Search connectors"}
+          value={search}
+          disabled={tab === "skills"}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <div role="tablist" aria-label="Show" className="flex gap-1 rounded-xl border border-line p-1">
+          {tabs.map((t) => (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tabBtn(tab === t.id)}
+                    onClick={() => setTab(t.id)}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <ul className="m-0 mt-4 grid list-none grid-cols-2 gap-x-6 p-0 max-[700px]:grid-cols-1">
-        {PLANNED.map((p) => (
-          <li key={p.name} className="flex items-center justify-between gap-3 border-b border-line py-3">
-            <span className="min-w-0">
-              <span className="block text-[0.92rem] text-text">{p.name}</span>
-              <span className="block truncate text-[0.78rem] text-muted">{p.about}</span>
-            </span>
-            <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[0.68rem] text-muted">Planned</span>
-          </li>
-        ))}
-      </ul>
+      {tab !== "skills" ? (
+        <section className="mt-7">
+          <h2 className="m-0 text-[1rem] font-semibold">Connectors</h2>
+          <p className="mt-1 text-[0.82rem] text-muted">Not available yet — these are planned.</p>
+          <ul className="m-0 mt-3 grid list-none grid-cols-2 gap-x-6 p-0 max-[700px]:grid-cols-1">
+            {connectors.map((p) => (
+              <li key={p.name} className="flex items-center justify-between gap-3 border-b border-line py-3">
+                <span className="min-w-0">
+                  <span className="block text-[0.92rem] text-text">{p.name}</span>
+                  <span className="block truncate text-[0.78rem] text-muted">{p.about}</span>
+                </span>
+                <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[0.68rem] text-muted">Planned</span>
+              </li>
+            ))}
+            {connectors.length === 0 ? <li className="py-3 text-[0.82rem] text-muted">No connector matches.</li> : null}
+          </ul>
+        </section>
+      ) : null}
+
+      {tab !== "connectors" && canSkills ? (
+        <section className="mt-8 flex flex-col gap-3 rounded-xl border border-line bg-panel p-4">
+          <SkillsSection skills={app.skills} specialists={app.specialists} />
+        </section>
+      ) : null}
     </div>
   );
 }

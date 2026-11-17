@@ -21,16 +21,26 @@ function groupLabel(updated: Date, now: Date): string {
   return updated.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
-/** Pinned chats first, then by age; within a group the list keeps its order (newest first). */
-export function groupThreads(threads: ChatThread[], now: Date = new Date()): ThreadGroup[] {
+/** The sidebar's filter menu: group by date or not, sort by last activity or title, pinned chats only. */
+export type ThreadView = { group: "date" | "none"; sort: "recent" | "title"; pinnedOnly: boolean };
+export const DEFAULT_VIEW: ThreadView = { group: "date", sort: "recent", pinnedOnly: false };
+
+/** Pinned chats first, then by age (or one "All chats" group); within a group the chosen order. */
+export function groupThreads(threads: ChatThread[], view: ThreadView = DEFAULT_VIEW, now: Date = new Date()): ThreadGroup[] {
+  const shown = view.pinnedOnly ? threads.filter((t) => t.pinned) : threads;
+  const ordered = view.sort === "title"
+    ? [...shown].sort((a, b) => a.title.localeCompare(b.title))
+    : [...shown].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const groups: ThreadGroup[] = [];
   const add = (label: string, thread: ChatThread) => {
     const last = groups[groups.length - 1];
     if (last && last.label === label) last.threads.push(thread);
     else groups.push({ label, threads: [thread] });
   };
-  for (const t of threads.filter((t) => t.pinned)) add("Pinned", t);
-  for (const t of threads.filter((t) => !t.pinned)) add(groupLabel(new Date(t.updatedAt), now), t);
+  for (const t of ordered.filter((t) => t.pinned)) add("Pinned", t);
+  for (const t of ordered.filter((t) => !t.pinned)) {
+    add(view.group === "date" && view.sort === "recent" ? groupLabel(new Date(t.updatedAt), now) : "All chats", t);
+  }
   return groups;
 }
 
