@@ -6,7 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { exportAnswer, fetchJobAttachment, sendFeedback, type ExportFormat } from "@/lib/api";
 import { errorText, timeAgo } from "@/lib/chat";
 import { saveUrl } from "@/lib/download";
-import { usageLine } from "@/lib/format";
+import { fileSize, usageLine } from "@/lib/format";
 import type { AnswerOption, AnswerUsage, ChatImage, FeedItem } from "@/lib/types";
 import { msgAction } from "@/lib/ui";
 
@@ -601,7 +601,7 @@ export function ArtifactChips({ item, fallbackJobId }: ItemProps) {
           onClick={() => void download(art.filename)}
         >
           ↓ {art.filename}
-          {art.bytes ? ` · ${Math.max(1, Math.round(art.bytes / 1024))} KB` : ""}
+          {art.bytes ? ` · ${fileSize(art.bytes)}` : ""}
         </button>
       ))}
     </div>

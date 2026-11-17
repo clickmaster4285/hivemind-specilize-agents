@@ -54,3 +54,16 @@ export const IconFilter = () => (
     <path d="M4 6h16M7 12h10M10 18h4" />
   </Icon>
 );
+export const IconLibrary = () => (
+  <Icon>
+    <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+    <path d="M14 3v5h5M9 13h6M9 17h4" />
+  </Icon>
+);
+export const IconDevices = () => (
+  <Icon>
+    <rect x="3" y="4" width="18" height="6" rx="1.5" />
+    <rect x="3" y="14" width="18" height="6" rx="1.5" />
+    <path d="M7 7h.01M7 17h.01" />
+  </Icon>
+);

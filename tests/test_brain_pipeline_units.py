@@ -122,6 +122,9 @@ def test_page_url_uses_published_page():
         == "https://learn.microsoft.com/en-us/windows-server/networking/dns/zone-types"
     )
     assert page_url_for("WindowsServerDocs/networking/dns/index.md", None, cfg).endswith("/networking/dns")
+    hugo = {"page_url": "https://docs.docker.com/{path}/", "page_root": "content/manuals"}
+    assert page_url_for("content/manuals/engine/_index.md", None, hugo) == "https://docs.docker.com/engine/"
+    assert page_url_for("content/manuals/engine/my_index.md", None, hugo) == "https://docs.docker.com/engine/my_index/"
     assert page_url_for("docs/a.md", "https://github.com/x/y", {}) == "https://github.com/x/y/blob/HEAD/docs/a.md"
     assert page_url_for("a.md", None, {}) == "file:a.md"
 

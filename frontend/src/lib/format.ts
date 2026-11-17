@@ -27,6 +27,13 @@ function formatStructuredBlob(text: string): string | null {
   return null;
 }
 
+/** A file size for people: "12 KB", "3.4 MB" (never "0 KB" for a small non-empty file). */
+export function fileSize(bytes: number): string {
+  const KB = 1024;
+  const MB = KB * KB;
+  return bytes >= MB ? `${(bytes / MB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / KB))} KB`;
+}
+
 /** 950 → "950", 1234 → "1.2k", 48210 → "48k" */
 export function compactCount(n: number): string {
   if (n < 1000) return String(n);

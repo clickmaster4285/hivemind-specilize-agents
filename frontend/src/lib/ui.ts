@@ -84,4 +84,7 @@ export const diagram = {
 };
 
 /** The composer's column (centred, as wide as the message box); the feed's jump button lines up in it (O79). */
+/** A hover card (full chat title, date) waits this long, so moving the pointer across titles doesn't flash one. */
+export const HOVER_CARD_DELAY_MS = 450;
+
 export const composerColumn = "mx-auto w-full max-w-[820px] px-4";

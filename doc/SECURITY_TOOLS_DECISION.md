@@ -297,3 +297,69 @@ security updates, reboot required, ≥20 failed logins (with the top source IPs)
 
 **Tested** with a fake SSH client and real command outputs (19 tests: the password never appears in a command,
 an answer, an error or an API response). **Not yet tested against a real server** — first run by the user.
+
+---
+
+## 10. Vulnerability finders — what four open-source tools do (explained 2026-11-17, not decided)
+
+The user's ask (2026-11-17): "we will understand what each do and then do these one by one — first we understand,
+next make a plan, and then later decide what to do". Nothing below is built. ISSUES_LOG O87, BACKLOG L25.
+
+**The gap today.** `security_check` reads each open port's greeting ("SSH-2.0-OpenSSH_8.9p1") and flags risky
+ports, but never asks *"does this version have known holes?"* — the "version → CVE list" line of §3 Option D was
+never built. `network_scan` names devices from its own small set of probes (SNMP, UPnP, ONVIF, HTTP titles).
+
+### 10.1 The four tools in one picture
+
+| | **V1 nmap -sV + offline CVE list** | **V2 Nuclei** | **V3 Trivy** | **V4 OpenVAS (Greenbone)** |
+|---|---|---|---|---|
+| **What it is** | nmap (already installed, 7.98) names the software and version behind each open port; we match that against the US government's CVE list (NVD), downloaded to this PC | one program + ~12,000 small check files ("templates"), each testing one known problem, mostly on web services | reads a machine's **installed package list** or a Docker image and compares it with the Linux distributions' own security lists | a complete vulnerability scanner with ~100,000 tests, its own web screen, schedules and reports |
+| **Licence** | nmap: its own (free to use, we only run it); NVD data: public domain | MIT | Apache-2.0 | AGPL / GPL (we run it in Docker, we don't copy its code) |
+| **Looks from** | outside (the network) | outside (the network) | inside (a server's package list, an image) | outside, or inside with a login |
+| **Finds, for example** | "nginx 1.18.0 on 192.168.88.20 — 7 known CVEs, worst 9.8"; old OpenSSH, IIS, router web servers | an open `.git` folder, an exposed Grafana / Jenkins / phpMyAdmin, a specific CVE *confirmed* by the reply | "openssl 3.0.2-0ubuntu1.10 on uk server: CVE-…, fixed in 1.12" — exact, per package | all of the left, plus Windows and printer checks, weak TLS, default settings |
+| **Needs installed** | nothing new; the CVE list is ~400 MB compressed once, then a 6 MB update every 2 h (checked 2026-11-17: `nvdcve-2.0-modified.json.gz` is 6 MB, one year ~26 MB) | one binary in `~/.local/bin` or the `projectdiscovery/nuclei` Docker image; no sudo | one binary or Docker image + its database (downloads itself, can run offline) | a dozen Docker containers; minimum 2 CPU / 4 GB RAM / 20 GB, recommended 4 / 8 GB / 60 GB (this PC: 45 GB RAM, 283 GB free); the first feed download takes a long time |
+| **Effort for us** | medium (1–2 sessions) | medium | small (Docker images here), medium (servers) | large |
+
+### 10.2 Each one, a little deeper
+
+**V1 — nmap -sV + offline CVE list.** nmap sends each open port a few harmless questions and recognises the
+answer from its database of ~12,000 service signatures, giving product, version and a standard product id
+(CPE, e.g. `cpe:/a:openbsd:openssh:8.9p1`). We keep the NVD CVE list in Postgres and look up which CVEs list that
+product and a version range that contains it, with their severity score (CVSS).
+- *Good:* works on every device with no login; the same view an intruder has; no data leaves this PC at scan
+  time; also makes `network_scan`'s device names better (nmap knows far more services than our probes).
+- *Limits:* **backports** — Ubuntu fixes holes without changing the version number, so "OpenSSH 8.9p1" may be
+  patched; these are shown as *possible*, not *confirmed* (V3 gives the exact answer for servers). Devices that
+  hide their version give no match. Unprivileged nmap uses normal connections (no root, no OS fingerprint).
+- *Safety:* fixed argument list, no NSE scripts, private ranges, admin only, Stop and time limit as today.
+
+**V2 — Nuclei.** Each template says: send this request, and if the reply looks like *that*, report *this*
+problem. Strong where V1 is blind: misconfigurations and exposed admin pages, and it can *confirm* a CVE instead
+of guessing from a version.
+- *Limits:* mostly web (HTTP); **some templates actually try the exploit** to see if it works, which breaks §2
+  "no attacks" — so only an allow-list: exclude the `intrusive`, `dos`, `fuzz` and login-guessing tags,
+  `-rate-limit` low, no `-dast`; templates pinned to a version (`-disable-update-check`), updated by an admin.
+  Each template we allow must be readable as read-only.
+- *Output:* `-jsonl` per finding → our table and .xlsx.
+
+**V3 — Trivy.** Exact, because it uses the distributions' own fix lists (it knows the backports V1 cannot).
+- *Docker images on this PC* (our Postgres, SearXNG …): `trivy image` — simple, no server touched.
+- *Linux servers:* we would read the package list over the existing read-only SSH audit and hand Trivy an SBOM
+  (`trivy sbom`). Trivy warns that SBOMs made by other tools may scan less accurately — **must be measured on the
+  user's servers first**. The other way (copy Trivy to the server and run `trivy rootfs /`) writes a file on the
+  server, which §2 forbids without the user's OK.
+
+**V4 — OpenVAS.** The "big" scanner professionals use for recurring audits. It overlaps V1 + V2 and adds many
+checks, but it is heavy, slow to set up, has its own UI and user accounts, and is driven through its GMP protocol
+(e.g. the `gvm-cli` container). Its default scan settings keep "safe checks" on; we would use only those.
+
+### 10.3 Proposed order (for the user to decide)
+
+1. **V1** — fills the exact gap in `security_check` and improves `network_scan`; nothing to install.
+2. **V3 for Docker images** — small; then V3 for servers once the SBOM accuracy is measured.
+3. **V2** with a reviewed template allow-list — the web-layer checks V1 cannot do.
+4. **V4** only if 1–3 leave real gaps; it needs the most setup and machine.
+
+Questions before building: (a) start with V1? (b) may the CVE list download from nvd.nist.gov daily? (c) for V3 on
+servers, SBOM over SSH only (read-only), or may Trivy be copied to a server? (d) who sees results — admins only, as
+today?

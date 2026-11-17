@@ -3,6 +3,7 @@ import { useCallback, useMemo, useState } from "react";
 import {
   createProjectApi,
   deleteProjectApi,
+  renameProjectApi,
   deleteThreadApi,
   fetchHistory,
   importHistory,
@@ -195,6 +196,11 @@ export function useHistory() {
     [projectId, selectProject],
   );
 
+  const renameProject = useCallback(async (id: string, name: string) => {
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, name } : p)));
+    await renameProjectApi(id, name).catch(() => undefined);
+  }, []);
+
   /** Hide the chat and its jobs; returns true when it was the open chat. */
   const removeThread = useCallback(
     async (thread: ChatThread) => {
@@ -244,6 +250,7 @@ export function useHistory() {
     selectProject,
     newProject,
     removeProject,
+    renameProject,
     togglePin,
     rename,
     moveToProject,

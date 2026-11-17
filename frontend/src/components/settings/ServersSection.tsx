@@ -40,7 +40,7 @@ const modeAccent: Record<ServerMode, string> = {
   trusted: "border-l-danger",
 };
 
-/** Settings → Devices: Linux logins kept in the API's memory for this session only (admins). */
+/** The /devices page body: device logins kept in the API's memory for this session only (admins). */
 export default function ServersSection({ servers, isAdmin }: { servers: ServersApi; isAdmin: boolean }) {
   const [form, setForm] = useState<ServerLoginInput>(emptyServer);
   const [auth, setAuth] = useState<"password" | "key">("password");

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { useApp } from "@/components/app/AppProvider";
+import PageHeader, { pageSearch, pageTab } from "@/components/app/PageHeader";
 import SkillsSection from "@/components/settings/skills/SkillsSection";
 
 /** Connectors planned for later (the user's choice, 2026-11-17: a placeholder now, real connectors later). */
@@ -16,9 +17,6 @@ const PLANNED = [
 ];
 
 type Tab = "all" | "connectors" | "skills";
-
-const tabBtn = (on: boolean) =>
-  `rounded-lg px-3 py-1.5 text-[0.85rem] ${on ? "bg-panel-2 text-text" : "text-muted hover:text-text"}`;
 
 /** /plugins (BACKLOG L24 U5): connectors and skills in one place, like Claude's Plugins — All · Connectors ·
  *  Skills. Skills moved here from Settings (the user's ask, 2026-11-17); connectors are planned, not built. */
@@ -38,28 +36,29 @@ export default function PluginsPage() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[960px] px-4 py-8">
-      <h1 className="m-0 text-[1.6rem] [font-family:var(--font-display)]">Plugins</h1>
-      <p className="mt-1 text-[0.9rem] text-muted">What MulteAgent can connect to and the skills it can use.</p>
-
-      <div className="mt-5 flex flex-wrap items-center gap-3">
-        <input
-          className="min-w-[14rem] flex-1 rounded-lg border border-line bg-panel-2 px-3 py-2 text-[0.88rem] text-text outline-none"
-          placeholder={tab === "skills" ? "Search in the skills list below" : "Search connectors"}
-          value={search}
-          disabled={tab === "skills"}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <div role="tablist" aria-label="Show" className="flex gap-1 rounded-xl border border-line p-1">
-          {tabs.map((t) => (
-            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={tabBtn(tab === t.id)}
-                    onClick={() => setTab(t.id)}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+    <PageHeader
+      title="Plugins"
+      about="What MulteAgent can connect to and the skills it can use."
+      toolbar={
+        <>
+          <input
+            className={pageSearch}
+            placeholder={tab === "skills" ? "Search in the skills list below" : "Search connectors"}
+            value={search}
+            disabled={tab === "skills"}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <div role="tablist" aria-label="Show" className="flex gap-1 rounded-xl border border-line p-1">
+            {tabs.map((t) => (
+              <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className={pageTab(tab === t.id)}
+                      onClick={() => setTab(t.id)}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </>
+      }
+    >
       {tab !== "skills" ? (
         <section className="mt-7">
           <h2 className="m-0 text-[1rem] font-semibold">Connectors</h2>
@@ -84,6 +83,6 @@ export default function PluginsPage() {
           <SkillsSection skills={app.skills} specialists={app.specialists} />
         </section>
       ) : null}
-    </div>
+    </PageHeader>
   );
 }

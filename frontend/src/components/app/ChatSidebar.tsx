@@ -3,32 +3,42 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  IconFilter, IconFolder, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch, IconSettings,
+  IconDevices, IconFilter, IconFolder, IconLibrary, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch,
+  IconSettings,
 } from "@/components/app/NavIcons";
 import type { HistoryApi } from "@/hooks/useHistory";
+import { DEVICES_PATH, LIBRARY_PATH, PLUGINS_PATH, PROJECTS_PATH, SETTINGS_PATH } from "@/lib/routes";
 import { groupThreads, threadDate, type ThreadView } from "@/lib/threadGroups";
 import type { ChatThread } from "@/lib/threads";
-import { brandMark, btn, iconBtn } from "@/lib/ui";
+import { brandMark, btn, HOVER_CARD_DELAY_MS, iconBtn } from "@/lib/ui";
 
 type Props = {
   username: string;
   role: string;
+  modules: string[];
   history: HistoryApi;
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  pluginsOpen: boolean;
+  /** the page open now, to highlight its nav entry */
+  pathname: string;
+  onGo: (path: string) => void;
   onNewChat: () => void;
   onOpenThread: (thread: ChatThread) => void;
   onDeleteThread: (thread: ChatThread) => void;
-  onOpenPlugins: () => void;
-  onOpenSettings: () => void;
   onSignOut: () => void;
 };
+
+/** The own pages in the nav (BACKLOG L24 U5), in order; `module` = shown only to users given that module. */
+const PAGES = [
+  { path: PROJECTS_PATH, label: "Projects", Icon: IconFolder },
+  { path: LIBRARY_PATH, label: "Library", Icon: IconLibrary },
+  { path: DEVICES_PATH, label: "Devices", Icon: IconDevices, module: "devices" },
+  { path: PLUGINS_PATH, label: "Plugins", Icon: IconPlug },
+];
 
 // Inline Tailwind building blocks (styling stays with the component; shared classes — brand-mark,
 // icon-btn, btn — remain global utilities).
 const sectionHead = "flex items-center justify-between gap-2";
-const sectionTitle = "m-0 text-[0.95rem] [font-family:var(--font-display)]";
 const list = "list-none m-0 px-[0.15rem] pb-[0.2rem] flex flex-1 min-h-0 flex-col gap-[0.1rem] overflow-x-hidden overflow-y-auto [overscroll-behavior:contain]";
 // `!` forces these over navBase's `bg-transparent border-transparent` (Tailwind resolves by CSS order,
 // not class order, so without `!` the active highlight was being overridden and never showed).
@@ -38,7 +48,6 @@ const navBase = `w-full border border-transparent bg-transparent text-left font-
 const navRow = `${navBase} flex items-center gap-[0.15rem] py-[0.05rem] pl-[0.15rem] pr-1`;
 const navMain = "flex-1 min-w-0 border-0 bg-transparent text-left font-[inherit] text-inherit cursor-pointer px-[0.4rem] py-[0.35rem]";
 const navMainTitle = "block truncate text-[0.86rem] font-normal";
-const navMainSub = "block text-[0.72rem] text-muted mt-[0.15rem]";
 const menuRow = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[0.8rem] text-text hover:bg-hover";
 const groupLabel = "px-[0.55rem] pb-[0.15rem] pt-[0.6rem] text-[0.7rem] font-medium text-muted";
 // a nav entry (New chat, Search, Projects, Plugins): icon + label, or the icon alone on the collapsed rail
@@ -48,8 +57,6 @@ const navItem = (on: boolean, collapsed: boolean) =>
 const filterRow = (on: boolean) =>
   `flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-left text-[0.8rem] hover:bg-hover ${on ? "text-text" : "text-muted"}`;
 
-/** The hover card waits this long, so moving the pointer down the list doesn't flash a card on every row. */
-const HOVER_CARD_DELAY_MS = 450;
 
 function Dots() {
   return (
@@ -62,29 +69,24 @@ function Dots() {
 }
 
 /**
- * The left rail (BACKLOG L24 U2–U4): brand and collapse toggle; New chat, Search, Projects, Plugins; the chats
+ * The left rail (BACKLOG L24 U2–U5): brand and collapse toggle; New chat and the own pages; the chats
  * grouped by when they were used, one line each with a hover card (full title, date); the account menu at the
  * bottom (Settings, Log out). Collapsed, it is a thin rail of icons.
  */
 export default function ChatSidebar({
   username,
   role,
+  modules,
   history,
   collapsed,
   onToggleCollapsed,
-  pluginsOpen,
+  pathname,
+  onGo,
   onNewChat,
   onOpenThread,
   onDeleteThread,
-  onOpenPlugins,
-  onOpenSettings,
   onSignOut,
 }: Props) {
-  const [tab, setTab] = useState<"history" | "projects">("history");
-  const expandThen = (fn: () => void) => () => {
-    if (collapsed) onToggleCollapsed();
-    fn();
-  };
 
   return (
     <aside
@@ -117,36 +119,17 @@ export default function ChatSidebar({
           <IconNewChat />
           {collapsed ? null : <span>New chat</span>}
         </button>
-        <button
-          type="button"
-          className={navItem(tab === "projects" && !collapsed, collapsed)}
-          title="Projects"
-          onClick={expandThen(() => setTab(tab === "projects" && !collapsed ? "history" : "projects"))}
-        >
-          <IconFolder />
-          {collapsed ? null : <span>Projects</span>}
-        </button>
-        <button type="button" className={navItem(pluginsOpen && tab !== "projects", collapsed)} title="Plugins" onClick={onOpenPlugins}>
-          <IconPlug />
-          {collapsed ? null : <span>Plugins</span>}
-        </button>
+        {PAGES.filter((p) => !p.module || modules.includes(p.module)).map(({ path, label, Icon }) => (
+          <button key={path} type="button" className={navItem(pathname === path, collapsed)} title={label}
+                  aria-current={pathname === path ? "page" : undefined} onClick={() => onGo(path)}>
+            <Icon />
+            {collapsed ? null : <span>{label}</span>}
+          </button>
+        ))}
       </nav>
 
       {collapsed ? (
         <div className="flex-1" />
-      ) : tab === "projects" ? (
-        <ProjectList
-          history={history}
-          onNew={() => {
-            void history.newProject().then((p) => {
-              if (p) setTab("projects");
-            });
-          }}
-          onSelect={(id) => {
-            history.selectProject(id);
-            setTab("history");
-          }}
-        />
       ) : (
         <ThreadList history={history} onOpen={onOpenThread} onDelete={onDeleteThread} />
       )}
@@ -155,7 +138,7 @@ export default function ChatSidebar({
         username={username}
         role={role}
         collapsed={collapsed}
-        onOpenSettings={onOpenSettings}
+        onOpenSettings={() => onGo(SETTINGS_PATH)}
         onSignOut={onSignOut}
       />
     </aside>
@@ -220,58 +203,6 @@ function AccountMenu({
           </span>
         )}
       </button>
-    </div>
-  );
-}
-
-function ProjectList({
-  history,
-  onNew,
-  onSelect,
-}: {
-  history: HistoryApi;
-  onNew: () => void;
-  onSelect: (id: string | null) => void;
-}) {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-[0.45rem] overflow-hidden">
-      <div className={sectionHead}>
-        <h2 className={sectionTitle}>Projects</h2>
-        <button type="button" className={btn("ghost", "sm")} onClick={onNew}>
-          New
-        </button>
-      </div>
-      <ul className={list}>
-        <li>
-          <button
-            type="button"
-            className={`${navBase} px-[0.65rem] py-[0.45rem] text-[0.86rem] ${history.projectId ? "" : navOn}`}
-            onClick={() => onSelect(null)}
-          >
-            All chats
-          </button>
-        </li>
-        {history.projects.map((p) => (
-          <li key={p.id}>
-            <div className={`${navRow} ${history.projectId === p.id ? navActive : ""}`}>
-              <button type="button" className={navMain} onClick={() => onSelect(p.id)}>
-                <strong className={navMainTitle}>{p.name}</strong>
-                <span className={navMainSub}>{history.threads.filter((t) => t.projectId === p.id).length} chats</span>
-              </button>
-              <button
-                type="button"
-                className={iconBtn()}
-                title="Delete project"
-                onClick={() => {
-                  if (confirm(`Delete project “${p.name}”?`)) history.removeProject(p.id);
-                }}
-              >
-                ×
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

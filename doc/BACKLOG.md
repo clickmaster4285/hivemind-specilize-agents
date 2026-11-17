@@ -40,7 +40,9 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
-| [L24](#l24-ui-like-the-big-chat-apps--planned-2026-11-17-issues_log-o86) | UI like the big chat apps | in progress — U1–U4, U8 built | user's screenshots of DeepSeek, ChatGPT, Claude |
+| [L24](#l24-ui-like-the-big-chat-apps--planned-2026-11-17-issues_log-o86) | UI like the big chat apps | U1–U8 built; connectors later | user's screenshots of DeepSeek, ChatGPT, Claude |
+| [L25](#l25-vulnerability-finders--explained-2026-11-17-issues_log-o87) | Vulnerability finders (nmap + CVEs, Nuclei, Trivy, OpenVAS) | explained, user to decide | [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md) |
+| [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | planned, user to decide | NousResearch hermes-agent (MIT) |
 
 ---
 
@@ -673,7 +675,33 @@ all four proposed sets plus ideas from skills.sh, Anthropic's skills / knowledge
       translate, proposal-quote, job-description, contract-review, product-spec, deploy-checklist, threat-model,
       status-report, process-doc, risk-assessment, kb-article, email-sequence, sales-call-prep, objection-handling,
       grant-rfp-response, tech-debt-review, plan-grill, ai-search-visibility
-- [ ] U5 own pages (/skills, /devices, /projects, /library), U6 greeting screen, U7 header hover card (title has a
-      tooltip now)
+- [x] U5 own pages — built 2026-11-17: /devices, /projects, /library (`GET /api/library`); skills stay on /plugins,
+      agents in Settings
+- [x] U6 greeting screen (name, centred composer, 4 recent files) and U7 navbar hover card — built 2026-11-17
 - [ ] Real connectors (Gmail, Drive, GitHub, Slack…): OAuth + a security review first
+
+### L25. Vulnerability finders — explained 2026-11-17 (ISSUES_LOG O87)
+
+The user's ask: understand each tool first, then a plan, then decide, then build one by one. What each does, its
+limits, needs and the proposed order: [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md).
+
+- [ ] V1 nmap -sV + offline NVD CVE list in `security_check` (and better device names in `network_scan`)
+- [ ] V3 Trivy: Docker images on this PC; then Linux servers via an SBOM read over SSH (accuracy measured first)
+- [ ] V2 Nuclei with a reviewed read-only template allow-list
+- [ ] V4 OpenVAS in Docker — only if V1–V3 leave gaps
+
+### L26. Ideas from Hermes Agent — planned 2026-11-17 (ISSUES_LOG O88)
+
+From NousResearch's Hermes Agent (MIT; ideas only, our own code). The user picked three of four (not the
+Telegram / email gateway). Plan, not built:
+
+| # | Idea | Hermes has | We have | Plan |
+|---|------|-----------|---------|------|
+| H1 | Scheduled tasks | cron automations in plain words, results sent anywhere | the brain scheduler thread (src/brain/scheduler.py) only | `app.schedules` (owner, prompt, every / at, next run, chat id); a scheduler thread like the brain's starts a normal job on time, the answer lands in that chat; a "Repeat…" item in the chat menu + a list on /library or its own page. Unattended runs use read-only tools only: a confirm card nobody can answer must never wait, so no operate_server |
+| H2 | Skills learned from tasks | writes a skill after a complex task and refines it | 46 built-in + user skills (SKILL.md) | after a job with several successful tool steps, a "Save as skill" action: the model drafts a SKILL.md (name, when to use, steps) from the job's tool trace and opens the skill editor filled in; the user edits and saves — nothing saved on its own |
+| H3 | Search across all chats | full-text search + summaries over past sessions | sidebar search over the titles of the latest 100 jobs; chat recall (brain.chat_passages) for chats since O63 | `GET /api/search?q=`: Postgres full-text over questions and answers (all chats, owner only) plus the semantic match from chat_passages; results with a snippet open the chat at that message; also fixes "older chats than the latest 100 don't open" |
+
+- [ ] H3 search all chats (smallest, fixes a known limit)
+- [ ] H1 scheduled tasks
+- [ ] H2 skills from tasks
 

@@ -6,10 +6,11 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import { useApp, type AppValue } from "@/components/app/AppProvider";
 import Composer from "@/components/chat/Composer";
 import MessageFeed from "@/components/chat/MessageFeed";
+import NewChatScreen from "@/components/chat/NewChatScreen";
 import { sumUsage } from "@/lib/format";
 
-/** The chat page content (below the persistent navbar): the run/specialist/model controls, the message
- *  feed, and the composer. All state comes from the shared provider. */
+/** The chat page content (below the persistent navbar): the message feed and the composer, or for a new chat the
+ *  greeting screen with the composer in the middle (L24 U6). All state comes from the shared provider. */
 export default function ChatView() {
   const app = useApp();
   const router = useRouter();
@@ -36,40 +37,49 @@ export default function ChatView() {
   const chatUsage = useMemo(() => sumUsage(feed), [feed]);
   const memory = app.memory;                      // measured on the server, as the model sees the chat (O76)
 
+  const composer = (
+    <Composer
+      query={app.query}
+      onQuery={app.setQuery}
+      inputRef={app.queryRef}
+      images={app.images}
+      editing={Boolean(app.chat.editingFromId)}
+      onCancelEdit={app.cancelEdit}
+      running={app.chat.running}
+      canStop={app.canStop}
+      onStop={app.stop}
+      onSend={app.send}
+      deep={app.deep}
+      onToggleDeep={app.toggleDeep}
+      runMode={app.runMode}
+      onRunMode={app.setRunMode}
+      specialistLabel={app.specialists.label}
+      skills={app.skills.usable}
+      onOpenSettings={() => router.push("/settings")}
+      imageProfile={app.imageProfile}
+      onImageProfile={app.setImageProfile}
+      editStrength={app.editStrength}
+      onEditStrength={app.setEditStrength}
+      imagePipeline={app.health.health?.image_pipeline}
+      chatUsage={chatUsage}
+      chatId={app.history.activeThreadId}
+      memory={memory}
+      memoryBusy={app.memoryBusy}
+      onContinueChat={() => void app.continueInNewChat()}
+      onSaveSummary={() => void app.saveSummary()}
+    />
+  );
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <MessageFeed feed={feed} running={app.chat.running} activeJobId={app.chat.activeJobId} {...feedActions} />
-
-      <Composer
-        query={app.query}
-        onQuery={app.setQuery}
-        inputRef={app.queryRef}
-        images={app.images}
-        editing={Boolean(app.chat.editingFromId)}
-        onCancelEdit={app.cancelEdit}
-        running={app.chat.running}
-        canStop={app.canStop}
-        onStop={app.stop}
-        onSend={app.send}
-        deep={app.deep}
-        onToggleDeep={app.toggleDeep}
-        runMode={app.runMode}
-        onRunMode={app.setRunMode}
-        specialistLabel={app.specialists.label}
-        skills={app.skills.usable}
-        onOpenSettings={() => router.push("/settings")}
-        imageProfile={app.imageProfile}
-        onImageProfile={app.setImageProfile}
-        editStrength={app.editStrength}
-        onEditStrength={app.setEditStrength}
-        imagePipeline={app.health.health?.image_pipeline}
-        chatUsage={chatUsage}
-        chatId={app.history.activeThreadId}
-        memory={memory}
-        memoryBusy={app.memoryBusy}
-        onContinueChat={() => void app.continueInNewChat()}
-        onSaveSummary={() => void app.saveSummary()}
-      />
+      {feed.length === 0 ? (
+        <NewChatScreen username={app.auth.user?.username || ""} threads={app.history.threads} composer={composer} />
+      ) : (
+        <>
+          <MessageFeed feed={feed} running={app.chat.running} activeJobId={app.chat.activeJobId} {...feedActions} />
+          {composer}
+        </>
+      )}
     </div>
   );
 }

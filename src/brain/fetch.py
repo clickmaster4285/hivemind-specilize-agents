@@ -129,6 +129,10 @@ def checkout_git_repo(slug: str, url: str, include: str, branch: str | None = No
     return dest, _git("rev-parse", "HEAD", cwd=dest).strip()
 
 
+# the file names a docs site publishes at its folder's own address (index.md; Hugo uses _index.md)
+FOLDER_PAGE_STEMS = frozenset({"index", "_index"})
+
+
 def page_url_for(rel_path: str, source_url: str | None, config: dict[str, Any]) -> str:
     """Public URL for a file: the published page when a template is set, else the file itself."""
     template = config.get("page_url")
@@ -137,8 +141,10 @@ def page_url_for(rel_path: str, source_url: str | None, config: dict[str, Any]) 
         root = str(config.get("page_root") or "").strip("/")
         if root and path.startswith(root + "/"):
             path = path[len(root) + 1 :]
-        if path == "index" or path.endswith("/index"):
-            path = path[: -len("index")].rstrip("/")
+        # a folder's own page: `index.md`, or `_index.md` in Hugo sites (Docker, Kubernetes docs) — O81
+        leaf = path.rsplit("/", 1)[-1]
+        if leaf in FOLDER_PAGE_STEMS:
+            path = path[: -len(leaf)].rstrip("/")
         return template.format(path=path)
     if source_url and "github.com" in source_url:
         return f"{source_url.rstrip('/')}/blob/HEAD/{rel_path}"

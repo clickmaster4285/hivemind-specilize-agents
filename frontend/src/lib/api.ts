@@ -478,6 +478,22 @@ export async function deleteProjectApi(id: string): Promise<void> {
   await request(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+/** One file the app made for the caller, from any chat (GET /api/library, the /library page). */
+export type LibraryFile = {
+  job_id: string;
+  thread_id: string | null;
+  query: string;
+  filename: string;
+  mime: string | null;
+  bytes: number | null;
+  kind: string;
+  created_at: string | null;
+};
+
+export async function listLibrary(): Promise<LibraryFile[]> {
+  return request("/api/library");
+}
+
 /** Record the user's 👍/👎 (and optional note) on one answer. */
 export async function sendFeedback(jobId: string, rating: "up" | "down", note?: string): Promise<void> {
   await request("/api/feedback", { method: "POST", body: JSON.stringify({ job_id: jobId, rating, note }) });

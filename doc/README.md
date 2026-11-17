@@ -31,7 +31,7 @@ Each one weighs the options and records the user's decision. Edit one only to ad
 | Doc | Question | Status (as written in the doc) |
 |---|---|---|
 | [TOOLS_DECISION.md](TOOLS_DECISION.md) | Should the assistant *do* things (run tools), not only advise? | decided 2026-10-17, Option A built |
-| [SECURITY_TOOLS_DECISION.md](SECURITY_TOOLS_DECISION.md) | Which machines may the security tools look at? | decided 2026-10-19 |
+| [SECURITY_TOOLS_DECISION.md](SECURITY_TOOLS_DECISION.md) | Which machines may the security tools look at? Vulnerability finders (§10) | decided 2026-10-19; §10 to decide |
 | [SERVER_ACCESS_DECISION.md](SERVER_ACCESS_DECISION.md) | Signing in to servers (SSH, RDP) and making changes; the device vault | to discuss (2026-10-21), parts built since |
 | [CHAT_HISTORY_DECISION.md](CHAT_HISTORY_DECISION.md) | Chats and history per account and per machine | to discuss (2026-10-19) |
 | [SEO_TOOLS.md](SEO_TOOLS.md) | What Semrush / Screaming Frog do and what we add (L15) | decided 2026-11-02; P2 on hold |

@@ -2,11 +2,9 @@
 
 import { useState } from "react";
 
-import ServersSection from "@/components/settings/ServersSection";
 import SpecialistModal from "@/components/settings/SpecialistModal";
 import UsageSection from "@/components/settings/UsageSection";
 import UsersSection from "@/components/settings/users/UsersSection";
-import { useServers } from "@/hooks/useServers";
 import { useUsers } from "@/hooks/useUsers";
 import type { SpecialistsApi } from "@/hooks/useSpecialists";
 import type { AuthUser, Specialist } from "@/lib/types";
@@ -18,26 +16,23 @@ const heading = "text-base font-semibold [font-family:var(--font-display)]";
 const hint = "text-xs leading-relaxed text-muted";
 const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-line bg-panel-2 px-3 py-2.5";
 
-type TabId = "users" | "servers" | "usage" | "agents";
+type TabId = "users" | "usage" | "agents";
 
-/** The Settings content, organised into tabs: Users (admins), Devices, Usage, Agents. Skills live on the Plugins
- *  page. One section shows at a time; the shell provides the navbar + sidebar. */
+/** The Settings content, organised into tabs: Users (admins), Usage, Agents. Skills live on the Plugins page and
+ *  devices on /devices (BACKLOG L24 U5). One section shows at a time; the shell provides the navbar + sidebar. */
 export default function SettingsBody({ user, specialists }: { user: AuthUser; specialists: SpecialistsApi }) {
   const isAdmin = user.role === "admin";
   // the modules an admin gave this user (admins have all): each one is a tab
   const has = (module: string) => Boolean(user.modules?.includes(module));
-  const canDevices = has("devices");
-  const servers = useServers(canDevices);
   const users = useUsers(isAdmin);
   // undefined = modal closed, null = new specialist
   const [editing, setEditing] = useState<Specialist | null | undefined>(undefined);
 
-  // Admins get Users; Devices and Usage follow the user's modules; everyone gets Agents. Skills moved to the
-  // Plugins page and Models was dropped (one model, picked per message) — the user's ask, 2026-11-17.
+  // Admins get Users; Usage follows the user's modules; everyone gets Agents. Skills moved to the Plugins page,
+  // Devices to /devices, and Models was dropped (one model, picked per message) — the user's asks, 2026-11-17.
   // The first visible tab is the default.
   const tabs: { id: TabId; label: string }[] = [
     ...(isAdmin ? [{ id: "users" as const, label: "Users" }] : []),
-    ...(canDevices ? [{ id: "servers" as const, label: "Devices" }] : []),
     ...(has("usage") ? [{ id: "usage" as const, label: "Usage" }] : []),
     { id: "agents", label: "Agents" },
   ];
@@ -69,13 +64,6 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
       {tab === "users" && isAdmin ? (
         <section className={panel}>
           <UsersSection users={users} />
-        </section>
-      ) : null}
-
-      {/* Devices (admins + users given access: the ones they added) */}
-      {tab === "servers" && canDevices ? (
-        <section className={panel}>
-          <ServersSection servers={servers} isAdmin={isAdmin} />
         </section>
       ) : null}
 

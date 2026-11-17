@@ -129,21 +129,6 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
     if (following.current) bottomRef.current?.scrollIntoView({ block: "end" });
   }, [feed.length, last?.id, last?.body?.length, last?.pending, last?.streaming]);
 
-  if (feed.length === 0) {
-    return (
-      <div className={scrollCls}>
-        <div className={`${colCls} h-full`}>
-          <div className="m-auto mt-[12vh] max-w-[22rem] text-center text-muted">
-            <strong className="mb-[0.4rem] block text-[1.2rem] text-text [font-family:var(--font-display)]">
-              Start a conversation
-            </strong>
-            Ask anything: IT, development or marketing questions go to the matching specialist automatically.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="relative flex min-h-0 w-full flex-1 flex-col">
     <div className={scrollCls} onScroll={onScroll}>
