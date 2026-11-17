@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent.parent
 # the offline CVE list (src/servers/cve_db.py): built by an admin command, ignored by git like the rest of data/
 DEFAULT_CVE_DB = ROOT / "data" / "cve" / "nvd.sqlite"
+# Nuclei's templates and our reviewed allow-list of them (src/servers/web_scan.py), also ignored by git
+DEFAULT_NUCLEI_DIR = ROOT / "data" / "nuclei"
 # used when JWT_SECRET is unset; the API refuses to start with it (src.core.auth.check_secret)
 DEV_JWT_SECRET = "change-me-multeagent-dev-secret-32b+"
 load_dotenv(ROOT / ".env")
@@ -116,6 +118,8 @@ class Config:
     security_scan_enabled: bool = True
     # the offline CVE list security_check matches software versions against (src/servers/cve_db.py)
     cve_db_path: Path = DEFAULT_CVE_DB
+    # web checks (V2): data/nuclei/templates + allowlist.txt (python -m src.servers.web_scan --build)
+    nuclei_dir: Path = DEFAULT_NUCLEI_DIR
     # SDXL lives in system RAM (CPU offload): free it after this many idle minutes (0 = keep loaded)
     image_idle_unload_minutes: int = 10
     # SDXL runs in its own process (python -m src.images.image_service) so the API never holds the model
@@ -264,6 +268,7 @@ class Config:
             brain_fresh_hours=max(0.1, float(os.getenv("BRAIN_FRESH_HOURS", "24"))),
             verify_answers=os.getenv("VERIFY_ANSWERS", "true").strip().lower() not in {"0", "false", "no", "off"},
             cve_db_path=Path(os.getenv("CVE_DB", str(DEFAULT_CVE_DB))),
+            nuclei_dir=Path(os.getenv("NUCLEI_DIR", str(DEFAULT_NUCLEI_DIR))),
             security_scan_enabled=os.getenv("SECURITY_SCAN_ENABLED", "true").strip().lower()
             not in {"0", "false", "no", "off"},
             image_idle_unload_minutes=max(0, int(os.getenv("IMAGE_IDLE_UNLOAD_MINUTES", "10"))),

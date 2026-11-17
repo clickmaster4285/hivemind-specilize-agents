@@ -253,6 +253,11 @@ export async function listSkillCatalog(): Promise<{ skills: CatalogSkill[]; cate
   return request("/api/skills/catalog");
 }
 
+/** "Save as skill" (H2): the model drafts a skill from what this answer's job did — not saved until the user does. */
+export async function draftSkill(jobId: string): Promise<Skill> {
+  return request("/api/skills/draft", { method: "POST", body: JSON.stringify({ job_id: jobId }) });
+}
+
 /** A new skill in Yours: for the team (admins) or only for me. */
 export async function createSkill(skill: SkillInput, team: boolean): Promise<Skill> {
   return request("/api/skills", { method: "POST", body: JSON.stringify({ ...skill, team }) });

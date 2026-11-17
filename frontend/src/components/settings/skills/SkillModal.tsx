@@ -18,7 +18,7 @@ const emptyForm: SkillInput = {
   enabled: true,
 };
 
-function formFrom(s: Skill | null): SkillInput {
+function formFrom(s: Skill | SkillInput | null): SkillInput {
   if (!s) return emptyForm;
   return {
     name: s.name,
@@ -43,6 +43,8 @@ const nameFrom = (title: string) =>
 type Props = {
   /** null = a new skill */
   skill: Skill | null;
+  /** a new skill that starts filled in ("Save as skill" under an answer: the model's draft) */
+  draft?: SkillInput | null;
   /** a built-in skill (Discover's preview) or a team skill seen by a member */
   readOnly: boolean;
   /** an admin creating a skill: for the team or only for them */
@@ -64,10 +66,11 @@ const toolGrid =
 
 /** Create, edit or view a skill: what it is for, who answers, what it asks for, its tools and its steps. */
 export default function SkillModal(props: Props) {
-  const { skill, readOnly, canChooseTeam, specialists, options, categories, onSave, onClose } = props;
-  const [form, setForm] = useState<SkillInput>(() => formFrom(skill));
-  const [inputsText, setInputsText] = useState(() => (skill?.inputs ?? []).join("\n"));
-  const [nameTouched, setNameTouched] = useState(Boolean(skill));
+  const { skill, draft, readOnly, canChooseTeam, specialists, options, categories, onSave, onClose } = props;
+  const start = skill ?? draft ?? null;
+  const [form, setForm] = useState<SkillInput>(() => formFrom(start));
+  const [inputsText, setInputsText] = useState(() => (start?.inputs ?? []).join("\n"));
+  const [nameTouched, setNameTouched] = useState(Boolean(start));
   const [team, setTeam] = useState(false);
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<SkillInput>) => setForm((f) => ({ ...f, ...patch }));
@@ -99,7 +102,7 @@ export default function SkillModal(props: Props) {
       >
         <header className="flex items-center justify-between gap-3">
           <h3 className="m-0 text-[1.15rem] [font-family:var(--font-display)]">
-            {isNew ? "New skill" : form.title || form.name}
+            {isNew ? (draft ? "New skill from this answer" : "New skill") : form.title || form.name}
             {!isNew ? <span className="ml-2 text-[0.85rem] text-muted">/{form.name}</span> : null}
           </h3>
           <button type="button" className={iconBtn()} onClick={onClose}>

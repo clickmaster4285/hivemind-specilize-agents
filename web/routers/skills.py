@@ -13,7 +13,7 @@ from src.core.auth import get_db, require_module
 from src.core.config import Config
 from src.core.models_db import User
 from src.llm import skills
-from web.schemas import SkillAddPayload, SkillPayload, SkillUpdatePayload, SkillUploadPayload
+from web.schemas import SkillAddPayload, SkillDraftPayload, SkillPayload, SkillUpdatePayload, SkillUploadPayload
 
 router = APIRouter(prefix="/api/skills", tags=["skills"])
 SKILLS = require_module("skills")      # the routes of the skills module (src/core/modules.py)
@@ -51,6 +51,38 @@ def list_catalog(db: Session = Depends(get_db), user: User = Depends(SKILLS)) ->
     found = skills.catalog()
     return {"skills": [{**s.to_dict(), "added": s.name in added} for s in found],
             "categories": [{"name": n, "count": c} for n, c in sorted(Counter(s.category for s in found).items())]}
+
+
+@router.post("/draft")
+def draft_skill(payload: SkillDraftPayload, db: Session = Depends(get_db),
+                user: User = Depends(SKILLS)) -> dict[str, Any]:
+    """"Save as skill" under an answer (H2): the model drafts a skill from what that job did. Not saved — the
+    skill editor opens with it and the user's Save stores it. A model call: the route runs in a worker thread."""
+    import json
+
+    from src.jobs.jobs import get_job, list_events_after
+    from src.llm import skill_draft
+    from src.llm.llm_client import LLMError
+
+    job = get_job(db, payload.job_id)
+    if job is None or job.user_id != user.id:           # only your own tasks
+        raise HTTPException(status_code=404, detail="Job not found")
+    events = []
+    for row in list_events_after(db, job.id, 0):
+        try:
+            events.append(json.loads(row.event_json))
+        except json.JSONDecodeError:
+            continue
+    try:
+        specialist = str(json.loads(job.payload_json or "{}").get("specialist") or "")
+    except (json.JSONDecodeError, AttributeError):
+        specialist = ""
+    try:
+        return skill_draft.draft(Config.from_env(), job.query, events, specialist=specialist).to_dict()
+    except skill_draft.DraftError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(status_code=503, detail=f"The model could not draft the skill: {exc}") from exc
 
 
 @router.post("")

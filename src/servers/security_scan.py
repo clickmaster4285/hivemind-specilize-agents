@@ -29,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from src.core.config import Config
-from src.servers import cve_db, nmap_versions
+from src.servers import cve_db, nmap_versions, web_scan
 from src.servers.cve_db import CveHit
 from src.servers.net_scan import PRIVATE_NETS, ScanError, local_subnet, validate_subnet
 
@@ -168,6 +168,7 @@ class HostReport:
     vendor: str = ""
     services: list[Service] = field(default_factory=list)
     local: LocalView | None = None          # set for this PC (checked from the inside)
+    web: list[web_scan.WebFinding] = field(default_factory=list)   # Nuclei on its web ports (one device only)
 
 
 @dataclass
@@ -432,6 +433,41 @@ def vulnerability_findings(host: HostReport) -> list[Finding]:
     return out
 
 
+WEB_RISK = {"critical": HIGH, "high": HIGH, "medium": MEDIUM, "low": LOW, "info": INFO}
+
+
+def web_findings(host: HostReport) -> list[Finding]:
+    """One finding per Nuclei match (V2): an exposed file, a misconfiguration, an admin page, a CVE its page shows."""
+    out = []
+    for w in host.web:
+        cves = f" ({', '.join(w.cves[:3])})" if w.cves else ""
+        if w.severity == "info":
+            out.append(Finding(INFO, host.ip, w.port, f"Admin page reachable: {w.name}",
+                               f"{w.url} — a login page on the network is something to keep updated and private",
+                               "Reach it only from the admin network or a VPN"))
+        else:
+            out.append(Finding(WEB_RISK.get(w.severity, LOW), host.ip, w.port, f"{w.name}{cves}",
+                               f"{w.url} — {w.description or 'Nuclei template ' + w.template + ' matched'}",
+                               w.fix or "Update the software behind this page, or remove what it exposes"))
+    return out
+
+
+def run_web_checks(report: HostReport, config: Config, *, should_continue: Callable[[], bool],
+                   progress: Callable[[str], None]) -> list[str]:
+    """Nuclei (V2) on one device's web ports → report.web; → notes."""
+    urls = web_scan.web_urls(report.ip, [s.port for s in report.services], HTTP_PORTS, TLS_HTTP_PORTS)
+    if not urls:
+        return []
+    if not web_scan.available(config.nuclei_dir):
+        return ["Web pages were not checked for exposed files, admin pages and known holes: Nuclei and its reviewed "
+                "allow-list are not installed (doc/SECURITY_TOOLS_DECISION.md §14)."]
+    progress(f"Web checks (Nuclei, read-only) on {len(urls)} web port{'s' if len(urls) != 1 else ''}…")
+    started = time.monotonic()
+    report.web, note = web_scan.run(urls, config.nuclei_dir, should_continue=should_continue)
+    done = f"Web checks: Nuclei's reviewed read-only templates on {', '.join(urls)} in {time.monotonic() - started:.0f} s."
+    return [done] + ([note.capitalize()] if note else [])
+
+
 def local_findings(view: LocalView, label: str = "this PC") -> list[Finding]:
     out: list[Finding] = []
     for profile, enabled in view.firewall.items():
@@ -568,6 +604,12 @@ def check(
     notes: list[str] = []
     if not stopped and not timed_out:
         notes = read_versions(outside, config, should_continue=should_continue, progress=progress)
+        if hosts is not None and len(outside) == 1 and should_continue():
+            notes += run_web_checks(outside[0], config, should_continue=should_continue, progress=progress)
+        elif len(outside) > 1 and web_scan.available(config.nuclei_dir) and any(
+                s.port in HTTP_PORTS | TLS_HTTP_PORTS for r in outside for s in r.services):
+            notes.append("Web pages are checked one device at a time (minutes each): ask e.g. 'check the security "
+                         "of <the device's IP>' for its exposed files, admin pages and known holes.")
 
     for r in reports:
         r.services.sort(key=lambda s: s.port)
@@ -576,7 +618,8 @@ def check(
             r.local.api_port = config.api_port
             r.name = r.name or socket.gethostname()
     findings = [f for r in reports
-                for f in (local_findings(r.local, r.ip) if r.local else host_findings(r) + vulnerability_findings(r))]
+                for f in (local_findings(r.local, r.ip) if r.local
+                          else host_findings(r) + vulnerability_findings(r) + web_findings(r))]
     reports.sort(key=_host_key)
     return SecurityResult(label, reports, sorted(findings, key=_order), round(time.monotonic() - started, 1),
                           stopped, timed_out, notes)
@@ -740,6 +783,11 @@ def xlsx_bytes(result: SecurityResult) -> bytes:
     if any(s.cves for r in result.hosts for s in r.services):
         sheets.append(("Vulnerabilities", ["Host", "Port", "Software", "CVE", "CVSS", "Severity", "Summary"],
                        cve_rows(result), (16, 7, 32, 18, 7, 10, 90)))
+    web = [[r.ip, str(w.port or "—"), w.severity, w.name, ", ".join(w.cves), w.url, w.template, w.fix]
+           for r in result.hosts for w in r.web]
+    if web:
+        sheets.append(("Web checks", ["Host", "Port", "Severity", "Finding", "CVEs", "URL", "Template", "What to do"],
+                       web, (16, 7, 10, 40, 20, 40, 30, 60)))
     for r in result.hosts:
         if r.local:
             sheets.append(("This PC", ["Address", "Port", "Program", "Reachable from network", "Known as"],

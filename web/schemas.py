@@ -108,6 +108,10 @@ class SkillUpdatePayload(BaseModel):
     enabled: bool | None = None
 
 
+class SkillDraftPayload(BaseModel):
+    job_id: str                    # the finished task to learn a skill from (H2)
+
+
 class SkillUploadPayload(BaseModel):
     text: str                      # a SKILL.md file's content
     team: bool = False

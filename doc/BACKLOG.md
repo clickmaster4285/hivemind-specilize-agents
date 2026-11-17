@@ -690,7 +690,7 @@ limits, needs and the proposed order: [SECURITY_TOOLS_DECISION.md §10](SECURITY
 - [x] V1 nmap -sV + offline NVD CVE list in `security_check` — built 2026-11-17 ([§11](SECURITY_TOOLS_DECISION.md)); next: nmap names in `network_scan`
 - [x] V3 Trivy for Docker images on this PC — built 2026-11-17 (`image_scan`, [§12](SECURITY_TOOLS_DECISION.md)); the user installs a verified Trivy
 - [x] V3b Trivy for Linux servers via an SBOM read over SSH — built 2026-11-17 in `server_audit` (`package_scan.py`, [§13](SECURITY_TOOLS_DECISION.md)); measured identical to Trivy's own scans on 4 distributions
-- [ ] V2 Nuclei with a reviewed read-only template allow-list
+- [x] V2 Nuclei with a reviewed read-only template allow-list — built 2026-11-17 in `security_check` for one device ([§14](SECURITY_TOOLS_DECISION.md)); the user installs Nuclei 3.11.1 + templates, builds and reads the allow-list; first run to measure
 - [ ] V4 OpenVAS in Docker — only if V1–V3 leave gaps
 
 ### L26. Ideas from Hermes Agent — planned 2026-11-17 (ISSUES_LOG O88)
@@ -706,5 +706,5 @@ Telegram / email gateway). Plan, not built:
 
 - [x] H3 search all chats — built 2026-11-17 (word search; the semantic match from chat_passages later)
 - [ ] H1 scheduled tasks
-- [ ] H2 skills from tasks
+- [x] H2 skills from tasks — built 2026-11-17: "Save as skill" (✦) under every answer → `POST /api/skills/draft` (src/llm/skill_draft.py) → the skill editor opens filled in; saved only by the user
 

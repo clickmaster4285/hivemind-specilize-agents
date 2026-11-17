@@ -231,3 +231,70 @@ def test_the_worker_lets_the_skill_pick_the_specialist(monkeypatch):
     assert asked == ["it", "development", "development"]   # the skill's specialist wins over the chat bar's
     assert [e["how"] for e in events if e["type"] == "specialist_chosen"] == ["skill", "chosen", "chosen"]
     assert [e["title"] for e in events if e["type"] == "skill_chosen"] == ["Weekly report", "Weekly report"]
+
+
+# ── H2: a skill drafted from a finished task ("Save as skill") ──────────
+from src.core.config import Config  # noqa: E402
+from src.llm import skill_draft  # noqa: E402
+
+CFG_DRAFT = Config.from_env()
+
+EVENTS = [
+    {"type": "route_decided"},
+    {"type": "tool_chosen", "tool": "security_check", "args": {"target": "192.168.88.53", "user_id": 2}},
+    {"type": "tool_call", "tool": "made_up_tool", "args": {}},
+    {"type": "agent_done", "output": "first"},
+    {"type": "agent_done", "output": "| Risk | Finding |\n|---|---|\n| High | Telnet open |"},
+]
+REPLY = ('<think>plan</think>Here: {"title": "Device security check", "description": "Check one device on the '
+         'network for risky ports and known CVEs.", "instructions": "1. Run security_check on the address.\\n\\n'
+         '## Answer format\\nA findings table.", "inputs": ["the device\'s IP address", " "]}')
+
+
+def test_a_task_becomes_an_unsaved_skill_draft():
+    t = skill_draft.trace("check the security of 192.168.88.53", EVENTS)
+    assert t["steps"] == [("security_check", {"target": "192.168.88.53"}), ("made_up_tool", {})]   # no user_id
+    assert t["answer"].startswith("| Risk")                                      # the last answer
+    seen = {}
+
+    def chat(**kw):
+        seen.update(kw)
+        return REPLY
+
+    skill = skill_draft.draft(CFG_DRAFT, "check the security of 192.168.88.53", EVENTS, specialist="auto", chat=chat)
+    assert (skill.name, skill.title, skill.id) == ("device-security-check", "Device security check", None)
+    assert skill.tools == ["security_check"] and skill.specialist == "" and skill.inputs == ["the device's IP address"]
+    assert "security_check(" in seen["user"] and "192.168.88.53" in seen["user"] and "Telnet open" in seen["user"]
+    assert "Generalise" in seen["system"]
+
+
+def test_a_draft_needs_a_finished_answer_and_a_readable_reply():
+    with pytest.raises(skill_draft.DraftError, match="no finished task"):
+        skill_draft.draft(CFG_DRAFT, "hello", [{"type": "status"}], chat=lambda **kw: REPLY)
+    with pytest.raises(skill_draft.DraftError, match="could not be read"):
+        skill_draft.draft(CFG_DRAFT, "q", EVENTS, chat=lambda **kw: "sorry, no")
+    with pytest.raises(skill_draft.DraftError, match="needs work"):
+        skill_draft.draft(CFG_DRAFT, "q", EVENTS, chat=lambda **kw: '{"title": "x", "description": "", '
+                                                                     '"instructions": "y"}')
+
+
+def test_the_draft_route_reads_only_your_own_job_and_saves_nothing(api, db, monkeypatch):
+    import functools
+    import json
+
+    from src.core.models_db import Job
+    from src.jobs.jobs import append_event
+
+    for job_id, owner in (("job-ana", 2), ("job-other", 1)):
+        db.add(Job(id=job_id, user_id=owner, mode="chat", query="check the security of 192.168.88.53",
+                   payload_json=json.dumps({"specialist": "it"})))
+        db.flush()
+        for event in EVENTS:
+            append_event(db, job_id, event)
+    monkeypatch.setattr(skill_draft, "draft", functools.partial(skill_draft.draft, chat=lambda **kw: REPLY))
+    got = api.post("/api/skills/draft", json={"job_id": "job-ana"})
+    assert got.status_code == 200 and got.json()["name"] == "device-security-check"
+    assert got.json()["specialist"] in ("it", "")                              # kept when that specialist exists
+    assert api.post("/api/skills/draft", json={"job_id": "job-other"}).status_code == 404
+    assert api.post("/api/skills/draft", json={"job_id": "nope"}).status_code == 404
+    assert api.get("/api/skills").json()["skills"] == []                        # a draft is never saved

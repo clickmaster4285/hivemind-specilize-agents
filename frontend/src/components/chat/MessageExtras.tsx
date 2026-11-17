@@ -10,6 +10,8 @@ import { fileSize, usageLine } from "@/lib/format";
 import type { AnswerOption, AnswerUsage, ChatImage, FeedItem } from "@/lib/types";
 import { msgAction } from "@/lib/ui";
 
+import SaveAsSkill from "./SaveAsSkill";
+
 type ItemProps = { item: FeedItem; fallbackJobId: string | null };
 
 /** Auto-clarify: the model's multiple-choice questions. Tick options, then Submit to get the answer. */
@@ -286,7 +288,7 @@ function ActionIcon({
   );
 }
 
-/** The action bar under an answer: Copy · 👍 · 👎 · Read aloud · Share · Try again. 👍 is fire-and-forget;
+/** The action bar under an answer: Copy · 👍 · 👎 · Read aloud · Share · Download · Save as skill · Try again. 👍 is fire-and-forget;
  *  👎 records at once, then opens a panel to capture the reason (stored as the feedback note) and offers
  *  "Try again, better" to regenerate steered by that reason (feedback phase 2). Read aloud uses the
  *  browser's SpeechSynthesis (local, no cloud); Share uses the Web Share API, falling back to copy. */
@@ -391,6 +393,7 @@ export function AnswerActions({
         </ActionIcon>
         <ActionIcon title="Share" onClick={share}>{Icon.share}</ActionIcon>
         {jobId ? <DownloadMenu jobId={jobId} text={text} /> : null}
+        {jobId ? <SaveAsSkill jobId={jobId} /> : null}
         {onRetry ? <ActionIcon title="Try again" onClick={onRetry}>{Icon.retry}</ActionIcon> : null}
         {rating === "up" || sent ? (
           <span className="ml-[0.3rem] text-[0.72rem] text-muted">Thanks — noted.</span>

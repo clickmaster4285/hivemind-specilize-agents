@@ -491,3 +491,54 @@ and may send Java file checksums to Maven Central. Only the vulnerability databa
 **Limits.** Packages only: software installed by hand, from a tarball or in a language package manager (pip, npm)
 is not in the list, and containers on the server are not looked into. Arch, Alpine and SUSE servers are reported as
 "cannot check by its package list". "No fix yet" is the vendor's status (many are low impact on a server).
+
+---
+
+## 14. V2 — Nuclei web checks on one device (built 2026-11-17, needs Nuclei installed)
+
+The user's choice: "now start V2 nuclei". Part of `security_check` — no new tool. When ONE device is checked
+("check the security of 192.168.88.53"), Nuclei runs on its open web ports (80, 443, 8080 … from the port check,
+at most 8 URLs) after the version step; its matches join the Findings table (an exposed `.git` folder, a debug page,
+a CVE the page gives away; admin login pages as ⚪ Info) and the Excel file gets a "Web checks" sheet with the exact
+URL and template. A whole-network check does not run it (minutes per device) and says how to ask for one device.
+Code: [web_scan.py](../src/servers/web_scan.py).
+
+**§2 "no exploits" — the allow-list.** Nuclei never gets the template folder, only `data/nuclei/allowlist.txt`, made
+by `python -m src.servers.web_scan --build` from each template's own content. A template may run only if:
+- it is **signed** (`# digest:` line — an edited template is refused, and `-dut` refuses it again at run time);
+- its protocol is `http` or `ssl` only — no `flow`, `code`, `javascript`, `headless`, `network`, `dns`, `file`,
+  workflows; and not `self-contained` (its own target);
+- **every request is a plain GET/HEAD to the device itself** (`{{BaseURL}}`, `{{Hostname}}` …): no `payloads`,
+  `fuzzing`, `attack`, request body, `race`/`unsafe`/`pipeline`, redirects (could leave the device), callback server
+  (`{{interactsh-url}}`), and no attack-looking path (`../`, `%2e%2e`, `/etc/passwd`, `cmd=`, `${`, `<script` …);
+- no attack tag (rce, sqli, lfi, traversal, ssrf, xss, injection, default-login, brute-force, intrusive, dos, fuzz,
+  takeover, osint …) and not in those folders;
+- severity low or above — info only for `http/exposed-panels/` (an admin page reachable).
+`allowlist-review.md` beside it counts what was kept by severity and what was refused, by reason — the admin reads it
+before the first run, and again after each template update (then `--build` again).
+
+**Run.** `nuclei -l <targets> -t allowlist.txt -pt http,ssl -etags <attack tags> -dut -ni -duc -rl 30 -c 10 -bs 4
+-timeout 5 -retries 0 -mhe 10 -jsonl -silent -nc -or`: signed templates only, no interactsh (nothing sent to an
+outside callback server), no update check, 30 requests/s at most, no raw request/response kept; targets are the
+device's private address only; 300 s limit; Stop kills it. Not used: `-fr`, `-headless`, `-code`, `-lfa`, `-ev`,
+`-dast`, `-dashboard`, `-ai` (the last two send data to ProjectDiscovery).
+
+**Install (the user, without sudo).** Nuclei **v3.11.1** (8 Aug 2026) — it fixes the 2026 template-trust CVEs
+(signature bypass by a replaced template, CVE-2026-92718: 3.7.0–3.11.0; unsigned code templates in DAST,
+CVE-2026-76802). Checksum of `nuclei_3.11.1_linux_amd64.zip` from the release's checksums file:
+`ea63d4ae232808cd7c6bc00d0142428e231fab59dae01042246097d195835ab6`.
+
+```bash
+V=3.11.1; D=$(mktemp -d); cd "$D"; b=https://github.com/projectdiscovery/nuclei/releases/download/v$V
+curl -fsSLO $b/nuclei_${V}_linux_amd64.zip; curl -fsSLO $b/nuclei_${V}_checksums.txt
+sha256sum --ignore-missing -c nuclei_${V}_checksums.txt          # must say OK
+unzip -o nuclei_${V}_linux_amd64.zip nuclei -d ~/.local/bin && nuclei -version -duc
+cd ~/projects/multeagent
+nuclei -duc -update-templates -update-template-dir data/nuclei/templates     # official, signed templates
+.venv/bin/python -m src.servers.web_scan --build                           # writes the allow-list + its review
+```
+Then restart the API. Templates at the time of writing: v10.5.2 (12 Nov 2026).
+
+**Not measured yet** (the download was not allowed from the assistant's session): how many templates the allow-list
+keeps, how long one device takes, and whether a known case is found. First run on the user's PC: read
+`allowlist-review.md`, then check one device with web pages (e.g. 192.168.88.53, nginx 1.26.1).
