@@ -392,3 +392,56 @@ The user's choice (2026-11-17): "start with V1 nmap".
   nmap on this PC's own ports (Uvicorn, PostgreSQL — no version, so no CVEs).
 
 **Still to do:** the user's first `--update` and a check on the LAN; nmap's names for `network_scan`'s devices.
+
+### 11.1 Fixes from the first runs on the user's LAN (2026-11-17)
+
+| Seen | Cause | Fix |
+|---|---|---|
+| "check the security of my network 192.168.88.0/24" ran a network scan (device list) | the router reads only a tool's first sentence; `security_check`'s ended before "not for listing devices", and `network_scan`'s did not say "inventory" | both first sentences tell the tools apart on their own (assistant.py); live router check: 5/5 right |
+| 192.168.88.10 (no device there) → "No risky ports found" | nothing answered, and the report read as "safe" | "No port answered … nothing to judge" |
+| NAS: no versions after 64 s | nmap drops every answer of a host that hits `--host-timeout`; the NAS's web ports gave nothing in 62 s while SMB / NFS were named in 6 s | one nmap per open port, 16 at once, 30 s each — the NAS: 34 s, Samba named |
+| NAS "Version: Strict-Transport-Security: max-age=0" | an empty `Server:` header; the regex's `\s*` jumped to the next line | `[ \t]*` |
+| Samba "4" → 45 CVEs back to 2017 | a bare major number is a release family | at least major.minor before matching |
+| "OpenSSH for_Windows_9.5" → 80 CVEs from 2003 | the leading words ranked the version below every number | a version starts at its first number |
+| CVE-2008-3844 on OpenSSH 9.5 | NVD rows naming no version or range (0.6 %) matched everything | such rows match nothing |
+| nginx 1.18.0 → 0 CVEs | nmap's vendor `igor_sysoev`, the NVD's `f5` | renamed-vendor fallback (≥ 90 % share) |
+
+Whole network after the fixes: 28 hosts in 130 s; real finds include Telnet on .3, Redis 3.0.504 and PostgreSQL
+reachable on .66, nginx 1.26.1 (CVE-2025-23419) on .53.
+
+---
+
+## 12. V3 — Trivy for the Docker images on this PC (built 2026-11-17, needs Trivy installed)
+
+The user's choice: "now start V3 trivy". Tool `image_scan` ([image_scan.py](../src/servers/image_scan.py)), IT
+specialist, admins only, offered only when `trivy` and `docker` are found: `docker image ls` lists the images (the
+user's words only pick among them), `trivy image --quiet --format json --scanners vuln <image>` checks each,
+read-only. The answer: a table per image (critical / high / medium / low, how many have a fix), the worst five per
+image with "fixed in", every vulnerability in an .xlsx. Servers (an SBOM read over SSH) come next, after measuring.
+
+**Supply-chain warning.** In March 2026 attackers published a malicious Trivy **v0.69.4** (GitHub, deb, rpm, GHCR,
+ECR, Docker Hub) and malicious Docker Hub images **v0.69.5 and v0.69.6** that stole secrets
+(GHSA-69fq-xp46-6x23, CVE-2026-33634). Never install those; never install "latest" blindly. On 2026-11-17 the
+current release is **v0.76.2** (5 Nov 2026); each release carries a checksums file and Sigstore bundles.
+
+**Install (the user runs it; no sudo, into ~/.local/bin):**
+
+```bash
+V=0.76.2; D=$(mktemp -d); cd "$D"
+base=https://github.com/aquasecurity/trivy/releases/download/v$V
+curl -fsSLO $base/trivy_${V}_Linux-64bit.tar.gz
+curl -fsSLO $base/trivy_${V}_checksums.txt
+curl -fsSLO $base/trivy_${V}_checksums.txt.sigstore.json
+sha256sum --ignore-missing -c trivy_${V}_checksums.txt        # must print: trivy_…_Linux-64bit.tar.gz: OK
+# the signature proves the checksums came from Aqua's own release workflow (needs cosign, see below)
+cosign verify-blob --bundle trivy_${V}_checksums.txt.sigstore.json \
+  --certificate-identity-regexp 'https://github\.com/aquasecurity/' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' trivy_${V}_checksums.txt
+mkdir -p ~/.local/bin && tar -xzf trivy_${V}_Linux-64bit.tar.gz -C ~/.local/bin trivy
+trivy --version                                                # Version: 0.76.2
+trivy image --download-db-only                                 # its database, once (then it refreshes itself)
+```
+
+The checksum alone only proves the download is the file GitHub serves; the cosign step proves who built it. cosign
+is not on this PC: install it from its own release (github.com/sigstore/cosign) and check its checksum, or skip
+the step knowingly. ~/.local/bin must be on the API's PATH (restart the API after installing).

@@ -63,6 +63,8 @@ def test_versions_and_cpes():
     assert parse_cpe("cpe:2.3:a:openbsd:openssh:8.9:p1:*:*:*:*:*:*") == ("a", "openbsd", "openssh", "8.9p1")
     row = {"version": None, "start_incl": "8.5", "start_excl": None, "end_incl": None, "end_excl": "9.8"}
     assert in_range("8.9p1", row) and not in_range("9.8", row) and not in_range("8.4", row)
+    no_version = {"version": None, "start_incl": None, "start_excl": None, "end_incl": None, "end_excl": None}
+    assert not in_range("9.5", no_version)                                       # "every version" is no match
 
 
 @pytest.fixture
@@ -92,6 +94,10 @@ def test_lookup_matches_ranges_and_exact_versions_worst_first(db):
     assert [h.id for h in hits] == ["CVE-2023-0001", "CVE-2024-6387"]
     assert cve_db.lookup(db, "cpe:/a:openbsd:openssh:9.9") == []
     assert cve_db.lookup(db, "cpe:/a:postgresql:postgresql") == []             # no version, no guess
+    assert cve_db.lookup(db, "cpe:/a:openbsd:openssh:8") == []                  # a release family is no version
+    assert cve_db.lookup(db, "cpe:/a:openbsd:openssh:for_windows_9.9") == []    # the version is 9.9, not "older"
+    assert [h.id for h in cve_db.lookup(db, "cpe:/a:openbsd:openssh:for_windows_8.9p1")] == [
+        "CVE-2023-0001", "CVE-2024-6387"]
     assert cve_db.status(db)["cves"] == 4
 
 
@@ -141,6 +147,35 @@ def test_without_nmap_or_a_list_the_check_says_so(tmp_path, monkeypatch):
     monkeypatch.setattr(nmap_versions, "detect", lambda ip, ports, timeout: {})
     [note] = security_scan.read_versions([host], config, should_continue=lambda: True, progress=lambda _m: None)
     assert "cve_db --update" in note
+
+
+def test_a_host_that_answers_nothing_is_not_called_safe():
+    text = security_scan.markdown(SecurityResult("192.168.88.10", [HostReport(ip="192.168.88.10")], [], 0.5))
+    assert "No port answered" in text and "No risky ports" not in text
+
+
+def test_an_empty_server_header_is_no_product():
+    # the user's NAS: "Server:" empty, then HSTS — was shown as the product "Strict-Transport-Security: max-age=0"
+    banner = "HTTP/1.1 200 OK\r\nServer: \r\nStrict-Transport-Security: max-age=0\r\n\r\n"
+    assert security_scan.product_from_banner(443, banner) == "web server (answer 200, no Server header)"
+    assert security_scan.product_from_banner(80, "HTTP/1.1 200 OK\r\nServer: nginx/1.18.0\r\n") == "nginx/1.18.0"
+
+
+def test_each_port_is_read_on_its_own(monkeypatch, tmp_path):
+    """One slow port must not cost the others their versions (nmap drops a timed-out host's answers)."""
+    asked: list[list[int]] = []
+
+    def detect(ip, ports, timeout):
+        asked.append(ports)
+        return {} if ports == [443] else nmap_versions.parse_xml(NMAP_XML)
+
+    monkeypatch.setattr(nmap_versions, "available", lambda: True)
+    monkeypatch.setattr(nmap_versions, "detect", detect)
+    config = replace(Config.from_env(), cve_db_path=tmp_path / "none.sqlite")
+    host = HostReport(ip="192.168.1.5", services=[Service(22, "SSH"), Service(443, "HTTPS", "web server")])
+    security_scan.read_versions([host], config, should_continue=lambda: True, progress=lambda _m: None)
+    assert sorted(asked) == [[22], [443]]
+    assert host.services[0].product.startswith("OpenSSH") and host.services[1].product == "web server"
 
 
 def test_cve_risk_bands():

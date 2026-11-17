@@ -41,12 +41,14 @@ TCP_TIMEOUT = 0.5
 BANNER_TIMEOUT = 2.0
 MANY_PORTS = 12
 MAX_SERVICE_ROWS = 30          # longer service lists go to the Excel file only
-# Software versions by nmap -sV and their known CVEs (V1, doc/SECURITY_TOOLS_DECISION.md §10): nmap reads a host's
-# open ports in ~5–15 s (measured 11.6 s for 3 ports), so a few hosts at once, in a budget of its own after the port
-# check's; a host still unread when it ends keeps the version its greeting announced
+# Software versions by nmap -sV and their known CVEs (V1, doc/SECURITY_TOOLS_DECISION.md §10). One nmap per open
+# port: nmap drops every answer of a host that hits its time limit, and on the user's NAS (2026-11-17) SMB and NFS
+# were named in ~6 s while its two web ports gave nothing after 62 s — a whole-host run lost all five. A port nmap
+# cannot name in 30 s was not named at 60 s either. A port still unread when the step's budget ends keeps the
+# version its greeting announced.
 VERSIONS_TIME_LIMIT_SECONDS = 180
-NMAP_HOSTS_AT_ONCE = 8
-NMAP_HOST_TIMEOUT_SECONDS = 60
+NMAP_PORTS_AT_ONCE = 16
+NMAP_PORT_TIMEOUT_SECONDS = 30
 MAX_CVE_ROWS = 20              # longer vulnerability lists go to the Excel file only
 # CVSS v3 qualitative bands (FIRST.org): 9.0+ critical, 7.0+ high, 4.0+ medium — critical and high are our "high"
 CVSS_HIGH = 7.0
@@ -258,7 +260,8 @@ def product_from_banner(port: int, banner: str) -> str:
         if not re.search(r"\d+\.\d+|openssh|dropbear|rosssh|cisco|libssh", software, re.I):
             return f"unknown software (announces '{software}')"
         return software
-    if m := re.search(r"(?im)^server:\s*(.+?)\s*$", banner):
+    # [ \t]* not \s*: an empty "Server:" header must not take the next header line as the product
+    if m := re.search(r"(?im)^server:[ \t]*(\S.*?)[ \t]*\r?$", banner):
         return m.group(1)[:80]
     if m := re.match(r"RFB (\d{3}\.\d{3})", banner):
         return f"VNC protocol {m.group(1)}"
@@ -458,38 +461,36 @@ def read_versions(reports: list[HostReport], config: Config, *, should_continue:
                   progress: Callable[[str], None]) -> list[str]:
     """nmap -sV on each host's open ports → exact versions → their CVEs from the offline list. Returns notes
     about what could not be done (no nmap, no CVE list, time limit)."""
-    hosts = [r for r in reports if r.services]
-    if not hosts:
+    services = [(r, s) for r in reports for s in r.services]
+    if not services:
         return []
     if not nmap_versions.available():
         return ["Versions come from what services announce: nmap is not installed, so no CVE matching was done."]
     notes: list[str] = []
-    progress(f"Reading software versions with nmap on {len(hosts)} host{'s' if len(hosts) != 1 else ''}…")
-    started = time.monotonic()
+    progress(f"Reading software versions with nmap on {len(services)} open port{'s' if len(services) != 1 else ''}…")
     read = 0
-    pool = ThreadPoolExecutor(max_workers=min(NMAP_HOSTS_AT_ONCE, len(hosts)))
+    pool = ThreadPoolExecutor(max_workers=min(NMAP_PORTS_AT_ONCE, len(services)))
     try:
-        futures = {pool.submit(nmap_versions.detect, r.ip, [s.port for s in r.services],
-                               NMAP_HOST_TIMEOUT_SECONDS): r for r in hosts}
+        futures = {pool.submit(nmap_versions.detect, r.ip, [s.port], NMAP_PORT_TIMEOUT_SECONDS): s
+                   for r, s in services}
         for fut in as_completed(futures, timeout=VERSIONS_TIME_LIMIT_SECONDS):
             if not should_continue():
                 break
-            report, detected = futures[fut], fut.result()
+            service, detected = futures[fut], fut.result()
             read += 1
-            progress(f"Reading software versions with nmap… {read}/{len(hosts)}")
-            for service in report.services:
-                found = detected.get(service.port)
-                if found is None:
-                    continue
-                service.product = found.label or service.product
-                hits = {h.id: h for cpe in found.cpes for h in cve_db.lookup(config.cve_db_path, cpe)}
-                service.cves = sorted(hits.values(), key=lambda h: (-(h.score or 0), h.id))
+            progress(f"Reading software versions with nmap… {read}/{len(services)} ports")
+            found = detected.get(service.port)
+            if found is None:
+                continue
+            service.product = found.label or service.product
+            hits = {h.id: h for cpe in found.cpes for h in cve_db.lookup(config.cve_db_path, cpe)}
+            service.cves = sorted(hits.values(), key=lambda h: (-(h.score or 0), h.id))
     except TimeoutError:
-        pass                                   # the hosts not read keep their announced versions
+        pass                                   # the ports not read keep their announced versions
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
-    if read < len(hosts):
-        notes.append(f"Versions read by nmap on {read} of {len(hosts)} hosts "
+    if read < len(services):
+        notes.append(f"Versions read by nmap on {read} of {len(services)} open ports "
                      f"(stopped or {VERSIONS_TIME_LIMIT_SECONDS} s limit); the rest show what they announce.")
     if cve_db.status(config.cve_db_path) is None:
         notes.append("No CVE list yet, so versions were not matched to known vulnerabilities: an admin runs "
@@ -667,7 +668,14 @@ def _onoff(value: bool | None) -> str:
 
 def markdown(result: SecurityResult) -> str:
     parts = [summary(result)]
-    if not result.findings:
+    outside = [r for r in result.hosts if not r.local]
+    silent = [r.ip for r in outside if not r.services]
+    if outside and len(silent) == len(outside) and not any(r.local for r in result.hosts):
+        # nothing answered: not "safe", just nothing to judge (192.168.88.10 is not a device on the network)
+        parts.append(f"**No port answered** on {', '.join(silent[:12])}{' …' if len(silent) > 12 else ''} "
+                     f"({len(PORTS)} common ports checked): the device is off, not at this address, or a firewall "
+                     "blocks every port — there is nothing to judge. A network scan lists the devices that answer.")
+    elif not result.findings:
         parts.append("No risky ports or settings found by the rules.")
     elif len(result.hosts) > 1:
         parts.append("### Findings (grouped — every host and port is in the Excel file)\n" + _table(

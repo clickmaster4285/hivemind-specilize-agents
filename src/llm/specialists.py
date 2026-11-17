@@ -39,10 +39,10 @@ COLLECTIONS = ("it", "development", "marketing", "general")      # brain.collect
 GENERAL = "general"                                                # the picker's "no specialist"
 # tools that probe or act on machines, not only read text — the IT specialist only
 ACTION_TOOLS = frozenset({"network_scan", "security_check", "server_audit", "diagnose_server",
-                          "operate_server", "ping_host", "nvr_cameras", "network_device"})
+                          "operate_server", "ping_host", "nvr_cameras", "network_device", "image_scan"})
 # tools added after agents/specialists.json files already existed (files saved before "seen_tools")
 ADDED_LATER = frozenset({"security_check", "server_audit", "diagnose_server", "operate_server", "ping_host",
-                         "nvr_cameras", "network_device"})
+                         "nvr_cameras", "network_device", "image_scan"})
 PICK_MAX_TOKENS = 6
 
 PICK_SYSTEM = """Pick the specialist for the user's message. Specialists:

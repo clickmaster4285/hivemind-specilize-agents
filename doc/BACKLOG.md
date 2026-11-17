@@ -41,7 +41,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
 | [L24](#l24-ui-like-the-big-chat-apps--planned-2026-11-17-issues_log-o86) | UI like the big chat apps | U1–U8 built; connectors later | user's screenshots of DeepSeek, ChatGPT, Claude |
-| [L25](#l25-vulnerability-finders--explained-2026-11-17-issues_log-o87) | Vulnerability finders (nmap + CVEs, Nuclei, Trivy, OpenVAS) | V1 built; V2–V4 later | [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md) |
+| [L25](#l25-vulnerability-finders--explained-2026-11-17-issues_log-o87) | Vulnerability finders (nmap + CVEs, Nuclei, Trivy, OpenVAS) | V1, V3 (images) built; V2, V4 later | [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md) |
 | [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H3 built; H1, H2 later | NousResearch hermes-agent (MIT) |
 
 ---
@@ -688,7 +688,8 @@ The user's ask: understand each tool first, then a plan, then decide, then build
 limits, needs and the proposed order: [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md).
 
 - [x] V1 nmap -sV + offline NVD CVE list in `security_check` — built 2026-11-17 ([§11](SECURITY_TOOLS_DECISION.md)); next: nmap names in `network_scan`
-- [ ] V3 Trivy: Docker images on this PC; then Linux servers via an SBOM read over SSH (accuracy measured first)
+- [x] V3 Trivy for Docker images on this PC — built 2026-11-17 (`image_scan`, [§12](SECURITY_TOOLS_DECISION.md)); the user installs a verified Trivy
+- [ ] V3b Trivy for Linux servers via an SBOM read over SSH (accuracy measured first)
 - [ ] V2 Nuclei with a reviewed read-only template allow-list
 - [ ] V4 OpenVAS in Docker — only if V1–V3 leave gaps
 

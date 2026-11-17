@@ -45,6 +45,9 @@ REJECTED = "Rejected"
 # the NVD has nothing under nmap's vendor, the vendor holding at least this share of the product's entries is used;
 # a name several vendors share ("server", "router") stays unmatched
 RENAMED_VENDOR_SHARE = 0.9
+# A version names one release only with at least major.minor: nmap's "Samba smbd 4" is a family of 15 years, and
+# matching it found 45 CVEs back to 2017 on the user's current NAS (2026-11-17) — false alarms, so no match
+MIN_VERSION_NUMBERS = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS cves (id TEXT PRIMARY KEY, score REAL, severity TEXT, published TEXT, summary TEXT);
@@ -57,6 +60,9 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
 _CPE_SPLIT = re.compile(r"(?<!\\):")
 _VERSION_PART = re.compile(r"\d+|[a-z]+")
+# a version starts at its first number: nmap writes Windows' OpenSSH as `for_windows_9.5`, and a leading word ranked it
+# below every number, so "before 3.7" matched and 80 CVEs back to 2003 appeared (user's LAN, 2026-11-17)
+_VERSION_START = re.compile(r"\d.*")
 
 
 @dataclass(frozen=True)
@@ -74,13 +80,16 @@ def version_key(version: str) -> tuple:
 
 
 def in_range(version: str, row: sqlite3.Row | dict[str, Any]) -> bool:
-    """Whether `version` is the exact version a match row names, or inside its range."""
+    """Whether `version` is the exact version a match row names, or inside its range. A row naming no version and
+    no range ("every OpenSSH": 0.6 % of the NVD's rows, e.g. CVE-2008-3844, tampered Red Hat packages of 2008) says
+    nothing about a version, so it matches none."""
     key = version_key(version)
     if row["version"]:
         return key == version_key(row["version"])
-    bounds = ((row["start_incl"], lambda k, b: k >= b), (row["start_excl"], lambda k, b: k > b),
-              (row["end_incl"], lambda k, b: k <= b), (row["end_excl"], lambda k, b: k < b))
-    return all(test(key, version_key(bound)) for bound, test in bounds if bound)
+    bounds = [(bound, test) for bound, test in (
+        (row["start_incl"], lambda k, b: k >= b), (row["start_excl"], lambda k, b: k > b),
+        (row["end_incl"], lambda k, b: k <= b), (row["end_excl"], lambda k, b: k < b)) if bound]
+    return bool(bounds) and all(test(key, version_key(bound)) for bound, test in bounds)
 
 
 # ── CPE names ─────────────────────────────────────────────────────────────
@@ -213,9 +222,13 @@ def _nvd_vendor(conn: sqlite3.Connection, vendor: str, product: str) -> str:
 def lookup(path: Path, cpe: str) -> list[CveHit]:
     """The CVEs whose criteria name this software version, worst first; [] without a version or a list."""
     parsed = parse_cpe(cpe)
-    if parsed is None or not parsed[3] or not path.is_file():
+    if parsed is None or not path.is_file():
         return []
-    _part, vendor, product, version = parsed
+    _part, vendor, product, announced = parsed
+    start = _VERSION_START.search(announced)
+    version = start.group(0) if start else ""
+    if sum(kind == 1 for kind, _ in version_key(version)) < MIN_VERSION_NUMBERS:
+        return []
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
         conn.row_factory = sqlite3.Row
         vendor = _nvd_vendor(conn, vendor, product)

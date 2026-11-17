@@ -28,6 +28,7 @@ from src.core.config import ROOT, Config
 from src.core.conversation import split_summary
 from src.llm.diagram_rules import MATH_RULE, diagram_block
 from src.llm.router import CLARIFY, NOT_LISTED, NOT_RUN, SEARCH, TOOL, Route, previous_question, route_message
+from src.servers import image_scan
 from src.tools.calculator import CALCULATE_TOOL, chat_tools_with_calculator
 
 if TYPE_CHECKING:
@@ -90,7 +91,8 @@ TOOLS: tuple[Tool, ...] = (
     Tool("get_weather", "weather", "Current weather and a 3-day forecast for a place.",
          {"place": "city name; empty = the user's own city"}),
     Tool("network_scan", "network_scan",
-         "Actually scan the local private network now and list the devices (IP, name, MAC, open ports) as a table.",
+         "Actually scan the local private network now and list its devices (IP, name, MAC, open ports) as a table: "
+         "an inventory, not a security check.",
          {"subnet": "e.g. 192.168.1.0/24; empty = this computer's network"}, (), lambda c: c.network_scan_enabled),
     Tool("ping_host", "host_check",
          "Actually ping ONE device now and check it is up / running / online: replies and response time, "
@@ -99,14 +101,24 @@ TOOLS: tuple[Tool, ...] = (
          {"host": "the device's IP address (exactly as the user wrote it) or name"}, ("host",),
          lambda c: c.network_scan_enabled),
     Tool("security_check", "security_check",
-         "Actually check security now: open ports and the services/versions behind them, HTTPS certificates, "
-         "risky services (RDP, Telnet, databases, SMB), and for this PC its Windows Firewall, Remote Desktop and "
-         "SMBv1. Returns findings with risk and fixes. Use for 'is this PC/server secure', 'which ports are open "
-         "on X', 'find risky ports' — not for just listing devices (network_scan), and not for the user's own "
+         # the router reads only the first sentence (TOOL_LINE_CHARS): it alone must tell this from network_scan
+         "Actually check the security of a device or a whole network now: open ports, software versions and their "
+         "known vulnerabilities (CVEs), risky services. Risky: RDP, Telnet, databases, SMB; also HTTPS certificates, "
+         "and for this PC its Windows Firewall, Remote Desktop and SMBv1. Returns findings with risk and fixes. "
+         "Use for 'is this PC/server/network secure', 'which ports are open on X', 'find risky ports', "
+         "'vulnerabilities' — not for just listing devices (network_scan), and not for the user's own "
          "Linux server ('my server', 'my web server', a server from Settings → Devices): server_audit logs in "
          "and checks its firewall from the inside.",
          {"target": "an IP (192.168.1.10), a network (192.168.1.0/24), 'this pc', or empty = the whole local network"},
          (), lambda c: c.security_scan_enabled),
+    Tool("image_scan", "image_scan",
+         # the router reads only the first sentence (TOOL_LINE_CHARS)
+         "Actually check the Docker images (containers) on this PC for known vulnerabilities in their packages. "
+         "Trivy lists each CVE, its package and the version that fixes it. Use for 'scan my docker images', 'are "
+         "my containers vulnerable', 'check the postgres image for CVEs' — not for devices on the network "
+         "(security_check).",
+         {"image": "a part of one image's name (postgres, searxng); empty = every image on this PC"},
+         (), lambda c: c.security_scan_enabled and image_scan.available()),
     Tool("server_audit", "server_audit",
          "Log in to one of the user's Linux servers (added this session in Settings → Devices) and audit it "
          "read-only: ufw / iptables firewall, open ports with programs, SSH settings (root and password login), "
