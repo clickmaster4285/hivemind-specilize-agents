@@ -380,7 +380,10 @@ The user's choice (2026-11-17): "start with V1 nmap".
   Rejected CVEs are removed. Nothing leaves the PC during a check.
 - **Matching**: a CVE's software criteria give an exact version (2.3's update field joined: `8.9` + `p1`) or a range
   (start/end, included/excluded); versions compare part by part (numbers as numbers). A software CPE with no
-  version (`cpe:/a:postgresql:postgresql`) is never guessed.
+  version (`cpe:/a:postgresql:postgresql`) is never guessed. A renamed vendor is followed: nmap says
+  `igor_sysoev:nginx`, the NVD files nginx as `f5:nginx` (703 of 705 entries) — when the NVD has nothing under
+  nmap's vendor, the vendor with ≥ 90 % of the product's entries is used; a name several vendors share stays
+  unmatched (found 2026-11-17 on the real list: nginx 1.18.0 had 0 hits, now 6 incl. CVE-2021-23017).
 - **Report**: "Known vulnerabilities (possible, matched by software version)" — per service the number of CVEs and
   the worst; a finding rated by the worst CVSS (7.0+ high, 4.0+ medium, else low) whose fix says OS packages may
   be patched without a new number; the Excel file gets a Vulnerabilities sheet with every CVE. Without nmap or the

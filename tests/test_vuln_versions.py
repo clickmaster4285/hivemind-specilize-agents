@@ -95,6 +95,18 @@ def test_lookup_matches_ranges_and_exact_versions_worst_first(db):
     assert cve_db.status(db)["cves"] == 4
 
 
+def test_a_renamed_vendor_is_found_but_a_shared_name_is_not(tmp_path):
+    path = tmp_path / "nvd.sqlite"
+    conn = cve_db.connect(path)
+    nginx = {"vulnerable": True, "criteria": "cpe:2.3:a:f5:nginx:*:*:*:*:*:*:*:*", "versionEndExcluding": "1.20.1"}
+    shared = [{"vulnerable": True, "criteria": f"cpe:2.3:a:{v}:router:*:*:*:*:*:*:*:*"} for v in ("acme", "zeta")]
+    cve_db.import_feed(conn, _feed(_cve("CVE-2021-23017", 7.7, nginx), _cve("CVE-2020-0001", 9.0, shared[0]),
+                                   _cve("CVE-2020-0002", 9.0, shared[1])))
+    conn.close()
+    assert [h.id for h in cve_db.lookup(path, "cpe:/a:igor_sysoev:nginx:1.18.0")] == ["CVE-2021-23017"]
+    assert cve_db.lookup(path, "cpe:/a:other:router:1.0") == []
+
+
 def test_a_rejected_cve_is_removed(db):
     conn = cve_db.connect(db)
     cve_db.import_feed(conn, _feed(_cve("CVE-2023-0001", 9.8, SSH_EXACT_8_9_P1, status="Rejected")))

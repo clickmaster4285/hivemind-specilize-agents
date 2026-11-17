@@ -41,6 +41,10 @@ ANY, NOT_APPLICABLE = "*", "-"
 # the CVSS versions read for a score, best first
 CVSS_METRICS = ("cvssMetricV31", "cvssMetricV30", "cvssMetricV40", "cvssMetricV2")
 REJECTED = "Rejected"
+# A product whose vendor was renamed (nmap still says `igor_sysoev:nginx`, the NVD files it as `f5:nginx`): when
+# the NVD has nothing under nmap's vendor, the vendor holding at least this share of the product's entries is used;
+# a name several vendors share ("server", "router") stays unmatched
+RENAMED_VENDOR_SHARE = 0.9
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS cves (id TEXT PRIMARY KEY, score REAL, severity TEXT, published TEXT, summary TEXT);
@@ -196,6 +200,16 @@ def status(path: Path) -> dict[str, Any] | None:
     return {"updated_at": updated, "cves": count} if updated else None
 
 
+def _nvd_vendor(conn: sqlite3.Connection, vendor: str, product: str) -> str:
+    """The vendor name the NVD files this product under: nmap's, or a renamed one (RENAMED_VENDOR_SHARE)."""
+    counts = conn.execute("SELECT vendor, COUNT(*) AS n FROM matches WHERE product = ? GROUP BY vendor "
+                          "ORDER BY n DESC", (product,)).fetchall()
+    if not counts or any(r["vendor"] == vendor for r in counts):
+        return vendor
+    total = sum(r["n"] for r in counts)
+    return counts[0]["vendor"] if counts[0]["n"] >= RENAMED_VENDOR_SHARE * total else vendor
+
+
 def lookup(path: Path, cpe: str) -> list[CveHit]:
     """The CVEs whose criteria name this software version, worst first; [] without a version or a list."""
     parsed = parse_cpe(cpe)
@@ -204,6 +218,7 @@ def lookup(path: Path, cpe: str) -> list[CveHit]:
     _part, vendor, product, version = parsed
     with sqlite3.connect(f"file:{path}?mode=ro", uri=True) as conn:
         conn.row_factory = sqlite3.Row
+        vendor = _nvd_vendor(conn, vendor, product)
         rows = conn.execute(
             "SELECT m.*, c.score, c.severity, c.summary FROM matches m JOIN cves c ON c.id = m.cve_id "
             "WHERE m.vendor = ? AND m.product = ?", (vendor, product)).fetchall()
