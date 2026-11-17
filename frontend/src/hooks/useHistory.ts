@@ -40,6 +40,8 @@ export function useHistory() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [activeThreadId, setActiveThreadIdState] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  // true once the signed-in user's jobs have loaded: a chat link (/chat/<id>) can only be opened after that
+  const [ready, setReady] = useState(false);
   // The signed-in user. All per-device pointers (open chat/project) are namespaced by it so a shared
   // browser never shows one person another's chats; null until loadHistory() runs after sign-in.
   const [userId, setUserId] = useState<number | null>(null);
@@ -68,6 +70,7 @@ export function useHistory() {
   const refreshJobs = useCallback(async () => {
     const data = await listJobs(100);
     setJobs(data);
+    setReady(true);
     return data;
   }, []);
 
@@ -216,9 +219,11 @@ export function useHistory() {
     setActiveThreadIdState(null);
     setProjectId(null);
     setUserId(null);
+    setReady(false);
   }, []);
 
   return {
+    ready,
     jobs,
     jobById,
     threads,

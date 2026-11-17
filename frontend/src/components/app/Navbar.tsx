@@ -4,21 +4,23 @@ import { usePathname } from "next/navigation";
 
 import { useApp } from "@/components/app/AppProvider";
 import ThemeToggle from "@/components/app/ThemeToggle";
+import { PLUGINS_PATH, SETTINGS_PATH } from "@/lib/routes";
 
 /** The persistent top bar. Stays mounted across pages; shows the current page's title and status. */
 export default function Navbar() {
   const app = useApp();
   const pathname = usePathname();
-  const onSettings = pathname?.startsWith("/settings");
-  const title = onSettings ? "Settings" : app.chat.title;
-  const subtitle = onSettings
+  const onSettings = pathname?.startsWith(SETTINGS_PATH);
+  const onPlugins = pathname === PLUGINS_PATH;
+  const title = onSettings ? "Settings" : onPlugins ? "Plugins" : app.chat.title;
+  const subtitle = onSettings || onPlugins
     ? app.auth.user?.username || ""
     : `${app.runMode} · ${app.specialists.label}${app.history.activeProject ? ` · ${app.history.activeProject.name}` : ""}`;
 
   return (
     <header className="flex shrink-0 items-center justify-between gap-3 border-b border-line bg-glass px-4 py-[0.55rem]">
       <div className="min-w-0">
-        <strong className="block truncate text-[1rem] [font-family:var(--font-display)]">{title}</strong>
+        <strong className="block truncate text-[1rem] [font-family:var(--font-display)]" title={title}>{title}</strong>
         <span className="mt-[0.1rem] block truncate text-[0.72rem] text-muted">{subtitle}</span>
       </div>
       <div className="flex shrink-0 items-center gap-[0.6rem]">

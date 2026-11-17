@@ -118,8 +118,8 @@ export default function Composer(props: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const resize = useAutoResize(inputRef, query);
   const [menuOpen, setMenuOpen] = useState(false);
-  const skillMenu = useSkillMenu(query, props.skills, (skill) => {
-    onQuery(`/${skill.name} `);
+  const skillMenu = useSkillMenu(query, props.skills, (text) => {
+    onQuery(text);
     inputRef.current?.focus();
   });
 

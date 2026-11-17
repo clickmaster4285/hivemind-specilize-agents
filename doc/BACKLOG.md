@@ -40,6 +40,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
+| [L24](#l24-ui-like-the-big-chat-apps--planned-2026-11-17-issues_log-o86) | UI like the big chat apps | in progress — U1–U4, U8 built | user's screenshots of DeepSeek, ChatGPT, Claude |
 
 ---
 
@@ -643,3 +644,34 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
 - [x] `components/` by feature: `app` (shell), `auth` (login, CAPTCHA), `chat` (feed, composer), `answer` (markdown,
       diagrams), `settings` (+ `users/`, `skills/`); file names unchanged
 - [x] Every import, code comment and doc path updated; tsc, eslint and the UI log clean
+
+### L24. UI like the big chat apps — planned 2026-11-17 (ISSUES_LOG O86)
+
+From the user's screenshots of DeepSeek, ChatGPT and Claude (2026-11-17). What they share and we lack:
+
+| # | Area | Theirs | Ours today | Plan |
+|---|------|--------|-----------|------|
+| U1 | Chat URL | every chat has its id in the URL (`/chat/<id>`), so reload, back and a shared link reopen it | `/` only; the open chat lives in memory | `/chat/[id]` route; new chat = `/`; sidebar links are real links |
+| U2 | Sidebar | collapses to a thin rail (toggle top-left); nav first (New chat, Search, Projects, …), then recents | fixed 280 px, cannot collapse | collapse toggle, remembered per browser; nav block on top |
+| U3 | Chat titles | one line, cut with "…"; hover shows the full title and the date (Claude); grouped by 7 days / 30 days / month (DeepSeek) | titles may wrap; no date | one line + hover card (title, date); date groups |
+| U4 | Account menu | name at the bottom; menu: Settings, Help, Log out (all three) | settings on its own page via the navbar | account button at the sidebar bottom with that menu |
+| U5 | Own pages | Plugins / Skills / Connectors / Projects / Artifacts each a page with search, filters (All · Yours · …) and an Add button | all inside Settings tabs | `/skills`, `/devices`, `/projects`, `/library` (files the app made: documents, images, diagrams), `/specialists`; Settings keeps users, models, usage |
+| U6 | New chat screen | greeting with the user's name, the message box in the middle, recent files under it (Claude) | empty feed | greeting + centred composer + recent files |
+| U7 | Chat header | the chat's title, compact, full title on hover | title + specialist line | compact title with hover card |
+| U8 | More skills | Claude lists many (Sales, Legal, Small Business, …) | 17 built-in | new built-ins chosen with the user (O85) |
+
+User's choices (2026-11-17): URL + sidebar first; Plugins = a placeholder page now, real connectors later; skills =
+all four proposed sets plus ideas from skills.sh, Anthropic's skills / knowledge-work-plugins and OpenAI's skills
+(names and purposes only, our own text; those libraries are Apache-2.0 / MIT).
+
+- [x] U1–U4 — built 2026-11-17 (waiting on the user's look)
+- [x] Plugins placeholder page (/plugins) — built 2026-11-17
+- [x] U8 — 29 new skills: ad-copy, social-post, landing-page-copy, product-description, lighthouse-fix-plan,
+      accessibility-audit, docker-compose-writer, k8s-troubleshoot, security-review, backup-plan, summarize-document,
+      translate, proposal-quote, job-description, contract-review, product-spec, deploy-checklist, threat-model,
+      status-report, process-doc, risk-assessment, kb-article, email-sequence, sales-call-prep, objection-handling,
+      grant-rfp-response, tech-debt-review, plan-grill, ai-search-visibility
+- [ ] U5 own pages (/skills, /devices, /projects, /library), U6 greeting screen, U7 header hover card (title has a
+      tooltip now)
+- [ ] Real connectors (Gmail, Drive, GitHub, Slack…): OAuth + a security review first
+
