@@ -518,9 +518,11 @@ by `python -m src.servers.web_scan --build` from each template's own content. A 
 before the first run, and again after each template update (then `--build` again).
 
 **Run.** `nuclei -l <targets> -t allowlist.txt -pt http,ssl -etags <attack tags> -dut -ni -duc -rl 30 -c 10 -bs 4
--timeout 5 -retries 0 -mhe 10 -jsonl -silent -nc -or`: signed templates only, no interactsh (nothing sent to an
+-timeout 5 -retries 0 -mhe 50 -jsonl -silent -nc -or -stats -sj -si 10`: signed templates only, no interactsh (nothing sent to an
 outside callback server), no update check, 30 requests/s at most, no raw request/response kept; targets are the
-device's private address only; 300 s limit; Stop kills it. Not used: `-fr`, `-headless`, `-code`, `-lfa`, `-ev`,
+device's private address only; 120 s per web port, 600 s at most; Stop kills it. Nuclei's own progress count
+(`-stats -sj`, to a file) says whether every planned request was sent — a cut-short run or a port Nuclei dropped
+after too many errors (it says so only in debug output) is named in the report. Not used: `-fr`, `-headless`, `-code`, `-lfa`, `-ev`,
 `-dast`, `-dashboard`, `-ai` (the last two send data to ProjectDiscovery).
 
 **Install (the user, without sudo).** Nuclei **v3.11.1** (8 Aug 2026) — it fixes the 2026 template-trust CVEs
@@ -534,11 +536,16 @@ curl -fsSLO $b/nuclei_${V}_linux_amd64.zip; curl -fsSLO $b/nuclei_${V}_checksums
 sha256sum --ignore-missing -c nuclei_${V}_checksums.txt          # must say OK
 unzip -o nuclei_${V}_linux_amd64.zip nuclei -d ~/.local/bin && nuclei -version -duc
 cd ~/projects/multeagent
-nuclei -duc -update-templates -update-template-dir data/nuclei/templates     # official, signed templates
+mkdir -p data/nuclei && nuclei -update-templates -update-template-dir "$PWD/data/nuclei/templates"   # official, signed templates (no -duc here: it blocks this download)
 .venv/bin/python -m src.servers.web_scan --build                           # writes the allow-list + its review
 ```
 Then restart the API. Templates at the time of writing: v10.5.2 (12 Nov 2026).
 
-**Not measured yet** (the download was not allowed from the assistant's session): how many templates the allow-list
-keeps, how long one device takes, and whether a known case is found. First run on the user's PC: read
-`allowlist-review.md`, then check one device with web pages (e.g. 192.168.88.53, nginx 1.26.1).
+**Measured (2026-11-17, templates v10.5.2).** The allow-list keeps **2,486 of 14,225** templates (critical 107,
+high 513, medium 430, low 377, info 1,059 admin panels); the largest refusals: technologies/ 1,163, xss 1,127, osint/
+1,078, info-only 859, lfi 838, cloud/ 663, redirects 584, sqli 546, rce 477. One web port = ~2,600 requests = 86 s
+at 30/s. First check of 192.168.88.53 (4 web ports): Mailpit API information disclosure (:10000), WordPress REST
+user list and login page (:443), self-signed certificate — real findings. It ended at ~300 s with ~10,400 requests
+needed, with no time-limit note: Nuclei had dropped part of the work (`-mhe 10`; port 80 alone gave 12 errors). Fixed:
+`-mhe 50`, a time limit per web port, the progress count above, and Nuclei's self-signed finding no longer repeats
+ours. First install found no templates: `-duc` also blocks `-update-templates` (install steps fixed).

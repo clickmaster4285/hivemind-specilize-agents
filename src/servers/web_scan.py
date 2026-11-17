@@ -31,7 +31,11 @@ logger = logging.getLogger(__name__)
 ALLOWLIST_NAME = "allowlist.txt"
 REVIEW_NAME = "allowlist-review.md"
 TEMPLATES_NAME = "templates"
-TIME_LIMIT_SECONDS = 300
+SECONDS_PER_URL = 120        # measured: ~2,600 requests per web port at 30/s = 86 s (192.168.88.53, 2026-11-17)
+TIME_LIMIT_SECONDS = 600     # whole run, however many web ports
+MAX_HOST_ERRORS = 50         # Nuclei drops a port after this many failed requests (12 seen on a healthy one)
+COMPLETE_SHARE = 0.95        # requests sent / planned that counts as the whole check
+STATS_SECONDS = 10
 RATE_LIMIT = 30              # requests per second in all (Nuclei's default is 150)
 CONCURRENCY = 10             # templates at once
 REQUEST_TIMEOUT_SECONDS = 5
@@ -225,8 +229,9 @@ def command(targets_file: str, nuclei_dir: Path) -> list[str]:
             "-ni",                        # no interactsh: no callback server on the internet
             "-duc",                       # no update check
             "-rl", str(RATE_LIMIT), "-c", str(CONCURRENCY), "-bs", "4",
-            "-timeout", str(REQUEST_TIMEOUT_SECONDS), "-retries", "0", "-mhe", "10",
-            "-jsonl", "-silent", "-nc", "-or"]   # -or: no raw request / response in the output
+            "-timeout", str(REQUEST_TIMEOUT_SECONDS), "-retries", "0", "-mhe", str(MAX_HOST_ERRORS),
+            "-jsonl", "-silent", "-nc", "-or",
+            "-stats", "-sj", "-si", str(STATS_SECONDS)]   # progress to stderr: was the whole check done?   # -or: no raw request / response in the output
 
 
 def web_urls(ip: str, ports: Iterable[int], http_ports: set[int], tls_http_ports: set[int]) -> list[str]:
@@ -266,19 +271,48 @@ def parse_jsonl(text: str) -> list[WebFinding]:
     return sorted(out.values(), key=lambda f: (order.get(f.severity, 9), f.template, f.url))
 
 
+def time_limit_for(urls: list[str]) -> float:
+    return min(TIME_LIMIT_SECONDS, SECONDS_PER_URL * max(1, len(urls)))
+
+
+def progress_of(stderr: str) -> tuple[int, int] | None:
+    """Nuclei's last -stats -sj line → (requests sent, requests planned). Fewer sent than planned when the run
+    was cut short or Nuclei dropped a port that kept failing (-mhe) — which it reports only in debug output."""
+    for line in reversed(stderr.splitlines()):
+        if line.startswith("{") and '"total"' in line:
+            try:
+                data = json.loads(line)
+                return int(data["requests"]), int(data["total"])
+            except (ValueError, KeyError, TypeError):
+                return None
+    return None
+
+
+def coverage_note(stderr: str, note: str) -> str:
+    done = progress_of(stderr)
+    if not done or not done[1] or done[0] >= done[1] * COMPLETE_SHARE:
+        return note
+    share = f"{done[0]:,} of {done[1]:,} planned requests were sent ({done[0] * 100 // done[1]} %)"
+    if note:
+        return f"{note}; {share}"
+    return f"Nuclei skipped part of the web checks: {share} — a web port kept failing and was dropped"
+
+
 def run(urls: list[str], nuclei_dir: Path, *, should_continue: Callable[[], bool] = lambda: True,
-        time_limit: float = TIME_LIMIT_SECONDS) -> tuple[list[WebFinding], str]:
-    """Run Nuclei on the URLs → (findings, a note: "" or why it stopped / failed)."""
+        time_limit: float | None = None) -> tuple[list[WebFinding], str]:
+    """Run Nuclei on the URLs → (findings, a note: "" or why it stopped / failed / skipped a port)."""
     if not urls:
         return [], ""
+    time_limit = time_limit_for(urls) if time_limit is None else time_limit
     with tempfile.TemporaryDirectory(prefix="multeagent-nuclei-") as tmp:
         targets = Path(tmp) / "targets.txt"
         targets.write_text("\n".join(urls) + "\n", encoding="utf-8")
         out_path = Path(tmp) / "out.jsonl"
         started = time.monotonic()
         note = ""
-        with out_path.open("w", encoding="utf-8") as out, subprocess.Popen(
-                command(str(targets), nuclei_dir), stdout=out, stderr=subprocess.PIPE, text=True) as proc:
+        err_path = Path(tmp) / "err.txt"          # a file, not a pipe: a full pipe would stall Nuclei
+        with out_path.open("w", encoding="utf-8") as out, err_path.open("w", encoding="utf-8") as err_file, \
+                subprocess.Popen(command(str(targets), nuclei_dir), stdout=out, stderr=err_file, text=True) as proc:
             while proc.poll() is None:
                 if not should_continue():
                     note = "stopped before the web checks finished"
@@ -290,10 +324,12 @@ def run(urls: list[str], nuclei_dir: Path, *, should_continue: Callable[[], bool
             if proc.poll() is None:
                 proc.kill()
             proc.wait()
-            err = proc.stderr.read() if proc.stderr else ""
         found = parse_jsonl(out_path.read_text(encoding="utf-8", errors="replace"))
+        err = err_path.read_text(encoding="utf-8", errors="replace")
+        note = coverage_note(err, note)
         if not note and proc.returncode not in (0, None) and not found:
-            note = f"Nuclei failed: {(err.strip().splitlines() or ['no message'])[-1][:160]}"
+            said = [line for line in err.splitlines() if line.strip() and not line.startswith("{")]
+            note = f"Nuclei failed: {(said or ['no message'])[-1][:160]}"
         return found, note
 
 

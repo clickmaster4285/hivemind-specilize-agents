@@ -439,7 +439,10 @@ WEB_RISK = {"critical": HIGH, "high": HIGH, "medium": MEDIUM, "low": LOW, "info"
 def web_findings(host: HostReport) -> list[Finding]:
     """One finding per Nuclei match (V2): an exposed file, a misconfiguration, an admin page, a CVE its page shows."""
     out = []
+    self_signed = {s.port for s in host.services if "self-signed" in (s.tls or "")}
     for w in host.web:
+        if w.template in SAME_AS_TLS_CHECK and w.port in self_signed:
+            continue                                     # already a finding from our own TLS check
         cves = f" ({', '.join(w.cves[:3])})" if w.cves else ""
         if w.severity == "info":
             out.append(Finding(INFO, host.ip, w.port, f"Admin page reachable: {w.name}",
@@ -450,6 +453,9 @@ def web_findings(host: HostReport) -> list[Finding]:
                                f"{w.url} — {w.description or 'Nuclei template ' + w.template + ' matched'}",
                                w.fix or "Update the software behind this page, or remove what it exposes"))
     return out
+
+
+SAME_AS_TLS_CHECK = {"self-signed-ssl"}
 
 
 def run_web_checks(report: HostReport, config: Config, *, should_continue: Callable[[], bool],
@@ -465,7 +471,7 @@ def run_web_checks(report: HostReport, config: Config, *, should_continue: Calla
     started = time.monotonic()
     report.web, note = web_scan.run(urls, config.nuclei_dir, should_continue=should_continue)
     done = f"Web checks: Nuclei's reviewed read-only templates on {', '.join(urls)} in {time.monotonic() - started:.0f} s."
-    return [done] + ([note.capitalize()] if note else [])
+    return [done] + ([note[0].upper() + note[1:] + "."] if note else [])
 
 
 def local_findings(view: LocalView, label: str = "this PC") -> list[Finding]:

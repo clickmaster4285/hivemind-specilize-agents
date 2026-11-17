@@ -312,7 +312,7 @@ def test_package_findings_and_section():
                      os_version="24.04", package_count=2, vulnerable=vulnerable,
                      package_groups=ps.group(vulnerable, pkgs, "6.8.0-45-generic"))
     found = {f.title: (f.risk, f.fix) for f in la.audit_findings(audit)}
-    assert found["1 critical/high known vulnerabilities with a fix, in 1 packages"] == (
+    assert found["1 critical/high known vulnerabilities with a fix, in openssl"] == (
         HIGH, "sudo apt update && sudo apt upgrade")
     assert found["Old kernels still installed (1 known vulnerabilities)"] == (LOW, "sudo apt autoremove --purge")
     text = la.packages_markdown(audit)

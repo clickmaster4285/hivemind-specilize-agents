@@ -142,3 +142,34 @@ def test_one_device_gets_web_checks_a_network_gets_a_hint(monkeypatch, tmp_path)
 
     sheet = load_workbook(BytesIO(sec.xlsx_bytes(result)))["Web checks"]
     assert sheet.max_row == 4 and sheet["F2"].value == "https://192.168.88.53:443/status"
+
+
+def stats(requests: int, total: int) -> str:
+    return json.dumps({"duration": "0:05:00", "requests": str(requests), "total": str(total), "percent": "70"})
+
+
+def test_a_cut_short_or_dropped_port_is_reported_not_silent():
+    full = "[INF] x\n" + stats(10, 2600) + "\n" + stats(2604, 2598) + "\n"
+    assert ws.coverage_note(full, "") == ""                              # the whole check ran
+    dropped = stats(7000, 10400) + "\n"
+    note = ws.coverage_note(dropped, "")
+    assert note.startswith("Nuclei skipped part") and "7,000 of 10,400" in note and "(67 %)" in note
+    assert ws.coverage_note(dropped, "web checks stopped at the 480 s limit").endswith("(67 %)")
+    assert ws.coverage_note("no stats here", "") == ""
+
+
+def test_time_limit_grows_with_the_web_ports():
+    assert ws.time_limit_for(["a"]) == ws.SECONDS_PER_URL
+    assert ws.time_limit_for(["a"] * 4) == 4 * ws.SECONDS_PER_URL       # measured: 86 s per port at 30/s
+    assert ws.time_limit_for(["a"] * 8) == ws.TIME_LIMIT_SECONDS
+    cmd = ws.command("/tmp/t.txt", Path("/d"))
+    assert int(cmd[cmd.index("-mhe") + 1]) >= 30 and {"-stats", "-sj"} <= set(cmd)
+
+
+def test_our_own_self_signed_finding_is_not_repeated_by_nuclei():
+    w = ws.WebFinding("self-signed-ssl", "Self Signed SSL Certificate", "low", "192.168.88.53:443", 443, [], "", "")
+    host = sec.HostReport(ip="192.168.88.53", services=[sec.Service(443, "HTTPS", tls="self-signed certificate")],
+                          web=[w])
+    assert sec.web_findings(host) == []
+    host.services[0].tls = ""
+    assert len(sec.web_findings(host)) == 1

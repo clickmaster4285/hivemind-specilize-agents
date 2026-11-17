@@ -461,6 +461,14 @@ def collect(shell: Shell, audit: Audit, should_continue: Callable[[], bool], sta
     audit.fail2ban = parse_fail2ban(out + err, code)
 
 
+def _packages(groups: list) -> str:
+    """["linux"] → "linux"; 5 groups → "5 packages (linux, openssl, …)"."""
+    names = [g.source for g in groups]
+    if len(names) <= 3:
+        return ", ".join(names)
+    return f"{len(names)} packages ({', '.join(names[:3])}, …)"
+
+
 def audit_findings(a: Audit) -> list[Finding]:
     out: list[Finding] = []
 
@@ -510,12 +518,12 @@ def audit_findings(a: Audit) -> list[Finding]:
     serious = {c for g in running for c in g.serious_fixable}
     if serious:
         add(HIGH, None, f"{len(serious)} critical/high known vulnerabilities with a fix, in "
-            f"{sum(bool(g.serious_fixable) for g in running)} packages",
+            f"{_packages([g for g in running if g.serious_fixable])}",
             "Published holes with published fixes — the first thing attackers try",
             package_scan.upgrade_command(a.distro))
     elif running:
         add(MEDIUM, None, f"{len({c for g in running for c in g.fixable})} known vulnerabilities with a fix, in "
-            f"{len(running)} packages", "Medium/low holes with published fixes", package_scan.upgrade_command(a.distro))
+            f"{_packages(running)}", "Medium/low holes with published fixes", package_scan.upgrade_command(a.distro))
     old = [g for g in a.package_groups if g.old_kernel]
     if old:
         add(LOW, None, f"Old kernels still installed ({len({c for g in old for c in g.cves})} known vulnerabilities)",

@@ -100,3 +100,4 @@ The plan and status of each item: [BACKLOG.md](BACKLOG.md). Problems and their f
 | 2026-10-14 | Model setup | `LLM_THINK` setting added; all roles on `qwen3.5:9b`; embedding models hidden from chat model list |
 | 2026-10-14 | Backlog created | This file |
 | 2026-10-14 | Brain database up | Docker `pgvector/pgvector:0.8.0-pg17` on 127.0.0.1:5432 (`docker compose up -d db`); extensions `vector` + `pg_trgm`; password + `BRAIN_DATABASE_URL` in `.env`. Search test: Hinglish↔English vector matches work; exact CVE ID found by full-text; trigram weak on very short words (`kese`/`kaise` = 0.22) |
+| 2026-11-17 | V2 measured, fixes | Nuclei allow-list 2,486 of 14,225; .53 check found Mailpit + WordPress exposures; silent partial run fixed (-mhe 50, 120 s per port, -stats coverage note), duplicate self-signed row removed; V3b audit wording names packages. 1023 tests |
