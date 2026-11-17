@@ -624,3 +624,168 @@ sources:
     added_by: admin
     added_on: 2026-10-29
     enabled: true
+
+  # ── Added 2026-11-16: DevOps tasks, security, Node.js, accessibility, monitoring, ads / audits ──
+  # Paths checked by a sparse clone (file counts below) and licences read from the repo / page footer.
+  - slug: kubernetes-tasks
+    title: Kubernetes documentation — Tasks
+    kind: git_repo
+    url: https://github.com/kubernetes/website
+    include: "content/en/docs/tasks/**/*.md"
+    page_url: "https://kubernetes.io/{path}/"
+    page_root: content/en
+    language: en
+    collection: it
+    publisher: CNCF / Kubernetes
+    licence: CC-BY-4.0           # kubernetes/website LICENSE, checked 2026-11-16
+    refresh_every: 14d
+    max_pages: 230               # tasks tree is 223 files (2026-11-16)
+    reason: Step-by-step cluster operations (kubectl, config, debugging) — the how-to half of kubernetes-concepts
+    added_by: admin
+    added_on: 2026-11-16
+    enabled: true
+
+  - slug: docker-compose
+    title: Docker documentation — Compose
+    kind: git_repo
+    url: https://github.com/docker/docs
+    include: "content/manuals/compose/**/*.md"
+    page_url: "https://docs.docker.com/{path}/"
+    page_root: content/manuals
+    language: en
+    collection: it
+    publisher: Docker, Inc.
+    licence: Apache-2.0          # docker/docs LICENSE, checked 2026-11-16
+    refresh_every: 14d
+    max_pages: 60                # compose tree is 45 files (2026-11-16)
+    reason: Multi-container apps (compose.yaml, services, networks, volumes) — pairs with docker-engine
+    added_by: admin
+    added_on: 2026-11-16
+    enabled: true
+
+  - slug: ms-windows-server-hyper-v
+    title: Windows Server documentation — Hyper-V
+    kind: git_repo
+    url: https://github.com/MicrosoftDocs/windowsserverdocs
+    include: "WindowsServerDocs/virtualization/hyper-v/**/*.md"
+    page_url: "https://learn.microsoft.com/en-us/windows-server/{path}"
+    page_root: WindowsServerDocs
+    language: en
+    collection: it
+    publisher: Microsoft
+    licence: CC-BY-4.0           # repo LICENSE file, checked 2026-11-16 (code samples: MIT, LICENSE-CODE)
+    refresh_every: 7d
+    max_pages: 90                # hyper-v tree is 81 files (2026-11-16)
+    reason: Virtualization (VMs, virtual switches, live migration) — same repo as the DNS / AD DS sources
+    added_by: admin
+    added_on: 2026-11-16
+    enabled: true
+
+  - slug: owasp-cheat-sheets
+    title: OWASP Cheat Sheet Series
+    kind: git_repo
+    url: https://github.com/OWASP/CheatSheetSeries
+    include: "cheatsheets/*.md"
+    # cheatsheets/<Name>.md -> https://cheatsheetseries.owasp.org/cheatsheets/<Name>.html
+    page_url: "https://cheatsheetseries.owasp.org/cheatsheets/{path}.html"
+    page_root: cheatsheets
+    language: en
+    collection: it
+    publisher: OWASP Foundation
+    licence: CC-BY-SA-4.0        # CheatSheetSeries LICENSE.md, checked 2026-11-16
+    refresh_every: 30d
+    max_pages: 150               # 139 cheat sheets (2026-11-16)
+    reason: Application security practice (auth, sessions, injection, secrets, TLS, Docker / K8s hardening)
+    added_by: admin
+    added_on: 2026-11-16
+    enabled: true
+
+  - slug: prometheus-docs
+    title: Prometheus documentation
+    kind: git_repo
+    url: https://github.com/prometheus/prometheus
+    include: "docs/**/*.md"
+    # docs/<path>.md -> https://prometheus.io/docs/prometheus/latest/<path>/
+    page_url: "https://prometheus.io/docs/prometheus/latest/{path}/"
+    page_root: docs
+    language: en
+    collection: it
+    publisher: Prometheus Authors (CNCF)
+    licence: Apache-2.0          # prometheus/prometheus LICENSE, checked 2026-11-16
+    refresh_every: 30d
+    max_pages: 40                # docs tree is 30 files (2026-11-16)
+    reason: Monitoring and alerting (configuration, PromQL, storage) — server health questions
+    added_by: admin
+    added_on: 2026-11-16
+    enabled: true
+
+  - slug: nodejs-api
+    title: Node.js documentation — API reference
+    kind: git_repo
+    url: https://github.com/nodejs/node
+    include: "doc/api/*.md"
+    # doc/api/<module>.md -> https://nodejs.org/docs/latest/api/<module>.html
+    page_url: "https://nodejs.org/docs/latest/api/{path}.html"
+    page_root: doc/api
+    language: en
+    collection: development
+    publisher: OpenJS Foundation / Node.js
+    licence: MIT                 # nodejs/node LICENSE covers "software and associated documentation files", checked 2026-11-16
+    refresh_every: 30d
+    max_pages: 80                # 70 module pages (2026-11-16)
+    reason: Server-side JavaScript runtime (fs, http, streams, process) — pairs with MDN JavaScript and React
+    added_by: admin
+    added_on: 2026-11-16
+    enabled: true
+
+  - slug: mdn-web-accessibility
+    title: MDN Web Docs — Accessibility
+    kind: git_repo
+    url: https://github.com/mdn/content
+    include: "files/en-us/web/accessibility/**/*.md"
+    page_url: "https://developer.mozilla.org/en-US/docs/{path}"
+    page_root: files/en-us
+    language: en
+    collection: development
+    publisher: Mozilla
+    licence: CC-BY-SA-2.5        # mdn/content LICENSE.md, checked 2026-11-16 (code samples: CC0 / MIT)
+    refresh_every: 30d
+    max_pages: 180               # accessibility tree is 172 files (2026-11-16)
+    reason: ARIA roles and attributes, accessible forms / widgets — completes the MDN HTML / CSS / JS set
+    added_by: admin
+    added_on: 2026-11-16
+    enabled: true
+
+  - slug: chrome-lighthouse
+    title: Chrome for Developers — Lighthouse audits
+    kind: web_page
+    url: https://developer.chrome.com/docs/lighthouse/overview
+    crawl_depth: 2                # overview + the performance / SEO / accessibility / best-practice audit pages
+    include: "https://developer.chrome.com/docs/lighthouse*"
+    collection: marketing
+    publisher: Google
+    licence: CC-BY-4.0           # page footer, checked 2026-11-16 (code samples: Apache-2.0)
+    language: en
+    refresh_every: 30d
+    max_pages: 80
+    reason: What each Lighthouse audit checks and how to fix it — pairs with web.dev and site_audit
+    added_by: admin
+    added_on: 2026-11-16
+    enabled: true
+
+  - slug: google-ads-api-docs
+    title: Google Ads API — documentation
+    kind: web_page
+    url: https://developers.google.com/google-ads/api/docs/start
+    crawl_depth: 2                # start page + concept guides (campaigns, bidding, conversions, reporting)
+    include: "https://developers.google.com/google-ads/api/docs*"
+    collection: marketing
+    publisher: Google
+    licence: CC-BY-4.0           # page footer, checked 2026-11-16 (code samples: Apache-2.0)
+    language: en
+    refresh_every: 30d
+    max_pages: 80
+    reason: Paid search — campaigns, bidding, conversion tracking, reporting; marketing had SEO and analytics only
+    added_by: admin
+    added_on: 2026-11-16
+    enabled: true
