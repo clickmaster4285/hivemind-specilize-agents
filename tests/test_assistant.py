@@ -222,3 +222,10 @@ def test_no_clarifying_questions_when_clarify_is_off(monkeypatch):
     route = assistant.Route(route=assistant.CLARIFY)
     assert assistant.pre_route(route, "To my landlord: fix the heater", CFG, None, clarify_ok=False) is None
     assert asked == []
+
+
+# ── O83: the prompt names the servers the user added, so the model never says "add the server first" ───
+def test_the_prompt_names_added_servers_only_when_given():
+    with_servers = assistant.messages_for("go to /var/www", CFG, [], "m", servers="pk server, uk server")
+    assert "already added in Settings → Devices: pk server, uk server" in with_servers[0]["content"]
+    assert "already added" not in assistant.messages_for("hi", CFG, [], "m")[0]["content"]

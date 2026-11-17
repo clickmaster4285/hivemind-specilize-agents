@@ -101,6 +101,18 @@ def _clarify(config: Config, job_id: str, query: str, questions: list, on_progre
 ANSWER_EVENTS = frozenset({"agent_start", "agent_done"})
 
 
+def _server_names(user_id: int | None) -> str:
+    """The names of the user's added servers, for the prompt (never their addresses, O82/O83). "" on any problem:
+    the prompt line is a hint, not a requirement."""
+    from src.servers import server_vault
+
+    try:
+        return server_vault.names(server_vault.list_servers(user_id)) if user_id is not None else ""
+    except Exception as exc:  # noqa: BLE001 — a vault problem must not stop the answer
+        log.info("server names for the prompt failed: %s", exc)
+        return ""
+
+
 def _answerer(payload: dict, query: str, skill: Skill | None, *, config: Config, conversation,
               on_progress) -> tuple[Specialist | None, bool]:
     """Who answers (src/llm/specialists.py): the skill's specialist when it names one, else the one pinned in the chat
@@ -290,7 +302,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                               on_progress=on_progress, specialist=specialist,
                               # a skill already says what is wanted: no clarifying questions (ISSUES_LOG O73)
                               clarify_ok=not bool(payload.get("followup")) and skill is None, refine=refine,
-                              may_hand_over=picked)
+                              may_hand_over=picked, servers=_server_names(user_id))
             if decision.answered:
                 _finish(config, job_id, decision.errors)
                 return

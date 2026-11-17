@@ -231,9 +231,9 @@ def run_network_device(
             output = ("No router or switch login for this session yet. Add it in **Settings → Devices** (type: Router "
                       "/ switch) — it stays in memory for this session only, never in the chat.")
         elif login is None:
-            output = "Which device? Added this session: " + ", ".join(f"{d.label} ({d.host})" for d in devices) + "."
+            output = f"Which device? Added this session: {server_vault.names(devices)}."
         else:
-            emit({"type": "status", "agent_id": "assistant", "message": f"Reading {login.host}…"})
+            emit({"type": "status", "agent_id": "assistant", "message": f"Reading {login.shown}…"})
             rep, _fingerprint = read_device(login)
             output = markdown(rep)
             meta = write_bytes(config, job_id, f"device-{rep.host}.xlsx", xlsx_bytes(rep), kind="xlsx")

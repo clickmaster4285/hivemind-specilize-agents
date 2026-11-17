@@ -125,7 +125,7 @@ def connect(login: ServerLogin) -> tuple[Any, str]:
         raise
     except (paramiko.SSHException, OSError) as exc:
         client.close()
-        raise AuditError(f"could not connect to {login.host}:{login.port} ({type(exc).__name__})") from exc
+        raise AuditError(f"could not connect to {login.shown} ({type(exc).__name__})") from exc
     return client, seen.get("fp", "")
 
 
@@ -241,7 +241,7 @@ def test_login(login: ServerLogin) -> dict[str, Any]:
                 return future.result(timeout=TEST_LOGIN_TIMEOUT)
             except cf.TimeoutError as exc:
                 raise AuditError(
-                    f"timed out logging in to {login.host}:{login.port} after {TEST_LOGIN_TIMEOUT}s — "
+                    f"timed out logging in to {login.shown} after {TEST_LOGIN_TIMEOUT}s — "
                     "the port may be firewalled, or the server is slow to answer SSH. Check the address and port, "
                     "and that this machine can reach it (try `ssh` to it from the same machine)."
                 ) from exc
@@ -259,8 +259,8 @@ def test_login(login: ServerLogin) -> dict[str, Any]:
                     "sshd settings (MaxStartups) or any fail2ban / firewall rule."
                 ) from exc
             except Exception as exc:
-                raise AuditError(f"could not log in to {login.host}:{login.port}: {type(exc).__name__}: {exc}") from exc
-    raise AuditError(f"could not log in to {login.host}:{login.port}: {last}")
+                raise AuditError(f"could not log in to {login.shown}: {type(exc).__name__}: {exc}") from exc
+    raise AuditError(f"could not log in to {login.shown}: {last}")
 
 
 # ── reading what the commands print ──────────────────────────────────────
@@ -512,8 +512,8 @@ def audit_findings(a: Audit) -> list[Finding]:
 def run_audit(login: ServerLogin, *, should_continue: Callable[[], bool] = lambda: True,
               status: Callable[[str], None] = lambda message: None) -> Audit:
     started = time.monotonic()
-    audit = Audit(label=f"{login.label} ({login.host})" if login.label != login.host else login.host, host=login.host)
-    status(f"Logging in to {login.host}…")
+    audit = Audit(label=login.shown, host=login.host)
+    status(f"Logging in to {login.shown}…")
     client, _ = connect(login)
     try:
         shell = Shell(client, password=login.password)
@@ -623,8 +623,7 @@ def run_server_audit(
             output = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
                       "password or key) — it stays in memory for this session only, never in the chat.")
         elif login is None:
-            names = ", ".join(f"{s.label} ({s.host})" for s in servers)
-            output = f"Which server should I audit? Added this session: {names}."
+            output = f"Which server should I audit? Added this session: {server_vault.names(servers)}."
         else:
             output = markdown(run_audit(login, should_continue=lambda: not live.is_stopped(job_id), status=status))
     except (AuditError, VaultError) as exc:

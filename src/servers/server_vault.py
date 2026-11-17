@@ -39,6 +39,7 @@ MODES = ("audit", "confirm", "trusted")
 # are read-only. The SSH tools only ever see ssh logins.
 KINDS = ("ssh", "nvr", "network")
 SECRET_FIELDS = ("password", "private_key", "key_passphrase")
+UNNAMED = "an unnamed device (name it in Settings → Devices)"   # ServerLogin.shown for a login named by its address
 
 # the database session; tests point this at their own database
 _scope: Callable[[], AbstractContextManager[Session]] = session_scope
@@ -63,6 +64,12 @@ class ServerLogin:
     os: str = ""                       # pretty OS name learned at login ("Ubuntu 24.04", "Windows Server 2022")
     os_family: str = "linux"           # linux | windows — picks the command classifier the agent uses
     kind: str = "ssh"                  # KINDS
+
+    @property
+    def shown(self) -> str:
+        """How the chat names this login: its label, never its address (ISSUES_LOG O82). A login added without a
+        name has the address as its label (add()), so it shows as unnamed instead."""
+        return self.label if self.label and self.label != self.host else UNNAMED
 
     def public(self) -> dict[str, Any]:
         """What the app may show — never the secret."""
@@ -115,6 +122,11 @@ def _login(row: DeviceRow) -> ServerLogin:
                        host_key=row.host_key, mode=row.mode, os=row.os, os_family=row.os_family, kind=row.kind,
                        **{k: secret.get(k) for k in SECRET_FIELDS})
 
+
+
+def names(logins: list[ServerLogin]) -> str:
+    """The chat's "which one?" list: names only, never addresses (ISSUES_LOG O82)."""
+    return ", ".join(dict.fromkeys(login.shown for login in logins))
 
 def add(user_id: int, *, label: str, host: str, port: int, username: str, password: str | None = None,
         private_key: str | None = None, key_passphrase: str | None = None, host_key: str = "",

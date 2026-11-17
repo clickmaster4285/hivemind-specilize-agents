@@ -120,11 +120,13 @@ def _verify(answer: Any, *, client: LLMClient, model: str, job_id: str | None,
 
 
 def emit_answer_extras(query: str, output: str, *, job_id: str | None, config: Config, model: str,
-                       client: LLMClient, on_progress: ProgressCallback | None, quiz: bool = False) -> None:
+                       client: LLMClient, on_progress: ProgressCallback | None, quiz: bool = False,
+                       lead: str = "") -> None:
     """Post-answer extras (suggestions, quiz, images) for ANY finished answer — this runner's and the
     assistant's direct reply alike. Computed AFTER the answer is sent and run side by side (images are
     network-bound, the others model-bound); each is emitted as its own event the moment it is ready, so
-    the message completes at once and the extras pop in. Never affects the answer itself."""
+    the message completes at once and the extras pop in. Never affects the answer itself.
+    lead: a learning answer's subject, so an answer about one thing gets its picture (web_images._plan)."""
     import contextvars
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -134,13 +136,13 @@ def emit_answer_extras(query: str, output: str, *, job_id: str | None, config: C
         # each image carries the anchor of the answer section it belongs to, so the UI places it under
         # that heading (context-aware) instead of one flat strip
         return [{"filename": i["filename"], "mime": i["mime"], "anchor": i.get("anchor", "")}
-                for i in gather_web_images(query, output, job_id or "", config)]
+                for i in gather_web_images(query, output, job_id or "", config, lead)]
 
     try:
         if len(output.strip()) <= 120 or live.is_stopped(job_id):
             return
         # the tool self-selects from the answer's shape (wants_images) — no query keyword gate
-        anchors = image_anchors(output) if config.web_images_enabled and job_id else []
+        anchors = image_anchors(output, lead) if config.web_images_enabled and job_id else []
         if anchors:   # the UI shows loading placeholders under these sections while photos are fetched
             _emit(on_progress, {"type": "answer_extras", "agent_id": "assistant", "images_pending": anchors})
         jobs: dict[str, Callable[[], Any]] = {}
@@ -427,8 +429,11 @@ def run_chat(
             },
         )
         if "options" not in extra:                   # option cards are a choice, not an answer to extend
+            # a learning web answer about one subject gets its picture (web_images._plan): "Who is Issac Netwon?"
+            # had none; the search's query is the router's corrected wording
             emit_answer_extras(query, output, job_id=job_id, config=config, model=model, client=client,
-                               on_progress=on_progress, quiz=learning)
+                               on_progress=on_progress, quiz=learning,
+                               lead=(web_query or query) if web_search and learning else "")
     except WebSearchError as exc:
         # the message already says what to do (start the container, set WEB_SEARCH_URL)
         result.errors.append(str(exc))

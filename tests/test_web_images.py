@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from src.tools.web_images import (
+    LEAD_KEEP,
     PER_ANCHOR,
     PER_ITEM,
     Topic,
     _is_public,
     _norm_anchor,
+    _plan,
     _round_robin,
     _topics,
     image_anchors,
@@ -128,3 +130,20 @@ def test_wants_images_is_answer_driven_not_query_keywords():
     howto = ("## Current Situation\nThe app was built and nginx serves it. " * 8 + "\n\n## What You Can Do\n"
              + "Install PM2 and start the app. " * 8 + "\n```bash\nnpm install -g pm2\n```\n")
     assert wants_images(howto) is False
+
+
+def test_a_learning_answer_about_one_subject_gets_its_picture():
+    # "Who is Issac Netwon?" had no headings or bold items, so no picture; the search's corrected query
+    # gives the subject, in the answer's spelling
+    answer = ("Sir Isaac Newton (1642–1727) was an English polymath known for the laws of motion and universal "
+              "gravitation. He was born in Woolsthorpe and was knighted in 1705.")
+    assert _plan(answer, lead="Who is Isaac Newton?") == [Topic("", "Isaac Newton", LEAD_KEEP)]
+    assert image_anchors(answer, lead="Who is Isaac Newton?") == [""]
+    # no lead (not a learning web answer) → nothing; a how-to with code → nothing even with a lead
+    assert wants_images(answer) is False
+    assert _plan("Run this:\n```bash\nls /var/www\n```\n", lead="list files") == []
+    assert _plan("Deuterium was found in 1931 by Harold Urey.", lead="who discovered deuterium") == [
+        Topic("", "Deuterium", LEAD_KEEP)]
+    # a subject the answer never writes as a name: the search words themselves
+    assert _plan("A muse is a source of inspiration for an artist.", lead="what is a muse") == [
+        Topic("", "what is a muse", LEAD_KEEP)]

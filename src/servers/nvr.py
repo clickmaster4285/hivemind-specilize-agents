@@ -301,10 +301,9 @@ def run_nvr_cameras(
             output = ("No recorder login for this session yet. Add the NVR in **Settings → Devices** (type: NVR, "
                       "its address, user and password) — it stays in memory for this session only, never in the chat.")
         elif login is None:
-            names = ", ".join(f"{r.label} ({r.host})" for r in recorders)
-            output = f"Which recorder? Added this session: {names}."
+            output = f"Which recorder? Added this session: {server_vault.names(recorders)}."
         else:
-            emit({"type": "status", "agent_id": "assistant", "message": f"Reading the cameras on {login.host}…"})
+            emit({"type": "status", "agent_id": "assistant", "message": f"Reading the cameras on {login.shown}…"})
             rec = read_recorder(login.host, login.username, login.password or "", login.port)
             name, sheet = f"nvr-cameras-{rec.host}.xlsx", xlsx_bytes(rec) if rec.cameras else None
             output = markdown(rec)

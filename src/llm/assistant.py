@@ -64,6 +64,8 @@ MARKET_ARG = ("two-letter country code of the market the user named (PK for Paki
 
 # The server tools find the login themselves: the only one added, else the one named, else they ask with the list
 # (server_vault.find). The model asked "which server?" instead of calling (eval 2026-11-16, ISSUES_LOG O69).
+# the tools that log in to the user's servers; when one is offered, the prompt names the servers added (O83)
+SERVER_TOOLS = frozenset({"operate_server", "server_audit", "diagnose_server"})
 SERVER_ARG = ("the server's name or IP if the user named one; else leave it empty: the tool uses the only server "
               "added, or asks which with the list. Never ask the user which server yourself")
 TOOLS: tuple[Tool, ...] = (
@@ -288,13 +290,19 @@ def tool_schemas(config: Config, allowed: list[str] | None = None) -> list[dict[
     return out + [CALCULATE_TOOL]          # exact arithmetic, always (worked out inside decide, ISSUES_LOG O51)
 
 
+def _offers(tools: list[dict[str, Any]], names: frozenset[str]) -> bool:
+    return any(t.get("function", {}).get("name") in names for t in tools)
+
+
 def messages_for(
     query: str, config: Config, conversation: list[dict[str, str]] | None, model: str,
     specialist: Specialist | None = None,
     refine_note: str | None = None,
     diagrams: bool = True,
+    servers: str = "",
 ) -> list[dict]:
-    """diagrams: the router's `diagram` flag; off, the ~900-token diagram rules become one line (O52)."""
+    """diagrams: the router's `diagram` flag; off, the ~900-token diagram rules become one line (O52).
+    servers: the names of the servers the user added (server_vault.names), when a server tool is offered."""
     from src.tools.about import identity_line
     from src.core.clock import date_line
 
@@ -307,6 +315,9 @@ def messages_for(
     # the diagram rules carry JSON braces, so they are appended AFTER .format (never inside a .format template);
     # the date last, so the long fixed part stays a cached prefix (O52)
     system = SYSTEM.format(identity=identity) + diagram_block(diagrams) + f"\n\n{date_line()}"
+    if servers:      # the IT specialist said "add the server first" although three were added (ISSUES_LOG O83)
+        system += (f"\nServers the user already added in Settings → Devices: {servers}. For work on them, call the "
+                   "server tools; never say a server must be added first.")
     msgs = [{"role": "system", "content": system}]
     summary, turns = split_summary(conversation or [])
     if summary:          # a long chat's earlier part, folded into a summary (BACKLOG L12) — always kept
@@ -452,10 +463,12 @@ def decide(
     clarify_ok: bool = True,
     refine: str | None = None,
     may_hand_over: bool = False,
+    servers: str = "",
 ) -> Decision:
     """One model call with the tools: a direct answer streams into the chat; a tool call returns.
     may_hand_over: the specialist was picked by the model (not a skill or the user's choice), so a tool it lacks
     moves the job to the specialist that has it (O69).
+    servers: the names of the servers the user added; named in the prompt when a server tool is offered (O83).
     With a specialist: its instructions join the prompt and only its tools are offered.
     clarify_ok=False (a follow-up to an approach/clarify) drops the ask_clarification tool, so the
     model routes normally (web search still available) but cannot ask to clarify again."""
@@ -497,7 +510,8 @@ def decide(
         text, calls = chat_tools_with_calculator(
             LLMClient(config),
             messages=messages_for(query, config, conversation, model, specialist,
-                                  refine_note=build_refine_note(refine) if refine else None, diagrams=route.diagram),
+                                  refine_note=build_refine_note(refine) if refine else None, diagrams=route.diagram,
+                                  servers=servers if _offers(tools, SERVER_TOOLS) else ""),
             tools=tools, model=model,
             on_delta=on_delta, should_continue=lambda: not live.is_stopped(job_id),
         )

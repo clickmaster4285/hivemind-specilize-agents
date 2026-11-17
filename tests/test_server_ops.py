@@ -382,3 +382,16 @@ def test_older_outputs_are_shortened_for_the_next_round():
     outputs = [m["content"] for m in compact if m["role"] == "tool"]
     assert all(len(o) < len(long) for o in outputs[:2]) and outputs[-so.KEEP_FULL_OUTPUTS:] == [long] * so.KEEP_FULL_OUTPUTS
     assert all(m["content"] == long for m in messages if m["role"] == "tool")     # the stored conversation stays whole
+
+
+# ── O82: the chat names servers, never their addresses ───
+def test_the_chat_shows_server_names_never_addresses():
+    from src.servers import server_vault
+
+    named = so.ServerLogin(id="1", label="uk server", host="94.72.102.195", port=22, username="u", password="p")
+    unnamed = so.ServerLogin(id="2", label="10.0.0.5", host="10.0.0.5", port=22, username="u", password="p")
+    assert named.shown == "uk server"
+    assert unnamed.shown == server_vault.UNNAMED            # added without a name: its label is the address
+    listed = server_vault.names([named, unnamed])
+    assert "94.72" not in listed and "10.0.0.5" not in listed
+    assert listed.startswith("uk server, ")

@@ -274,7 +274,7 @@ class RemoteSession:
         except CommandTimeout as exc:
             self.client.close()
             logger.warning("server_ops: %s logged in but the access check got %s", self.login.host, exc)
-            raise AuditError(f"logged in to {self.login.host}, but it did not answer the first check (who am I, "
+            raise AuditError(f"logged in to {self.login.shown}, but it did not answer the first check (who am I, "
                              f"may I use sudo) within {COMMAND_TIMEOUT} s. The server may be very busy; "
                              "try again in a minute") from exc
 
@@ -438,7 +438,7 @@ def diagnose(
     run_tool = run_tool_for(login.os_family)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": prompt.format(access=access)},
-        {"role": "user", "content": f"Server: {login.label} ({login.host}). Request: {question}"},
+        {"role": "user", "content": f"Server: {login.shown}. Request: {question}"},
     ]
     client = LLMClient(config)
     result = DiagnoseResult(report="")
@@ -521,9 +521,9 @@ def run_server_diagnose(
             output = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
                       "password or key) — it stays in memory for this session only, never in the chat.")
         elif login is None:
-            output = f"Which server? Added this session: {', '.join(f'{s.label} ({s.host})' for s in servers)}."
+            output = f"Which server? Added this session: {server_vault.names(servers)}."
         else:
-            status(f"Logging in to {login.host}…")
+            status(f"Logging in to {login.shown}…")
 
             def on_command(run: CommandRun) -> None:
                 status(("Refused: " if run.refused else "Ran: ") + run.command[:70])
@@ -626,7 +626,7 @@ def operate(
     run_tool = run_tool_for(login.os_family)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": prompt.format(access=access, mode_note=MODE_NOTE[login.mode])},
-        {"role": "user", "content": f"Server: {login.label} ({login.host}). Task: {task}"},
+        {"role": "user", "content": f"Server: {login.shown}. Task: {task}"},
     ]
     client = LLMClient(config)
     result = OperateResult(report="")
@@ -733,7 +733,7 @@ def run_server_operate(
 
     def confirm(command_id: str, command: str) -> bool | None:
         emit({"type": "confirm_command", "agent_id": "assistant", "command_id": command_id, "command": command,
-              "server": login.label, "host": login.host})
+              "server": login.shown})
         status("Waiting for you to approve a command…")
         approved = live.wait_confirm(job_id, command_id, CONFIRM_TIMEOUT)
         # saved with the job's events, so a reloaded chat shows the card answered, not with live buttons (O66)
@@ -750,9 +750,9 @@ def run_server_operate(
             output = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
                       "password or key, and its mode) — it stays in memory for this session only, never in the chat.")
         elif login is None:
-            output = f"Which server? Added this session: {', '.join(f'{s.label} ({s.host})' for s in servers)}."
+            output = f"Which server? Added this session: {server_vault.names(servers)}."
         else:
-            status(f"Logging in to {login.host}…")
+            status(f"Logging in to {login.shown}…")
 
             def on_command(run: CommandRun) -> None:
                 status(("Refused: " if run.refused else "Ran: ") + run.command[:70])

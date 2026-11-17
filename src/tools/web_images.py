@@ -36,6 +36,7 @@ PER_ANCHOR = 4                   # images kept under a heading that names one th
 PER_ITEM = 1                     # images kept per named list item: one each keeps a list readable (O75)
 MAX_IMAGES = 12                  # overall cap across the answer
 MIN_TOPICS = 2                   # fewer named things than this → nothing to illustrate per topic
+LEAD_KEEP = 1                    # pictures of a learning answer's one subject ("Who is Isaac Newton?")
 CANDIDATES_PER_KEPT = 2          # search results fetched per picture kept: some fail to download or aren't images
 _JOINING_WORD_LEN = 3            # "of" / "the" / "and" may stay lowercase inside a name
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,4}\s+(.+?)\s*#*\s*$", re.M)
@@ -235,16 +236,26 @@ def _fetch(url: str) -> tuple[str, bytes] | None:
         return None
 
 
-def wants_images(answer: str) -> bool:
-    """Decide — from the ANSWER itself, not a fixed list of query keywords — whether images help.
-    Pictures suit an answer about several named things (headings or bold list items to anchor them under);
-    they don't help a greeting, a one-liner, a refusal, or a mostly-code reply. This is how the tool
-    self-selects, so it works for travel, roadmaps, products, history… without a hand-kept list."""
-    if len(_topics(answer)) < MIN_TOPICS:
-        return False
-    # an answer that shows commands or code is a how-to: a server's PM2 reply got news thumbnails and "what
-    # next?" stock art (ISSUES_LOG O71); the old "code is 40% of it" cut let a few command blocks through
-    return "```" not in (answer or "")
+def _plan(answer: str, query: str = "", lead: str = "") -> list[Topic]:
+    """What to search. Pictures suit an answer about several named things (headings or bold list items to anchor
+    them under). An answer about ONE subject — prose with no such structure, "Who is Isaac Newton?" — gets
+    LEAD_KEEP pictures of `lead` (the web search's query, given only when the user is learning a topic) placed
+    with the answer's opening; its name in the answer's spelling when it has one ("Isaac Newton"). Nothing for
+    an answer with commands or code: a how-to, where a server's PM2 reply got news thumbnails (ISSUES_LOG O71)."""
+    if "```" in (answer or ""):
+        return []
+    topics = _topics(answer, query)
+    if len(topics) >= MIN_TOPICS:
+        return topics
+    lead = lead.strip()
+    return [Topic("", _subject(lead, answer) or lead, LEAD_KEEP)] if lead else []
+
+
+def wants_images(answer: str, lead: str = "") -> bool:
+    """Decide — from the ANSWER itself, not a fixed list of query keywords — whether images help (_plan). They
+    don't help a greeting, a one-liner, a refusal, or a mostly-code reply, so the tool self-selects for travel,
+    roadmaps, people, history… without a hand-kept list."""
+    return bool(_plan(answer, lead=lead))
 
 
 def _round_robin[T](lists: list[list[T]]) -> list[T]:
@@ -252,22 +263,22 @@ def _round_robin[T](lists: list[list[T]]) -> list[T]:
     return [lst[i] for i in range(max((len(lst) for lst in lists), default=0)) for lst in lists if i < len(lst)]
 
 
-def image_anchors(answer: str) -> list[str]:
+def image_anchors(answer: str, lead: str = "") -> list[str]:
     """The sections that will get images (in answer order), known before any search runs — the UI shows
-    loading placeholders under exactly these headings. [] when the answer isn't worth illustrating."""
-    if not wants_images(answer):
-        return []
-    return list(dict.fromkeys(topic.anchor for topic in _topics(answer)))
+    loading placeholders under exactly these headings ("" = the answer's opening). [] when the answer isn't
+    worth illustrating."""
+    return list(dict.fromkeys(topic.anchor for topic in _plan(answer, lead=lead)))
 
 
-def gather_web_images(query: str, answer: str, job_id: str, config: Config) -> list[dict[str, str]]:
+def gather_web_images(query: str, answer: str, job_id: str, config: Config, lead: str = "") -> list[dict[str, str]]:
     """Context-aware image gathering: if the answer is worth illustrating (wants_images), search once per
     named thing (_topics), fetch the candidates, and tag each saved image with the `anchor` of the heading or
     list item it belongs to so the UI can place it there. → saved metadata (or [] when images don't suit the
-    answer). Whether to illustrate is decided from the answer alone; `query` only lends a list item its subject."""
-    if not wants_images(answer):
+    answer). Whether to illustrate is decided from the answer alone; `query` only lends a list item its subject,
+    and `lead` is the subject of a learning answer about one thing (_plan)."""
+    plan = _plan(answer, query, lead)
+    if not plan:
         return []
-    plan = _topics(answer, query)
     keep = {topic.anchor: topic.keep for topic in plan}
     with ThreadPoolExecutor(max_workers=min(MAX_TOPICS, len(plan))) as pool:
         found = list(pool.map(
