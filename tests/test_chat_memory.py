@@ -272,3 +272,26 @@ def test_compact_folds_all_but_the_last_exchange(db, summaries):
     assert row.summary == "summary #1" and row.summary_through == T0 + timedelta(minutes=1)
     assert cm.memory_status(CFG, "t1", 1)["summary_tokens"] > 0
     assert cm.compact_chat(CFG, "t1", 1) == 0                          # only the last exchange is left
+
+
+def test_prefold_does_after_the_answer_what_the_next_message_would_do_first(db, summaries):
+    """O52: the fold (10-19 s on the GPU) moves from before the next answer to the idle time after this one."""
+    chat_thread(db)
+    for n in range(5):
+        add_job(db, f"j{n}", n, query=f"question {n}", answer="y" * 3200)
+    assert cm.prefold(CFG, "j4", should_continue=lambda: True) == 4
+    assert len(summaries) == 1
+    add_job(db, "now", 10, query="next")
+    events: list[dict] = []
+    turns = cm.chat_memory(CFG, job_id="now", fallback=[], on_progress=events.append)
+    assert turns[0] == {"role": SUMMARY_ROLE, "content": "summary #1"}
+    assert [t["content"] for t in turns[1:] if t["role"] == "user"] == ["question 4"]
+    assert events == [] and len(summaries) == 1                   # nothing left to fold before the answer
+
+
+def test_prefold_gives_way_to_a_question(db, summaries):
+    chat_thread(db)
+    for n in range(5):
+        add_job(db, f"j{n}", n, query=f"question {n}", answer="y" * 3200)
+    assert cm.prefold(CFG, "j4", should_continue=lambda: False) == 0
+    assert summaries == [] and db.get(ChatThreadRow, "t1").summary in (None, "")

@@ -126,6 +126,8 @@ def emit_answer_extras(query: str, output: str, *, job_id: str | None, config: C
     assistant's direct reply alike. Computed AFTER the answer is sent and run side by side (images are
     network-bound, the others model-bound); each is emitted as its own event the moment it is ready, so
     the message completes at once and the extras pop in. Never affects the answer itself.
+    The model-bound extras give way to the next question (O52): `answer_written` tells the browser it may send
+    again, and a new job (anyone's) stops the suggestions / quiz call at its next word — they hold the GPU 2-17 s.
     lead: a learning answer's subject, so an answer about one thing gets its picture (web_images._plan)."""
     import contextvars
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -145,19 +147,26 @@ def emit_answer_extras(query: str, output: str, *, job_id: str | None, config: C
         anchors = image_anchors(output, lead) if config.web_images_enabled and job_id else []
         if anchors:   # the UI shows loading placeholders under these sections while photos are fetched
             _emit(on_progress, {"type": "answer_extras", "agent_id": "assistant", "images_pending": anchors})
+        keep_going = live.yields_to_questions(job_id)
+
+        def gpu_chat(**kw: Any) -> str:              # stops at its next word when a question arrives
+            return client.chat(**kw, should_continue=keep_going)
+
         jobs: dict[str, Callable[[], Any]] = {}
         if anchors:
             jobs["web_images"] = web_images
         if config.suggestions_enabled:
             jobs["suggestions"] = lambda: generate_suggestions(
-                query, output, client_chat=lambda **kw: client.chat(**kw), model=model, n=config.suggestions_count)
+                query, output, client_chat=gpu_chat, model=model, n=config.suggestions_count)
         # only when the user is learning a topic (the router's verdict; the user's choice, ISSUES_LOG O52) and
         # the answer has enough points to test: a quiz holds the GPU 9-17 s
         if quiz and config.quiz_enabled and wants_quiz(output):
             jobs["quiz"] = lambda: generate_quiz(
-                query, output, client_chat=lambda **kw: client.chat(**kw), model=model, n=config.quiz_count)
+                query, output, client_chat=gpu_chat, model=model, n=config.quiz_count)
         if not jobs:
             return
+        live.answer_written(job_id)
+        _emit(on_progress, {"type": "answer_written", "agent_id": "assistant"})
         with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
             # each extra runs in a copy of this context, so its model calls count toward this job's usage
             futures = {pool.submit(contextvars.copy_context().run, fn): key for key, fn in jobs.items()}

@@ -171,6 +171,20 @@ web-search). Build strictly in order; each ships green before the next starts.
 - Additive; 546 tests pass; frontend builds. The ~45s total is unchanged, but the *perceived* finish is
   now ~answer-time, with extras arriving after.
 
+### 2026-11-17 — The extras give way to the next question (ISSUES_LOG O52)
+- The message was done at answer time, but Send stayed off and the single worker stayed busy until the
+  suggestions (~2 s) and quiz (8–17 s) were written; a long chat's summary fold (10–19 s) then ran *before* the
+  next answer.
+- Now: `emit_answer_extras` sends **`answer_written`** (the browser enables Send) and marks the job as finishing
+  (`live.answer_written`); such a job does not count against the one-active-job limit. Every new job bumps
+  `live.question_asked()`, and the suggestions / quiz calls stream with `should_continue =
+  live.yields_to_questions(job)`, so they stop at their next word. The browser drops the old job's last events
+  once it sends (they are saved and show on reopen).
+- The summary fold moved to the idle time after the answer (`prefold` in chat_memory.py, called by the worker
+  when no job is queued); a question stops it, and then the next message folds as before.
+- Limits: works with the in-process worker (the default); a standalone `worker_main.py` keeps the old wait.
+  Pictures for the answer are fetched from the web (no GPU) and still finish before the job ends.
+
 ### 2026-10-27 — Chat-view polish (user feedback)
 - **Images too big / dominant → small strip.** Web images were going through `imageFiles` → `AgentThumbs`
   (max 36rem, at the top). Now emitted under a distinct `web_images` key → a new `WebImages` component

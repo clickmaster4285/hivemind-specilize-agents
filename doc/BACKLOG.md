@@ -571,8 +571,10 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
       not after every answer
   - [x] Prompt reuse: the date last in the long prompts — done 2026-11-14, tool choice 17.1 → 1.5 s, router
         4.5 → 1.35 s ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) "The date goes last")
-  - [ ] Suggestions, quiz and chat summaries after each answer (17–19 s); diagram rules only when a diagram
-        could help (~930 tokens)
+  - [x] Diagram rules only when a diagram could help — done 2026-11-16 (router `diagram` flag)
+  - [x] Suggestions, quiz and chat summaries no longer hold the next question — built 2026-11-17: they stop for
+        a new question, Send works once the answer is written, the summary folds after the answer
+        ([RESPONSE_QUALITY.md](RESPONSE_QUALITY.md) 2026-11-17)
 - [ ] **Pictures only where they fit (O53, O75):** only section headings that name one thing get images; named
       bold list items get one each — built 2026-11-16, waiting on the user's look
 - [x] **No facts from other questions (O54)** — done 2026-11-13 ([HOW_QUERY_WORKS.md](HOW_QUERY_WORKS.md) B)

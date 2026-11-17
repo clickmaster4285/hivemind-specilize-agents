@@ -55,6 +55,12 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [title, setTitle] = useState("New chat");
   const [running, setRunning] = useState(false);
+  // The answer is written; the job only adds suggestions / a quiz, which the server stops for the next question
+  // (`answer_written`, ISSUES_LOG O52) — so the user may send again without waiting for them.
+  const [answered, setAnswered] = useState(false);
+  // which send owns the screen: a newer question takes over, and the older job's last events are dropped (they
+  // are saved with that job and show when the chat is reopened)
+  const sendGen = useRef(0);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [editingFromId, setEditingFromId] = useState<string | null>(null);
   // Always points at the chat currently on screen. A running stream reads this to tell whether the user
@@ -154,7 +160,7 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
 
   /** Send a message (text and/or images) as a new job, then stream its events into the feed. */
   async function send(text: string, images: PendingImage[], opts: SendOptions = {}) {
-    if (running) return;
+    if (running && !answered) return;
     const trimmed = text.trim();
     const force = opts.forceIntent;
     if (!trimmed && images.length === 0) return;
@@ -188,7 +194,9 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
       }
     }
     const chatImages: ChatImage[] = images.map((img) => ({ url: img.url, filename: img.file.name, mime: img.mime }));
+    const gen = ++sendGen.current;
     setRunning(true);
+    setAnswered(false);
     setEditingFromId(null);
     setTitle(titleFromQuery(titleSeed));
     if (opts.retry) {
@@ -238,16 +246,20 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
       setFeed((prev) => upsertStatus(prev, "Queued", `${job.status} · ${job.id.slice(0, 8)}…`));
       const streamThreadId = threadId;
       await streamJobEvents(job.id, (event) => {
-        // the user switched to another chat mid-stream — drop this job's events instead of writing them
-        // into whatever feed is now on screen; the finished answer is rebuilt from history on reopen.
-        if (openThreadIdRef.current !== streamThreadId) return;
+        // the user switched to another chat mid-stream, or asked the next question — drop this job's events
+        // instead of writing them into what is now on screen; they are rebuilt from history on reopen.
+        if (openThreadIdRef.current !== streamThreadId || sendGen.current !== gen) return;
+        if (event.type === "answer_written") setAnswered(true);
         applyEvent(event);
       });
       await history.refreshJobs();
     } catch (err) {
-      setFeed((prev) => upsertStatus(prev, "Error", errorText(err), true));
+      if (sendGen.current === gen) setFeed((prev) => upsertStatus(prev, "Error", errorText(err), true));
     } finally {
-      setRunning(false);
+      if (sendGen.current === gen) {
+        setRunning(false);
+        setAnswered(false);
+      }
     }
   }
 
@@ -267,7 +279,8 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
     feed,
     setFeed,
     title,
-    running,
+    // busy only while the answer is being written: its optional extras never hold the composer
+    running: running && !answered,
     activeJobId,
     editingFromId,
     setEditingFromId,

@@ -70,7 +70,7 @@ class LLMClient:
         with llm_slot(cfg):
             if on_delta is not None or should_continue is not None:
                 return self._chat_ollama_stream(cfg, system, user, temp, max_retries, pics,
-                                                on_delta, should_continue)
+                                                on_delta, should_continue, max_tokens)
             return self._chat_ollama(cfg, system, user, temp, max_retries, pics, max_tokens)
 
     def _chat_ollama(
@@ -221,6 +221,7 @@ class LLMClient:
         images: list[str] | None,
         on_delta: Callable[[str], None] | None,
         should_continue: Callable[[], bool] | None,
+        max_tokens: int | None = None,
     ) -> str:
         """Streaming /api/chat. Closing the response makes Ollama stop generating."""
         url = f"{cfg.llm_base_url}/api/chat"
@@ -233,6 +234,8 @@ class LLMClient:
             "options": {"temperature": temperature, "num_ctx": cfg.llm_num_ctx},
             "messages": [{"role": "system", "content": system}, user_msg],
         }
+        if max_tokens:
+            payload["options"]["num_predict"] = max_tokens
         if cfg.llm_think is not None:
             payload["think"] = cfg.llm_think
         if cfg.llm_keep_alive:

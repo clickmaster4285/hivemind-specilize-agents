@@ -73,7 +73,8 @@ def test_direct_answer_gets_post_answer_extras(monkeypatch):
     events = []
     assistant.decide("places to visit in korea", job_id="a1x", config=cfg, on_progress=events.append)
     types = [e["type"] for e in events]
-    assert types[-3:] == ["agent_done", "answer_extras", "session_done"]
+    # answer_written: the browser may send the next question while the extras are made (O52)
+    assert types[-4:] == ["agent_done", "answer_written", "answer_extras", "session_done"]
     assert events[-2]["suggestions"] == ["What about Jeju?"]
 
 

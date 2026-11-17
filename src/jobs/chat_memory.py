@@ -161,15 +161,10 @@ def chat_memory(config: Config, *, job_id: str, fallback: list[dict[str, str]], 
         jobs = [(j.created_at, j.id, _job_turns(session, j)) for j in earlier
                 if through is None or j.created_at > through]
 
-    sizes = [sum(estimate_tokens(t["content"]) for t in turns) for _, _, turns in jobs]
-    fold = fold_count(estimate_tokens(summary), sizes, budget)
+    fold = fold_count(estimate_tokens(summary), _sizes(jobs), budget)
     if fold:
-        folded = [t for _, _, turns in jobs[:fold] for t in turns]
         try:
-            summary = summarize(summary, folded, config=config, model=model)
-            with session_scope(config) as session:
-                row = session.get(ChatThreadRow, thread_id)
-                row.summary, row.summary_through = summary, jobs[fold - 1][0]
+            summary = _fold(config, thread_id, summary, jobs[:fold], model=model)
             if on_progress:
                 on_progress({"type": "memory_compacted", "folded": fold})
             folded_ids += [folded_id for _, folded_id, _ in jobs[:fold]]
@@ -184,6 +179,54 @@ def chat_memory(config: Config, *, job_id: str, fallback: list[dict[str, str]], 
         summary = _with_recall(config, summary, user_id=user_id, thread_id=thread_id, job_ids=folded_ids,
                                message=message, budget=min(chat_recall.recall_budget(budget), room))
     return ([{"role": SUMMARY_ROLE, "content": summary}] if summary else []) + recent
+
+
+def _sizes(jobs: list[tuple[Any, str, list[dict[str, str]]]]) -> list[int]:
+    return [sum(estimate_tokens(t["content"]) for t in turns) for _, _, turns in jobs]
+
+
+def _fold(config: Config, thread_id: str, summary: str, jobs: list[tuple[Any, str, list[dict[str, str]]]], *,
+          model: str | None, chat: Callable[..., str] | None = None) -> str:
+    """Summarise `jobs` (created_at, id, turns — oldest first) into the chat's summary and store it."""
+    from src.core.db import session_scope
+    from src.core.models_db import ChatThreadRow
+
+    summary = summarize(summary, [t for _, _, turns in jobs for t in turns], config=config, model=model, chat=chat)
+    with session_scope(config) as session:
+        row = session.get(ChatThreadRow, thread_id)
+        row.summary, row.summary_through = summary, jobs[-1][0]
+    return summary
+
+
+def prefold(config: Config, job_id: str, *, should_continue: Callable[[], bool], model: str | None = None) -> int:
+    """Right after an answer, while the worker has nothing else to do: fold now what the chat's next message would
+    have to fold before its answer (10-19 s on the GPU, ISSUES_LOG O52), so that answer starts at once. Stops when
+    a question arrives (`should_continue`); then nothing is stored and the next message folds as before.
+    Returns how many exchanges were folded."""
+    from src.core.db import session_scope
+    from src.core.models_db import ChatThreadRow, Job
+
+    with session_scope(config) as session:
+        job = session.get(Job, job_id)
+        thread_id = json.loads(job.payload_json or "{}").get("thread_id") if job else None
+        thread = session.get(ChatThreadRow, thread_id) if thread_id else None
+        if job is None or thread is None or thread.user_id != job.user_id or thread.deleted_at is not None:
+            return 0
+        summary, through = (thread.summary or "").strip(), thread.summary_through
+        # every exchange so far, this one included: what the next message's chat_memory will see
+        jobs = [(j.created_at, j.id, _job_turns(session, j))
+                for j in _thread_jobs(session, thread_id, job.user_id, before=None, after=through)]
+    fold = fold_count(estimate_tokens(summary), _sizes(jobs), history_budget(config))
+    if not fold or not should_continue():
+        return 0
+    client = LLMClient(config)
+    try:
+        _fold(config, thread_id, summary, jobs[:fold], model=model,
+              chat=lambda **kw: client.chat(**kw, should_continue=should_continue))
+    except Exception as exc:  # noqa: BLE001 — stopped or failed: the next message folds instead
+        log.info("chat memory: early fold not done (%s)", exc)
+        return 0
+    return fold
 
 
 def _with_recall(config: Config, summary: str, *, user_id: int, thread_id: str, job_ids: list[str], message: str,

@@ -11,7 +11,7 @@ from typing import Any
 from src.agentic.runtime import run_agentic
 from src.brain.answer import should_use_brain
 from src.core.conversation import normalize_conversation
-from src.jobs.chat_memory import chat_memory, remember_job
+from src.jobs.chat_memory import chat_memory, prefold, remember_job
 from src.jobs.chat_runner import run_chat
 from src.core.clock import set_time_zone
 from src.tools.diagram_gen import run_diagram
@@ -41,7 +41,7 @@ from src.images.image_gen import run_image_gen
 from src.tools.attachments import load_b64_images
 from src.core.config import Config
 from src.core.db import session_scope
-from src.jobs.jobs import append_event, claim_next_job, get_job, reclaim_orphaned_jobs, set_job_status
+from src.jobs.jobs import append_event, claim_next_job, get_job, queue_depth, reclaim_orphaned_jobs, set_job_status
 
 _worker_thread: threading.Thread | None = None
 _stop = threading.Event()
@@ -165,6 +165,21 @@ def process_job(job_id: str, config: Config | None = None) -> None:
     _log_timing(config, job_id, mode, time.monotonic() - started)
     # the exchange is embedded on the CPU for chat recall (O63) while the next job starts
     threading.Thread(target=_remember, args=(config, job_id), name="chat-recall", daemon=True).start()
+    _fold_ahead(config, job_id, model_plan.get("worker") or None)
+
+
+def _fold_ahead(config: Config, job_id: str, model: str | None) -> None:
+    """While no question waits, fold the chat's summary now instead of before its next answer (O52)."""
+    keep_going = live.yields_to_questions(job_id)          # taken first: a question from now on stops the fold
+    try:
+        with session_scope(config) as session:
+            if queue_depth(session):                     # one already waits: it goes first, the fold later
+                return
+        folded = prefold(config, job_id, should_continue=keep_going, model=model)
+        if folded:
+            log.info("chat memory: folded %d exchange(s) of job %s's chat ahead of its next message", folded, job_id)
+    except Exception as exc:  # noqa: BLE001 — optional work: the next message folds instead
+        log.warning("early fold failed for %s: %s", job_id, exc)
 
 
 def _remember(config: Config, job_id: str) -> None:

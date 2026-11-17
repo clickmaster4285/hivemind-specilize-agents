@@ -70,15 +70,12 @@ def reclaim_orphaned_jobs(session: Session) -> int:
     return len(stale)
 
 
-def count_active_for_user(session: Session, user_id: int) -> int:
-    return int(
-        session.scalar(
-            select(func.count())
-            .select_from(Job)
-            .where(Job.user_id == user_id, Job.status.in_(ACTIVE), _not_deleted())
-        )
-        or 0
-    )
+def count_active_for_user(session: Session, user_id: int, *, ignore: set[str] | frozenset[str] = frozenset()) -> int:
+    """The user's queued and running jobs, less `ignore` (jobs whose answer is written, live.finishing_jobs)."""
+    stmt = select(func.count()).select_from(Job).where(Job.user_id == user_id, Job.status.in_(ACTIVE), _not_deleted())
+    if ignore:
+        stmt = stmt.where(Job.id.not_in(ignore))
+    return int(session.scalar(stmt) or 0)
 
 
 def count_jobs_today(session: Session, user_id: int) -> int:
@@ -118,7 +115,10 @@ def create_job(
         requested_mode = "auto"           # the Optimist/Cynic/Consensus debate was removed (2026-10-17)
     if requested_mode not in {"auto", "agentic", "chat"}:
         raise ValueError("mode must be auto, chat or agentic")
-    if count_active_for_user(session, user.id) >= config.max_active_jobs_per_user:
+    from src.jobs import live
+
+    # a job whose answer is written only adds optional extras, which stop for this question (O52)
+    if count_active_for_user(session, user.id, ignore=live.finishing_jobs()) >= config.max_active_jobs_per_user:
         raise ValueError(
             f"User already has {config.max_active_jobs_per_user} active job(s). Wait or cancel."
         )
@@ -128,6 +128,7 @@ def create_job(
         )
     if count_jobs_today(session, user.id) >= user.daily_job_quota:
         raise ValueError(f"Daily job quota reached ({user.daily_job_quota}).")
+    live.question_asked()             # before routing: optional model work in progress makes way for it now
 
     incoming_images = payload.get("images") if isinstance(payload.get("images"), list) else []
     has_images = bool(incoming_images)

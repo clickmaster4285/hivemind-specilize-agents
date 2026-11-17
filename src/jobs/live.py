@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 
 from src.jobs.job_events import notify_job
 
@@ -21,6 +22,42 @@ _last_notify: dict[str, float] = {}
 _stopped: set[str] = set()
 # command confirmations: a running job asks "run this?" and blocks until the browser answers or it times out
 _confirm: dict[tuple[str, str], dict] = {}      # (job_id, command_id) → {"event", "approved"}
+# Model work that can wait (an answer's suggestions and quiz, folding a long chat into its summary) gives way to a
+# new question (ISSUES_LOG O52): every new job counts here, and such work stops when the count changes.
+_questions = 0
+_finishing: set[str] = set()                    # jobs whose answer is written: only optional extras are left
+
+
+def question_asked() -> None:
+    global _questions
+    with _lock:
+        _questions += 1
+
+
+def answer_written(job_id: str | None) -> None:
+    """The job's answer is out; what it still does is optional, so the user may ask the next question."""
+    if job_id:
+        with _lock:
+            _finishing.add(job_id)
+
+
+def finishing_jobs() -> set[str]:
+    with _lock:
+        return set(_finishing)
+
+
+def yields_to_questions(job_id: str | None) -> Callable[[], bool]:
+    """A should_continue for optional model work: False once a new question has arrived since this call, or the
+    job was stopped."""
+    with _lock:
+        mark = _questions
+
+    def keep_going() -> bool:
+        with _lock:
+            asked = _questions != mark
+        return not asked and not is_stopped(job_id)
+
+    return keep_going
 
 
 def set_text(job_id: str | None, agent_id: str, text: str) -> None:
@@ -68,6 +105,7 @@ def clear(job_id: str) -> None:
         _text.pop(job_id, None)
         _last_notify.pop(job_id, None)
         _stopped.discard(job_id)
+        _finishing.discard(job_id)
         for key in [k for k in _confirm if k[0] == job_id]:
             _confirm[key]["event"].set()            # release any waiter so the worker thread can exit
             del _confirm[key]
