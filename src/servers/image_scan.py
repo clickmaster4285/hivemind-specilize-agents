@@ -7,7 +7,7 @@ matching can only call "possible". It answers "CVE-x in openssl 3.0.2-0ubuntu1.1
 Safety: the image names come from `docker image ls`, never from the user's or the model's text (their words only pick
 among them); Trivy and docker run as fixed argument lists, read-only (`--scanners vuln`: no secret or config
 scanning), admins only (worker ADMIN_TOOLS). Trivy downloads its vulnerability database itself (ghcr.io); nothing
-about the images is sent out. Trivy itself must be installed by the user from a verified release (March 2026
+about the images is sent out (PRIVATE_FLAGS). Trivy itself must be installed by the user from a verified release (March 2026
 supply-chain attack on v0.69.4–0.69.6: SECURITY_TOOLS_DECISION.md §12).
 """
 
@@ -36,6 +36,9 @@ SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN")
 SEVERITY_LABEL = {"CRITICAL": "🔴 Critical", "HIGH": "🟠 High", "MEDIUM": "🟡 Medium", "LOW": "⚪ Low",
                   "UNKNOWN": "⚪ Unknown"}
 NO_IMAGE = "<none>"          # docker's name for an untagged layer
+# nothing about this PC leaves it except the database download: no usage data to Aqua, no version-check call,
+# no Java file checksums sent to Maven Central to name a jar
+PRIVATE_FLAGS = ("--disable-telemetry", "--skip-version-check", "--offline-scan")
 
 
 class ImageScanError(RuntimeError):
@@ -81,17 +84,45 @@ def local_images() -> list[str]:
     return list(dict.fromkeys(n for n in names if NO_IMAGE not in n))
 
 
-def pick_images(images: list[str], wanted: str | None) -> list[str]:
-    """The images the user named (a part of the name: "postgres", "searxng"), or all when none is named."""
+def image_words(images: list[str]) -> dict[str, str]:
+    """image → what else names it: the program it runs, its title label and its containers' names, so "postgres"
+    finds `pgvector/pgvector:0.8.0-pg17` (it runs `postgres`). {} when docker cannot say."""
+    words: dict[str, list[str]] = {i: [] for i in images}
+    fmt = '{{json .RepoTags}}\t{{json .Config.Cmd}}\t{{json .Config.Entrypoint}}\t' \
+          '{{index .Config.Labels "org.opencontainers.image.title"}}'
+    try:
+        done = subprocess.run(["docker", "image", "inspect", "--format", fmt, *images],
+                              capture_output=True, text=True, timeout=30, check=False)
+        for line in done.stdout.splitlines():
+            tags, cmd, entry, title = (line.split("\t") + ["", "", "", ""])[:4]
+            programs = [str(a).rsplit("/", 1)[-1] for part in (cmd, entry) for a in (json.loads(part or "null") or [])[:1]]
+            for tag in json.loads(tags or "null") or []:
+                if tag in words:
+                    words[tag] += [*programs, title]
+        done = subprocess.run(["docker", "ps", "-a", "--format", "{{.Image}}\t{{.Names}}"],
+                              capture_output=True, text=True, timeout=30, check=False)
+        for line in done.stdout.splitlines():
+            image, _, name = line.partition("\t")
+            if image in words:
+                words[image].append(name)
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        logger.info("docker inspect for image names failed: %s", exc)
+    return {i: " ".join(w for w in ws if w) for i, ws in words.items()}
+
+
+def pick_images(images: list[str], wanted: str | None, also: dict[str, str] | None = None) -> list[str]:
+    """The images the user named (a part of the name: "postgres", "searxng" — or of what the image runs and its
+    containers are called, `also`), or all when none is named."""
     words = [w for w in re.findall(r"[\w./-]+", (wanted or "").lower()) if len(w) > 1]
     if not words:
         return images[:MAX_IMAGES]
-    chosen = [i for i in images if any(w in i.lower() for w in words)]
+    also = also or {}
+    chosen = [i for i in images if any(w in f"{i} {also.get(i, '')}".lower() for w in words)]
     return chosen[:MAX_IMAGES]
 
 
 def command(image: str) -> list[str]:
-    return ["trivy", "image", "--quiet", "--format", "json", "--scanners", "vuln",
+    return ["trivy", "image", "--quiet", "--format", "json", "--scanners", "vuln", *PRIVATE_FLAGS,
             "--timeout", f"{IMAGE_TIMEOUT_SECONDS}s", image]
 
 
@@ -165,7 +196,7 @@ def markdown(reports: list[ImageReport], seconds: float) -> str:
     return "\n\n".join(parts)
 
 
-def xlsx_bytes(reports: list[ImageReport]) -> bytes:
+def xlsx_bytes(reports: list[ImageReport], first_column: str = "Image") -> bytes:
     from io import BytesIO
 
     from openpyxl import Workbook
@@ -175,7 +206,7 @@ def xlsx_bytes(reports: list[ImageReport]) -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Vulnerabilities"
-    header = ["Image", "Severity", "CVE", "Package", "Installed", "Fixed in", "Title"]
+    header = [first_column, "Severity", "CVE", "Package", "Installed", "Fixed in", "Title"]
     ws.append(header)
     for r in reports:
         for v in r.vulns:
@@ -216,7 +247,7 @@ def run_image_scan(
             raise ImageScanError("Trivy is not installed on this PC (an admin installs a verified release — "
                                  "doc/SECURITY_TOOLS_DECISION.md §12)")
         everything = local_images()
-        images = pick_images(everything, image)
+        images = pick_images(everything, image, image_words(everything) if image else None)
         if not images:
             raise ImageScanError(f"no Docker image on this PC matches '{image}'; there are: {', '.join(everything)}"
                                  if everything else "there are no Docker images on this PC")

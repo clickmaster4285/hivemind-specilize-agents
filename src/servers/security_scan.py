@@ -120,6 +120,8 @@ TLS_HTTP_PORTS = {443, 8443}
 THIS_PC_RE = re.compile(
     r"\b(this|my|mera|meri|apna|apne)\s+(pc|computer|machine|laptop|server|system)\b|\blocalhost\b|\b127\.0\.0\.1\b", re.I)
 _IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})(?:\s*/\s*(\d{1,2}))?\b")
+# a target in words that still means the whole local network ("my network", "all devices", "the LAN")
+WHOLE_NETWORK_RE = re.compile(r"\b(network|lan|subnet|wi-?fi|all|every\w*|devices|local|office|home)\b", re.I)
 
 
 @dataclass
@@ -202,6 +204,12 @@ def resolve_target(target: str | None, query: str, config: Config) -> tuple[str,
         if str(ip) in own_ips():
             return "this PC", [], True
         return str(ip), [str(ip)], False
+    if not m and text and not WHOLE_NETWORK_RE.search(text):
+        # a name we cannot turn into an address ("server pk", "the postgres image"): checking the whole network
+        # instead answered a different question in 2 minutes (ISSUES_LOG O90)
+        raise ScanError(f"I cannot tell which device '{text}' is — give its IP address (192.168.1.10), a network "
+                        "(192.168.1.0/24) or 'this pc'. A server added in Settings → Devices is audited by "
+                        "asking 'audit <its name>'")
     subnet = f"{m.group(1)}/{m.group(2)}" if m else local_subnet()
     net = validate_subnet(subnet, config.network_scan_max_hosts)
     return str(net), None, False
@@ -753,6 +761,23 @@ def xlsx_bytes(result: SecurityResult) -> bytes:
 
 
 # ── as a chat job ────────────────────────────────────────────────────────
+def saved_server(target: str | None, user_id: int | None) -> str | None:
+    """The id of the user's saved Linux server that `target` names by its label as a word ("server pk",
+    "my pk server"); None for an address, a network, or no match."""
+    text = (target or "").strip().lower()
+    if not text or user_id is None or _IP_RE.search(text):
+        return None
+    from src.servers import server_vault
+
+    try:
+        servers = server_vault.list_servers(user_id)
+    except Exception as exc:  # noqa: BLE001 — no store: an ordinary network check
+        logger.info("server logins not readable: %s", type(exc).__name__)
+        return None
+    return next((s.id for s in servers if s.os_family == "linux" and s.label
+                 and re.search(rf"(?<![\w.-]){re.escape(s.label.lower())}(?![\w.-])", text)), None)
+
+
 def run_security_check(
     query: str,
     *,
@@ -760,11 +785,21 @@ def run_security_check(
     config: Config,
     on_progress: Callable[[dict], None] | None = None,
     target: str | None = None,
+    user_id: int | None = None,
     **_: object,
 ) -> tuple[str, list[str], float]:
-    """'check the security of 192.168.1.10' / 'is this PC secure?' → findings table + .xlsx. No model."""
+    """'check the security of 192.168.1.10' / 'is this PC secure?' → findings table + .xlsx. No model.
+    A target naming one of the user's saved Linux servers ("server pk") is that server's audit instead: it logs
+    in and sees the firewall, the settings and the packages, which no check from outside can."""
     from src.jobs import live
     from src.tools.artifacts import artifact_event, write_bytes
+
+    server = saved_server(target, user_id)
+    if server is not None:
+        from src.servers.linux_audit import run_server_audit
+
+        return run_server_audit(query, job_id=job_id, config=config, on_progress=on_progress, server=server,
+                                user_id=user_id)
 
     emit = on_progress or (lambda event: None)
     agent = {"agent_id": "assistant", "name": "Assistant", "role": "Security check", "stage": "chat",

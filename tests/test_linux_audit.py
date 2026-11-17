@@ -295,3 +295,63 @@ def test_a_silent_command_closes_its_channel_and_raises_command_timeout():
     with pytest.raises(la.CommandTimeout, match=f"{la.COMMAND_TIMEOUT} s"):
         la.Shell(SilentClient()).raw("pm2 logs")
     assert closed and issubclass(la.CommandTimeout, TimeoutError)    # old `except TimeoutError` callers still match
+
+
+# ── V3b: known vulnerabilities in the server's packages (package_scan.py) ─
+def test_package_findings_and_section():
+    from src.servers import package_scan as ps
+    from src.servers.image_scan import ImageReport, Vuln
+
+    pkgs = ps.parse_dpkg("ii \tlibssl3\t3.0.2-0ubuntu1.10\tamd64\topenssl\t3.0.2-0ubuntu1.10\n"
+                         "ii \tlinux-image-6.8.0-40-generic\t6.8.0-40.40\tamd64\tlinux-signed\t6.8.0-40.40\n")
+    vulnerable = ImageReport("web01", vulns=[
+        Vuln("CVE-1", "libssl3", "3.0.2-0ubuntu1.10", "3.0.2-0ubuntu1.12", "HIGH", ""),
+        Vuln("CVE-2", "libssl3", "3.0.2-0ubuntu1.10", "", "MEDIUM", ""),
+        Vuln("CVE-3", "linux-image-6.8.0-40-generic", "6.8.0-40.40", "6.8.0-45.45", "CRITICAL", "")])
+    audit = la.Audit(label="web01", host="192.168.88.66", kernel="6.8.0-45-generic", distro="ubuntu",
+                     os_version="24.04", package_count=2, vulnerable=vulnerable,
+                     package_groups=ps.group(vulnerable, pkgs, "6.8.0-45-generic"))
+    found = {f.title: (f.risk, f.fix) for f in la.audit_findings(audit)}
+    assert found["1 critical/high known vulnerabilities with a fix, in 1 packages"] == (
+        HIGH, "sudo apt update && sudo apt upgrade")
+    assert found["Old kernels still installed (1 known vulnerabilities)"] == (LOW, "sudo apt autoremove --purge")
+    text = la.packages_markdown(audit)
+    assert "**2 known vulnerabilities**" in text and "**1 with a fix released**" in text
+    assert "| openssl | 3.0.2-0ubuntu1.10 |" in text and "3.0.2-0ubuntu1.12" in text
+    assert "1 with no fix yet" in text and "carry 1 more" in text
+
+
+def test_packages_are_read_over_the_audit_login_without_root(monkeypatch):
+    from src.servers import package_scan as ps
+
+    monkeypatch.setattr(ps, "available", lambda: True)
+    client = FakeClient({"cat /etc/os-release": (0, 'ID=ubuntu\nVERSION_ID="24.04"\n'),
+                         "cat /etc/debian_version": (0, "trixie/sid\n"),
+                         "${source:Version}\\n'": (0, "ii \tbash\t5.2-1\tamd64\tbash\t5.2-1\n")})
+    shell = la.Shell(client)
+    audit = la.Audit("web01", "192.168.88.66")
+    pkgs = la.read_packages(shell, audit, lambda: True, lambda message: None)
+    assert [p.name for p in pkgs] == ["bash"] and (audit.distro, audit.os_version, audit.package_count) == (
+        "ubuntu", "24.04", 1)
+    assert not any("sudo" in command for command, _ in client.calls)
+    monkeypatch.setattr(ps, "available", lambda: False)
+    audit = la.Audit("web01", "192.168.88.66")
+    assert la.read_packages(shell, audit, lambda: True, lambda message: None) == []
+    assert "Trivy is not installed" in audit.unread[0]
+
+
+def test_security_check_on_a_saved_server_is_its_audit(monkeypatch):
+    # "check the security of my server, server pk" was a 2-minute scan of the whole network (ISSUES_LOG O90)
+    from src.servers import security_scan as sec
+
+    pk = vault.add(1, label="pk", host="31.97.75.233", port=22, username="u", password=SECRET)
+    vault.add(1, label="web server", host="192.168.88.45", port=22, username="u", password=SECRET)
+    assert sec.saved_server("server pk", 1) == pk.id
+    assert sec.saved_server("my web server", 1) is not None
+    assert sec.saved_server("packages", 1) is None and sec.saved_server("192.168.88.45", 1) is None
+    assert sec.saved_server("server pk", 2) is None                          # another user's login
+    seen = []
+    monkeypatch.setattr(la, "run_server_audit", lambda query, **kw: seen.append(kw["server"]) or ("audited", [], 0.0))
+    out, _, _ = sec.run_security_check("check the security of my server , server pk", job_id="j", config=CFG,
+                                       target="server pk", user_id=1)
+    assert out == "audited" and seen == [pk.id]

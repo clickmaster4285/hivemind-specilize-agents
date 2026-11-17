@@ -255,18 +255,39 @@ def _load_oui() -> dict[str, str]:
         return _oui
 
 
+# one ARP entry as `arp -a` prints it: Windows "  192.168.1.5   aa-bb-cc-dd-ee-ff   dynamic",
+# Linux / macOS "? (192.168.1.5) at aa:bb:cc:dd:ee:ff [ether] on eth0"
+_ARP_LINE = re.compile(r"\(?(\d{1,3}(?:\.\d{1,3}){3})\)?\s+(?:at\s+|0x\w+\s+0x\w+\s+)?"
+                       r"([0-9a-fA-F]{1,2}(?:[-:][0-9a-fA-F]{1,2}){5})")
+_LINUX_ARP = "/proc/net/arp"
+_NO_MAC = "00:00:00:00:00:00"       # an entry still waiting for its reply
+
+
+def parse_arp(text: str) -> dict[str, str]:
+    """ip → MAC from `arp -a` (Windows or Linux / macOS layout) or /proc/net/arp."""
+    table = {}
+    for line in text.splitlines():
+        m = _ARP_LINE.search(line)
+        if m:
+            mac = ":".join(part.zfill(2) for part in re.split("[-:]", m.group(2))).lower()
+            if mac != _NO_MAC:
+                table[m.group(1)] = mac
+    return table
+
+
 def _arp_table() -> dict[str, str]:
-    """ip → MAC from the system's ARP cache (filled by the sweep itself)."""
+    """ip → MAC from the system's ARP cache (filled by the sweep itself). Linux: the kernel's own table (no
+    program needed — `arp` is often missing or off the PATH); elsewhere `arp -a`."""
+    try:
+        with open(_LINUX_ARP, encoding="ascii", errors="replace") as f:
+            return parse_arp(f.read())
+    except OSError:
+        pass
     try:
         out = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=5, creationflags=_NO_WINDOW).stdout
     except (subprocess.TimeoutExpired, OSError):
         return {}
-    table = {}
-    for line in out.splitlines():
-        m = re.match(r"\s*(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F]{2}(?:[-:][0-9a-fA-F]{2}){5})", line)
-        if m:
-            table[m.group(1)] = m.group(2).replace("-", ":").lower()
-    return table
+    return parse_arp(out)
 
 
 def _own_macs() -> dict[str, str]:

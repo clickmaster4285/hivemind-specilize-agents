@@ -689,7 +689,7 @@ limits, needs and the proposed order: [SECURITY_TOOLS_DECISION.md §10](SECURITY
 
 - [x] V1 nmap -sV + offline NVD CVE list in `security_check` — built 2026-11-17 ([§11](SECURITY_TOOLS_DECISION.md)); next: nmap names in `network_scan`
 - [x] V3 Trivy for Docker images on this PC — built 2026-11-17 (`image_scan`, [§12](SECURITY_TOOLS_DECISION.md)); the user installs a verified Trivy
-- [ ] V3b Trivy for Linux servers via an SBOM read over SSH (accuracy measured first)
+- [x] V3b Trivy for Linux servers via an SBOM read over SSH — built 2026-11-17 in `server_audit` (`package_scan.py`, [§13](SECURITY_TOOLS_DECISION.md)); measured identical to Trivy's own scans on 4 distributions
 - [ ] V2 Nuclei with a reviewed read-only template allow-list
 - [ ] V4 OpenVAS in Docker — only if V1–V3 leave gaps
 

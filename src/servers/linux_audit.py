@@ -10,6 +10,7 @@ fixed rules to what they print:
   SSH settings  sshd -T (root login, password login, empty passwords, tries, X11)
   updates       apt list --upgradable / dnf check-update (+ security updates) · reboot-required
   attacks       failed SSH logins of the last 24 h (journalctl / auth.log) · fail2ban status
+  packages      dpkg-query / rpm -qa → known vulnerabilities by Trivy on THIS PC (package_scan.py, V3b)
 
 Commands that need root use `sudo -n` (passwordless sudo) or, with a password login, `sudo -S` with the
 password written to sudo's input — never into the command line. Nothing on the server is changed.
@@ -29,6 +30,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.core.config import Config
+from src.servers import package_scan
+from src.servers.image_scan import SEVERITY_LABEL, ImageReport, xlsx_bytes
+from src.servers.package_scan import PackageGroup, PackageScanError
 from src.servers.security_scan import HIGH, LOW, MEDIUM, PORTS, RISK_LABEL, Finding, _order, _table
 from src.servers.server_vault import ServerLogin, VaultError, check_host
 from src.servers.win_commands import ps_wrap
@@ -379,6 +383,11 @@ class Audit:
     failed_logins: int | None = None
     top_sources: list[tuple[str, int]] = field(default_factory=list)
     fail2ban: bool | None = None
+    distro: str = ""                    # Trivy's name for the OS ("ubuntu"); "" = packages not checked
+    os_version: str = ""                # as Trivy matches it ("24.04", "12.11")
+    package_count: int = 0
+    vulnerable: ImageReport | None = None                    # Trivy's rows, one per CVE and package (→ .xlsx)
+    package_groups: list[PackageGroup] = field(default_factory=list)
     unread: list[str] = field(default_factory=list)          # what could not be read, and why
     findings: list[Finding] = field(default_factory=list)
     seconds: float = 0.0
@@ -496,6 +505,21 @@ def audit_findings(a: Audit) -> list[Finding]:
             "sudo apt update && sudo apt upgrade (Debian/Ubuntu) or sudo dnf upgrade --security")
     elif a.updates:
         add(LOW, None, f"{a.updates} updates waiting", "Bug and security fixes not installed yet", "Plan an update window")
+    # known vulnerabilities in installed packages (Trivy, V3b): only those with a fix are something to do
+    running = [g for g in a.package_groups if not g.old_kernel and g.fixable]
+    serious = {c for g in running for c in g.serious_fixable}
+    if serious:
+        add(HIGH, None, f"{len(serious)} critical/high known vulnerabilities with a fix, in "
+            f"{sum(bool(g.serious_fixable) for g in running)} packages",
+            "Published holes with published fixes — the first thing attackers try",
+            package_scan.upgrade_command(a.distro))
+    elif running:
+        add(MEDIUM, None, f"{len({c for g in running for c in g.fixable})} known vulnerabilities with a fix, in "
+            f"{len(running)} packages", "Medium/low holes with published fixes", package_scan.upgrade_command(a.distro))
+    old = [g for g in a.package_groups if g.old_kernel]
+    if old:
+        add(LOW, None, f"Old kernels still installed ({len({c for g in old for c in g.cves})} known vulnerabilities)",
+            "Not running, but kept on disk and bootable", package_scan.old_kernel_command(a.distro))
     if a.reboot_required:
         add(MEDIUM, None, "Reboot required", "Installed security fixes (often the kernel) are not active yet",
             "Reboot in a maintenance window")
@@ -509,21 +533,50 @@ def audit_findings(a: Audit) -> list[Finding]:
     return sorted(out, key=_order)
 
 
+def read_packages(shell: Shell, audit: Audit, should_continue: Callable[[], bool],
+                  status: Callable[[str], None]) -> list[package_scan.Package]:
+    """The installed packages, read over the audit's login (no root needed), for Trivy on this PC; [] (with a
+    note) when they cannot be checked."""
+    if not package_scan.available():
+        audit.unread.append("known vulnerabilities in packages (Trivy is not installed on the MulteAgent PC — "
+                            "doc/SECURITY_TOOLS_DECISION.md §12)")
+        return []
+    if not should_continue():
+        raise InterruptedError
+    status("Reading installed packages…")
+    try:
+        audit.distro, audit.os_version, _, packages = package_scan.read_packages(
+            lambda key: shell.raw(package_scan.COMMANDS[key]))
+    except (PackageScanError, CommandTimeout) as exc:
+        audit.unread.append(f"known vulnerabilities in packages ({exc})")
+        return []
+    audit.package_count = len(packages)
+    return packages
+
+
 def run_audit(login: ServerLogin, *, should_continue: Callable[[], bool] = lambda: True,
               status: Callable[[str], None] = lambda message: None) -> Audit:
     started = time.monotonic()
     audit = Audit(label=login.shown, host=login.host)
     status(f"Logging in to {login.shown}…")
     client, _ = connect(login)
+    packages: list[package_scan.Package] = []
     try:
         shell = Shell(client, password=login.password)
         shell.detect_sudo()
         try:
             collect(shell, audit, should_continue, status)
+            packages = read_packages(shell, audit, should_continue, status)
         except InterruptedError:
             audit.unread.append("the rest — stopped before the audit finished")
     finally:
         client.close()
+    if packages and should_continue():
+        status(f"Checking {len(packages)} packages for known vulnerabilities (Trivy)…")
+        audit.vulnerable = package_scan.check_packages(audit.label, audit.distro, audit.os_version, packages)
+        if audit.vulnerable.error:
+            audit.unread.append(f"known vulnerabilities in packages ({audit.vulnerable.error})")
+        audit.package_groups = package_scan.group(audit.vulnerable, packages, audit.kernel)
     audit.findings = audit_findings(audit)
     audit.seconds = round(time.monotonic() - started, 1)
     return audit
@@ -572,11 +625,44 @@ def markdown(a: Audit) -> str:
               + (" — top sources: " + ", ".join(f"{ip} ×{n}" for ip, n in a.top_sources) if a.top_sources else ""))
     f2b = {True: "running", False: "not installed / not running", None: "not read"}[a.fail2ban]
     parts.append(f"### Updates and attacks\nUpdates: {updates}\n\nLogins: {logins}\n\nfail2ban: {f2b}")
+    if a.vulnerable is not None and not a.vulnerable.error:
+        parts.append(packages_markdown(a))
     if a.unread:
         parts.append("**Not read:** " + "; ".join(a.unread) + ".")
-    parts.append("_Read-only audit: fixed commands only, nothing on the server was changed. The fixes are advice "
+    parts.append("_Read-only audit: fixed commands only, nothing on the server was changed or installed (the "
+                 "package list is checked by Trivy on this PC). The fixes are advice "
                  "— run them yourself. The login stays in this session's memory only._")
     return "\n\n".join(parts)
+
+
+PACKAGES_SHOWN = 10        # source packages in the chat table; every row is in the Excel file
+
+
+def packages_markdown(a: Audit) -> str:
+    """Counts are distinct CVEs; old kernels (installed, not running) are counted apart, so the numbers add up."""
+    current = [g for g in a.package_groups if not g.old_kernel]
+    old = [g for g in a.package_groups if g.old_kernel]
+    cves = {c for g in current for c in g.cves}
+    fixable = {c for g in current for c in g.fixable}
+    head = (f"### Known vulnerabilities in installed packages\n{a.package_count} packages checked by Trivy against "
+            f"{a.distro.title()} {a.os_version}'s own security lists: **{len(cves)} known vulnerabilities** "
+            f"(each CVE counted once), **{len(fixable)} with a fix released**"
+            + (f", {len(cves) - len(fixable)} with no fix yet (the vendor decides; often low impact on a server)"
+               if len(cves) > len(fixable) else "") + ".")
+    shown = [g for g in current if g.fixable][:PACKAGES_SHOWN]
+    notes = []
+    if shown:
+        notes.append(_table(["Package", "Installed", "Worst", "With a fix (critical/high)", "Fixed in"],
+                            [[g.source, g.installed, SEVERITY_LABEL.get(g.worst, g.worst.title()),
+                              f"{len(g.fixable)} ({len(g.serious_fixable)})", g.fixed] for g in shown]))
+        more = sum(1 for g in current if g.fixable) - len(shown)
+        notes.append(f"**Fix:** `{package_scan.upgrade_command(a.distro)}` installs every fix"
+                     + (f" ({more} more packages in the Excel file)." if more > 0 else "."))
+    if old:
+        notes.append(f"Old kernels that are installed but not running carry "
+                     f"{len({c for g in old for c in g.cves})} more: `{package_scan.old_kernel_command(a.distro)}` "
+                     "removes them.")
+    return "\n\n".join([head, *notes])
 
 
 # ── as a chat job ────────────────────────────────────────────────────────
@@ -625,7 +711,15 @@ def run_server_audit(
         elif login is None:
             output = f"Which server should I audit? Added this session: {server_vault.names(servers)}."
         else:
-            output = markdown(run_audit(login, should_continue=lambda: not live.is_stopped(job_id), status=status))
+            audit = run_audit(login, should_continue=lambda: not live.is_stopped(job_id), status=status)
+            output = markdown(audit)
+            if audit.vulnerable is not None and audit.vulnerable.vulns:
+                from src.tools.artifacts import artifact_event, write_bytes
+
+                name = re.sub(r"[^\w.-]+", "_", login.shown).strip("_") or "server"
+                meta = write_bytes(config, job_id, f"vulnerable-packages-{name}.xlsx",
+                                   xlsx_bytes([audit.vulnerable], "Server"), kind="xlsx")
+                emit(artifact_event(meta, job_id=job_id))
     except (AuditError, VaultError) as exc:
         output = f"The audit was not run: {exc}."
         errors.append(str(exc))

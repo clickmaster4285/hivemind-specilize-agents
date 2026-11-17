@@ -352,3 +352,16 @@ def test_random_macs_are_private(monkeypatch):
     assert net_scan.manufacturer("f8:bc:12:70:de:8f") == "Dell Inc."
     assert net_scan.manufacturer("da:a1:19:00:00:01") == "Private (random MAC)"   # locally administered bit
     assert net_scan.manufacturer("") == ""
+
+
+def test_arp_table_on_windows_linux_and_proc():
+    # Linux `arp -a` ("? (ip) at mac") was not understood: no MAC for any device on Linux
+    from src.servers.net_scan import parse_arp
+
+    text = ("  192.168.88.1          d4-01-c3-aa-bb-cc     dynamic\n"
+            "? (192.168.88.66) at 50:9a:4c:55:d0:f [ether] on eno1\n"
+            "IP address       HW type     Flags       HW address            Mask     Device\n"
+            "192.168.88.41    0x1         0x2         c8:d9:d2:1f:5b:da     *        eno1\n"
+            "192.168.88.9     0x1         0x0         00:00:00:00:00:00     *        eno1\n")
+    assert parse_arp(text) == {"192.168.88.1": "d4:01:c3:aa:bb:cc", "192.168.88.66": "50:9a:4c:55:d0:0f",
+                               "192.168.88.41": "c8:d9:d2:1f:5b:da"}

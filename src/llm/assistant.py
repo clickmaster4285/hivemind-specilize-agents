@@ -120,10 +120,12 @@ TOOLS: tuple[Tool, ...] = (
          {"image": "a part of one image's name (postgres, searxng); empty = every image on this PC"},
          (), lambda c: c.security_scan_enabled and image_scan.available()),
     Tool("server_audit", "server_audit",
-         "Log in to one of the user's Linux servers (added this session in Settings → Devices) and audit it "
-         "read-only: ufw / iptables firewall, open ports with programs, SSH settings (root and password login), "
-         "missing security updates, failed SSH logins and fail2ban. Use for 'audit my server', 'check ufw on "
-         "web01', 'is my Linux server hardened'.",
+         # the router reads only the first sentence (TOOL_LINE_CHARS): "server" + "vulnerable packages" must be in it
+         "Audit the user's own Linux server over SSH (Settings → Devices): known vulnerabilities (CVEs) in its "
+         "installed packages, firewall, open ports, SSH settings. Read-only: ufw / iptables, open ports with "
+         "programs, root and password login, missing security updates, failed SSH logins and fail2ban; the package "
+         "list is checked by Trivy with the version that fixes each CVE. Use for 'audit my server', 'check ufw on "
+         "web01', 'is my Linux server hardened', 'check my server for vulnerable packages'.",
          {"server": SERVER_ARG},
          (), lambda c: c.security_scan_enabled),
     Tool("nvr_cameras", "nvr_cameras",

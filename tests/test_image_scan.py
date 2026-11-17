@@ -70,3 +70,16 @@ def test_the_tool_is_offered_only_when_trivy_is_there(monkeypatch):
     assert "image_scan" not in names()
     monkeypatch.setattr(image_scan, "available", lambda: True)
     assert "image_scan" in names()
+
+
+def test_an_image_is_also_found_by_what_it_runs_and_its_container():
+    images = ["pgvector/pgvector:0.8.0-pg17", "dpage/pgadmin4:9.8"]
+    also = {"pgvector/pgvector:0.8.0-pg17": "postgres docker-entrypoint.sh multeagent-db-1",
+            "dpage/pgadmin4:9.8": "entrypoint.sh multeagent-pgadmin-1"}
+    assert pick_images(images, "postgres") == []                             # the name alone does not say it
+    assert pick_images(images, "postgres", also) == ["pgvector/pgvector:0.8.0-pg17"]
+    assert pick_images(images, "db", also) == ["pgvector/pgvector:0.8.0-pg17"]
+
+
+def test_trivy_image_sends_nothing_about_the_images():
+    assert {"--disable-telemetry", "--skip-version-check", "--offline-scan"} <= set(image_scan.command("x:1"))

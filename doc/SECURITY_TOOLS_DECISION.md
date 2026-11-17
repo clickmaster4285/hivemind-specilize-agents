@@ -445,3 +445,49 @@ trivy image --download-db-only                                 # its database, o
 The checksum alone only proves the download is the file GitHub serves; the cosign step proves who built it. cosign
 is not on this PC: install it from its own release (github.com/sigstore/cosign) and check its checksum, or skip
 the step knowingly. ~/.local/bin must be on the API's PATH (restart the API after installing).
+
+---
+
+## 13. V3b — known vulnerabilities in a Linux server's packages (built 2026-11-17)
+
+The user's choice: "trivy installed, now start V3b servers". Part of `server_audit` (no new tool: "audit my server"
+and "check my server for vulnerable packages" both route there — its first sentence now says so).
+
+**How.** Over the audit's existing SSH login, two fixed commands that need no root: `dpkg-query -W -f=…` (Debian,
+Ubuntu) or `rpm -qa --qf …` (RHEL, Rocky, Alma, CentOS, Fedora, Amazon, Oracle), plus /etc/os-release and
+/etc/debian_version. Nothing is installed or written on the server (the §10 alternative, `trivy rootfs` on the
+server, would copy a program there). On this PC, [package_scan.py](../src/servers/package_scan.py) writes the list as
+a CycloneDX SBOM **in the exact shape Trivy writes for an OS**: one `operating-system` component (`ubuntu` / `24.04`),
+and per package the purl (`pkg:deb/ubuntu/libssl3@…?arch=amd64&distro=ubuntu-24.04&epoch=…`) with Trivy's own
+properties — `SrcName`, `SrcVersion`, `SrcRelease`, `SrcEpoch` — because Debian's and Ubuntu's fix lists are keyed by
+the *source* package (`openssl`, not `libssl3`). Then `trivy sbom` in a temporary folder.
+
+**Measured first (as decided in §10).** Trivy warns that SBOMs from other tools may scan less accurately, so ours was
+compared with Trivy's own scan of the same system, CVE by CVE and package by package:
+
+| System | Packages | Trivy's own scan | Ours | Same CVE + package | Fix version / severity differ |
+|---|---|---|---|---|---|
+| Debian 12.11 (the pgvector image) | 147 | 747 | 747 | 747 | 0 |
+| Ubuntu 26.04 (this PC, its dpkg status) | 2,528 | 6,200 | 6,200 | 6,200 | 0 |
+| AlmaLinux 9.2 (`almalinux:9.2-minimal`) | 97 | 374 | 374 | 374 | 0 |
+| Rocky Linux 8.7 (`rockylinux:8.7-minimal`) | 95 | 262 | 262 | 262 | 0 |
+
+The first try found **0 of 747**: the SBOM's top component was also typed `operating-system`, and Trivy takes the
+first one as the OS (with no version, nothing matches). Now `application`; a test keeps it so. The measurement images
+were pulled for the check and removed after it.
+
+**What the chat shows.** Trivy answers one row per CVE *and binary package* (a kernel CVE repeats in a dozen
+`linux-*` packages: this PC had 6,200 rows for 876 CVEs). The audit groups per source package and counts each CVE
+once; a finding "N critical/high known vulnerabilities with a fix" (high) or "N with a fix" (medium) with
+`sudo apt update && sudo apt upgrade` / `sudo dnf upgrade`; installed kernels that are not the running one are set
+apart (low, `sudo apt autoremove --purge` / `sudo dnf remove --oldinstallonly`). The table shows the 10 worst source
+packages with the version that fixes them; every row is in `vulnerable-packages-<server>.xlsx`. On this PC: 497 CVEs,
+3 with a fix, 494 with no fix yet; 626 more only in the old kernel 7.0.0-42.
+
+**Privacy.** Both Trivy commands (`image_scan` too) run with `--disable-telemetry --skip-version-check
+--offline-scan`: Trivy otherwise sends usage data to Aqua and a version check on every run (seen in its debug log),
+and may send Java file checksums to Maven Central. Only the vulnerability database is downloaded (ghcr.io, daily).
+
+**Limits.** Packages only: software installed by hand, from a tarball or in a language package manager (pip, npm)
+is not in the list, and containers on the server are not looked into. Arch, Alpine and SUSE servers are reported as
+"cannot check by its package list". "No fix yet" is the vendor's status (many are low impact on a server).

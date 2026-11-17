@@ -164,3 +164,12 @@ def test_only_admins_run_it(monkeypatch):
     worker._refuse(CFG, "job-1", "check this pc", events.append, "security_check")
     done = next(e for e in events if e["type"] == "agent_done")
     assert "only be run by an administrator" in done["output"] and finished == ["job-1"]
+
+
+def test_a_target_that_is_no_address_is_asked_not_the_whole_network():
+    # "server pk" / "the postgres image" scanned the whole LAN for 2 minutes (ISSUES_LOG O90)
+    for target in ("server pk", "postgres image"):
+        with pytest.raises(sec.ScanError, match="which device"):
+            sec.resolve_target(target, "", CFG)
+    for target in ("my network", "the LAN", "all devices", "home wifi"):
+        assert sec.resolve_target(target, "", CFG)[1] is None                 # the whole local network
