@@ -134,13 +134,12 @@ def test_a_change_command_from_the_model_is_refused_not_run(monkeypatch):
 
 # ── wiring ─────────────────────────────────────────────────────────────────
 def test_wired_for_the_it_specialist_credential_gated_not_admin_only():
-    from src.jobs import worker
     from src.llm.assistant import BY_NAME
     from src.llm.specialists import default_specialists
 
     assert BY_NAME["diagnose_server"].intent == "server_diagnose"
-    assert worker.DIRECT_TOOLS["server_diagnose"] is so.run_server_diagnose
-    assert "server_diagnose" not in worker.ADMIN_TOOLS       # gated by who holds the server login, not a role
+    assert BY_NAME["diagnose_server"].runner() is so.run_server_diagnose
+    assert not BY_NAME["diagnose_server"].admin_only         # gated by who holds the server login, not a role
     by_id = {s.id: s for s in default_specialists()}
     assert "diagnose_server" in by_id["it"].tools and "diagnose_server" not in by_id["marketing"].tools
 
@@ -237,12 +236,11 @@ def test_destructive_is_refused_even_in_trusted(monkeypatch):
 
 
 def test_operate_wired_and_it_only():
-    from src.jobs import worker
     from src.llm.assistant import BY_NAME
     from src.llm.specialists import default_specialists
 
     assert BY_NAME["operate_server"].intent == "server_operate"
-    assert worker.DIRECT_TOOLS["server_operate"] is so.run_server_operate
+    assert BY_NAME["operate_server"].runner() is so.run_server_operate
     by_id = {s.id: s for s in default_specialists()}
     assert "operate_server" in by_id["it"].tools and "operate_server" not in by_id["development"].tools
 

@@ -74,12 +74,11 @@ def test_answers_for_up_blocked_and_down():
 
 
 def test_registered_for_the_it_specialist_and_not_admin_only():
-    from src.jobs import worker
     from src.llm.assistant import BY_NAME
     from src.llm.specialists import default_specialists
 
-    assert BY_NAME["ping_host"].intent == "host_check" and worker.DIRECT_TOOLS["host_check"] is hc.run_host_check
-    assert "host_check" not in worker.ADMIN_TOOLS                   # a ping is harmless, like network_scan
+    assert BY_NAME["ping_host"].intent == "host_check" and BY_NAME["ping_host"].runner() is hc.run_host_check
+    assert not BY_NAME["ping_host"].admin_only                      # a ping is harmless, like network_scan
     by_id = {s.id: s for s in default_specialists()}
     assert "ping_host" in by_id["it"].tools and "ping_host" not in by_id["marketing"].tools
 

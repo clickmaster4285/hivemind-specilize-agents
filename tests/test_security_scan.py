@@ -158,7 +158,9 @@ def test_this_pc_section_and_known_ports():
 def test_only_admins_run_it(monkeypatch):
     from src.jobs import worker
 
-    assert "security_check" in worker.ADMIN_TOOLS and worker.DIRECT_TOOLS["security_check"] is sec.run_security_check
+    from src.llm.assistant import BY_NAME
+
+    assert BY_NAME["security_check"].admin_only and BY_NAME["security_check"].runner() is sec.run_security_check
     finished, events = [], []
     monkeypatch.setattr(worker, "_finish", lambda config, job_id, errors, **kw: finished.append(job_id))
     worker._refuse(CFG, "job-1", "check this pc", events.append, "security_check")

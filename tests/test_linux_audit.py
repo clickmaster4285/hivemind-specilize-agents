@@ -234,11 +234,11 @@ def test_the_server_named_in_the_message_is_used(monkeypatch):
 
 def test_wired_and_credential_gated_not_admin_only():
     # decided 2026-10-21 (SERVER_ACCESS_DECISION.md §8): server tools are gated by who holds the login,
-    # not by a MulteAgent admin role — so server_audit is NOT in ADMIN_TOOLS
-    from src.jobs import worker
+    # not by a MulteAgent admin role — so server_audit is not admin_only
+    from src.llm.assistant import BY_NAME
 
-    assert worker.DIRECT_TOOLS["server_audit"] is la.run_server_audit
-    assert "server_audit" not in worker.ADMIN_TOOLS
+    assert BY_NAME["server_audit"].runner() is la.run_server_audit
+    assert not BY_NAME["server_audit"].admin_only
 
 
 # ── the API ──────────────────────────────────────────────────────────────

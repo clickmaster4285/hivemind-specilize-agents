@@ -11,6 +11,8 @@ Measured: python -m src.llm.assistant --eval   (data/assistant/eval.yaml)
 from __future__ import annotations
 
 import argparse
+import functools
+import importlib
 import json
 import logging
 import re
@@ -52,6 +54,17 @@ class Tool:
     available: Callable[[Config], bool] = lambda config: True
     # stops to wait for the user's click (a confirm card): never offered when nobody is watching (a scheduled run)
     waits_for_user: bool = False
+    # "module:function" that does the whole job in the worker, (query, *, job_id, config, on_progress, conversation,
+    # user_id, **args) → (output, errors, seconds); "" = one of the worker's own branches (kb, web search, images,
+    # documents, about, clarify). A string, imported on first use: importing every tool would make this module
+    # ~10× slower to import for the router, evals and benches.
+    run: str = ""
+    # only admins may run it: it probes the local network in depth (SECURITY_TOOLS_DECISION.md §2). The server tools
+    # need a stored login, so they are gated by who holds it (SERVER_ACCESS_DECISION.md §8), not by a role
+    admin_only: bool = False
+
+    def runner(self) -> Callable[..., tuple[str, list[str], float]] | None:
+        return _load_runner(self.run) if self.run else None
 
     def schema(self, description: str | None = None) -> dict[str, Any]:
         return {"type": "function", "function": {
@@ -59,6 +72,12 @@ class Tool:
             "parameters": {"type": "object", "required": list(self.required),
                            "properties": {k: {"type": "string", "description": v} for k, v in self.params.items()}},
         }}
+
+
+@functools.cache
+def _load_runner(path: str) -> Callable[..., tuple[str, list[str], float]]:
+    module, _, name = path.partition(":")
+    return getattr(importlib.import_module(module), name)
 
 
 # the SEO tools' search market (src/tools/market.py): only what the user said — the site decides otherwise
@@ -91,17 +110,20 @@ TOOLS: tuple[Tool, ...] = (
                   "days, weeks or months — a scandal, an announcement, a launch, an election); empty otherwise"},
          ("query",), lambda c: bool(c.web_search_url)),
     Tool("get_weather", "weather", "Current weather and a 3-day forecast for a place.",
-         {"place": "city name; empty = the user's own city"}),
+         {"place": "city name; empty = the user's own city"},
+         run="src.tools.weather:run_weather"),
     Tool("network_scan", "network_scan",
          "Actually scan the local private network now and list its devices (IP, name, MAC, open ports) as a table: "
          "an inventory, not a security check.",
-         {"subnet": "e.g. 192.168.1.0/24; empty = this computer's network"}, (), lambda c: c.network_scan_enabled),
+         {"subnet": "e.g. 192.168.1.0/24; empty = this computer's network"}, (), lambda c: c.network_scan_enabled,
+         run="src.servers.net_scan:run_network_scan"),
     Tool("ping_host", "host_check",
          "Actually ping ONE device now and check it is up / running / online: replies and response time, "
          "its name, MAC address and manufacturer, open common ports. Use for 'ping 192.168.1.20', 'is the "
          "printer up', 'check 10.0.0.5 is running'. Never answer 'I cannot ping' — call this.",
          {"host": "the device's IP address (exactly as the user wrote it) or name"}, ("host",),
-         lambda c: c.network_scan_enabled),
+         lambda c: c.network_scan_enabled,
+         run="src.servers.host_check:run_host_check"),
     Tool("security_check", "security_check",
          # the router reads only the first sentence (TOOL_LINE_CHARS): it alone must tell this from network_scan
          "Actually check the security of a device or a whole network now: open ports, software versions and their "
@@ -112,7 +134,8 @@ TOOLS: tuple[Tool, ...] = (
          "Linux server ('my server', 'my web server', a server from Settings → Devices): server_audit logs in "
          "and checks its firewall from the inside.",
          {"target": "an IP (192.168.1.10), a network (192.168.1.0/24), 'this pc', or empty = the whole local network"},
-         (), lambda c: c.security_scan_enabled),
+         (), lambda c: c.security_scan_enabled,
+         run="src.servers.security_scan:run_security_check", admin_only=True),
     Tool("image_scan", "image_scan",
          # the router reads only the first sentence (TOOL_LINE_CHARS)
          "Actually check the Docker images (containers) on this PC for known vulnerabilities in their packages. "
@@ -120,7 +143,8 @@ TOOLS: tuple[Tool, ...] = (
          "my containers vulnerable', 'check the postgres image for CVEs' — not for devices on the network "
          "(security_check).",
          {"image": "a part of one image's name (postgres, searxng); empty = every image on this PC"},
-         (), lambda c: c.security_scan_enabled and image_scan.available()),
+         (), lambda c: c.security_scan_enabled and image_scan.available(),
+         run="src.servers.image_scan:run_image_scan", admin_only=True),
     Tool("server_audit", "server_audit",
          # the router reads only the first sentence (TOOL_LINE_CHARS): "server" + "vulnerable packages" must be in it;
          # "security" keeps "list the projects on the uk server" out of it (ISSUES_LOG O93)
@@ -130,21 +154,24 @@ TOOLS: tuple[Tool, ...] = (
          "list is checked by Trivy with the version that fixes each CVE. Use for 'audit my server', 'check ufw on "
          "web01', 'is my Linux server hardened', 'check my server for vulnerable packages'.",
          {"server": SERVER_ARG},
-         (), lambda c: c.security_scan_enabled),
+         (), lambda c: c.security_scan_enabled,
+         run="src.servers.linux_audit:run_server_audit"),
     Tool("nvr_cameras", "nvr_cameras",
          "Log in to a camera recorder (NVR/DVR, Hikvision or Dahua) added this session in Settings → Devices and "
          "list ALL its cameras as a table: channel, camera name, IP address, model, online/offline. Read-only. "
          "Use for 'tell me all the cameras on the NVR', 'which cameras are offline', 'access the NVR at "
          "192.168.1.64 and list the cameras'. Never tell the user to open the NVR's web page — call this.",
          {"nvr": "the recorder's name or IP as the user wrote it; empty = the only one added"},
-         (), lambda c: c.security_scan_enabled),
+         (), lambda c: c.security_scan_enabled,
+         run="src.servers.nvr:run_nvr_cameras"),
     Tool("network_device", "network_device",
          "Log in to a router or switch (MikroTik) added this session in Settings → Devices and read it, read-only: "
          "model, firmware, uptime, CPU and memory, every interface/port and whether it is up, the devices connected "
          "(DHCP leases with IP, MAC and host name), the ARP table and the recent log. Use for 'check the router', "
          "'who is connected to the mikrotik', 'which ports are down on the switch', 'show the router log'.",
          {"device": "the router's or switch's name or IP as the user wrote it; empty = the only one added"},
-         (), lambda c: c.security_scan_enabled),
+         (), lambda c: c.security_scan_enabled,
+         run="src.servers.netdev:run_network_device"),
     Tool("diagnose_server", "server_diagnose",
          # the router reads only the first sentence: looking and listing are in it, so "tell me all the projects on
          # the uk server" comes here, not to the security audit (ISSUES_LOG O93)
@@ -156,7 +183,8 @@ TOOLS: tuple[Tool, ...] = (
          "the server slow', 'is the disk full on db01'. "
          "It cannot change anything (read-only); applying a fix is a separate confirmed step.",
          {"server": SERVER_ARG},
-         (), lambda c: c.security_scan_enabled),
+         (), lambda c: c.security_scan_enabled,
+         run="src.servers.server_ops:run_server_diagnose"),
     Tool("operate_server", "server_operate",
          "Log in to one of the user's Linux servers (Settings → Devices) and DO WORK that may change it: "
          "run a command or script, CREATE or edit files and folders, WRITE content into a file on the server, "
@@ -168,7 +196,8 @@ TOOLS: tuple[Tool, ...] = (
          "follow-up file and command tasks — do NOT use create_document, which only makes a local download.",
          {"server": SERVER_ARG,
           "task": "what to do on the server (a command, a file to create/run, or the change to make)"}, ("task",),
-         lambda c: c.security_scan_enabled, waits_for_user=True),
+         lambda c: c.security_scan_enabled, waits_for_user=True,
+         run="src.servers.server_ops:run_server_operate"),
     Tool("deploy_project", "server_deploy",
          # the router reads only the first sentence (TOOL_LINE_CHARS): pull + deploy + project must be in it
          "Deploy a project on the user's Linux server: pull the latest code from a branch, install new "
@@ -180,12 +209,14 @@ TOOLS: tuple[Tool, ...] = (
          {"server": SERVER_ARG,
           "project": "the project or folder name exactly as the user wrote it, typos included; empty if none",
           "branch": "the branch the user named; empty if none"},
-         (), lambda c: c.security_scan_enabled, waits_for_user=True),
+         (), lambda c: c.security_scan_enabled, waits_for_user=True,
+         run="src.servers.deploy:run_deploy_project"),
     Tool("generate_image", "image_gen", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
          {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None),
     Tool("draw_diagram", "diagram",
          "Draw or change a diagram with boxes, arrows and exact labels: architecture, flowchart, network schematic, "
-         "sequence, hierarchy, org chart.", {"request": "what the diagram shows"}, ("request",)),
+         "sequence, hierarchy, org chart.", {"request": "what the diagram shows"}, ("request",),
+         run="src.tools.diagram_gen:run_diagram"),
     Tool("site_audit", "site_audit",
          "Actually read a PUBLIC website now (politely, up to a few dozen pages) and audit its SEO and content: "
          "titles, meta descriptions, headings, broken pages, image alt text, mobile, canonical, structured data, "
@@ -193,12 +224,14 @@ TOOLS: tuple[Tool, ...] = (
          "example.com', 'check the SEO of my website', 'how mature is this site', 'what should this site improve'.",
          {"url": "the website address exactly as the user wrote it, e.g. example.com",
           "track": "only when the user asks to track / monitor the site: re-audit every N days (7 = weekly, "
-                   "30 = monthly); empty otherwise"}, ("url",)),
+                   "30 = monthly); empty otherwise"}, ("url",),
+         run="src.tools.site_audit:run_site_audit"),
     Tool("seo_projects", "seo_projects",
          "Show the websites the user has audited or tracks, with each one's SEO score trend over time and what "
          "changed (fixed and new issues); can stop tracking a site. Use for 'show my SEO projects', 'how is my "
          "site's SEO trending', 'stop tracking example.com'.",
-         {"untrack": "a website to stop tracking; empty otherwise"}),
+         {"untrack": "a website to stop tracking; empty otherwise"},
+         run="src.tools.seo_projects:run_seo_projects"),
     Tool("compare_sites", "compare_sites",
          "Compare the user's website with competitors: audits each site, scores them side by side, lists what "
          "competitors do better and the topics they cover that the user's site doesn't (content gap), with pages to "
@@ -206,7 +239,8 @@ TOOLS: tuple[Tool, ...] = (
          "with rival.com', 'what are my competitors doing better', 'content gap vs the sites ranking for X'.",
          {"url": "the user's own website", "competitors": "comma-separated competitor websites; empty if none named",
           "keyword": "a keyword to find competitors by when none are named; empty otherwise",
-          "market": MARKET_ARG}, ("url",)),
+          "market": MARKET_ARG}, ("url",),
+         run="src.tools.compare_sites:run_compare_sites"),
     Tool("keyword_research", "keyword_research",
          "Keyword research from live search results (approximate, no search volume): who ranks for a keyword, where "
          "a given website ranks for it, keyword ideas people search, an estimated difficulty and what the top pages "
@@ -215,7 +249,8 @@ TOOLS: tuple[Tool, ...] = (
          {"keywords": "comma-separated keywords exactly as the user wrote them (at most 5)",
           "domain": "the user's website if they named one, e.g. mysite.com; empty if none",
           "market": MARKET_ARG}, ("keywords",),
-         lambda c: bool(c.web_search_url)),
+         lambda c: bool(c.web_search_url),
+         run="src.tools.keyword_research:run_keyword_research"),
     Tool("write_content", "content_write",
          "Write a full piece of marketing or web copy — blog post, article, landing page, product or service page, "
          "email, newsletter, ad or social post — in rounds: brief, draft, checks (keywords, length, readability, meta "
@@ -225,7 +260,8 @@ TOOLS: tuple[Tool, ...] = (
          {"request": "what to write: topic, audience, goal, length if said",
           "keywords": "comma-separated search keywords the user wants targeted; empty if none",
           "url": "address of an existing page to improve; empty for new content",
-          "market": MARKET_ARG}, ("request",)),
+          "market": MARKET_ARG}, ("request",),
+         run="src.tools.content_writer:run_content_writer"),
     Tool("create_document", "doc_gen",
          "Create a downloadable Word, PDF, PowerPoint or Excel file for the user to save on their own computer. "
          "Use whenever the user asks for the result as a file (a PDF, a spreadsheet, 'into Excel', a deck), even "
@@ -247,6 +283,7 @@ TOOLS: tuple[Tool, ...] = (
           "with 2-4 short options per question"}, ("questions",)),
 )
 BY_NAME = {t.name: t for t in TOOLS}
+BY_INTENT = {t.intent: t for t in TOOLS}          # the worker branches on the intent (a forced one has no tool)
 
 
 def tool_flag(args: dict[str, Any], name: str, default: bool = False) -> bool:

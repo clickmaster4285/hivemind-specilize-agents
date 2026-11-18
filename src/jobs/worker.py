@@ -14,30 +14,14 @@ from src.core.conversation import normalize_conversation
 from src.jobs.chat_memory import chat_memory, prefold, remember_job
 from src.jobs.chat_runner import run_chat
 from src.core.clock import set_time_zone
-from src.tools.diagram_gen import run_diagram
-from src.servers.net_scan import run_network_scan
-from src.servers.image_scan import run_image_scan
-from src.servers.security_scan import run_security_check
-from src.servers.linux_audit import run_server_audit
-from src.servers.deploy import run_deploy_project
-from src.servers.server_ops import run_server_diagnose, run_server_operate
-from src.servers.host_check import run_host_check
-from src.servers.netdev import run_network_device
-from src.servers.nvr import run_nvr_cameras
-from src.llm.assistant import CLARIFY_INTRO, decide, speaker, tool_flag
+from src.llm.assistant import BY_INTENT, CLARIFY_INTRO, decide, speaker, tool_flag
 from src.llm.skills import Skill
 from src.llm.skills import apply as apply_skill
 from src.llm.skills import for_job as skill_for_job
 from src.llm.specialists import Specialist, resolve as resolve_specialist
 from src.llm.usage import job_totals, job_usage
 from src.tools.answer_export import run_answer_export
-from src.tools.compare_sites import run_compare_sites
-from src.tools.content_writer import run_content_writer
 from src.tools.doc_writer import run_document_writer
-from src.tools.keyword_research import run_keyword_research
-from src.tools.seo_projects import run_seo_projects
-from src.tools.site_audit import run_site_audit
-from src.tools.weather import run_weather
 from src.jobs import live
 from src.images.image_gen import run_image_gen
 from src.tools.attachments import load_b64_images
@@ -48,21 +32,6 @@ from src.jobs.jobs import append_event, claim_next_job, get_job, queue_depth, re
 _worker_thread: threading.Thread | None = None
 _stop = threading.Event()
 
-
-# tools that run on their own: (query, job_id, config, on_progress, conversation, **tool_args) -> (output, errors, s)
-DIRECT_TOOLS = {"network_scan": run_network_scan, "security_check": run_security_check, "image_scan": run_image_scan,
-                "server_audit": run_server_audit, "server_diagnose": run_server_diagnose,
-                "server_operate": run_server_operate, "server_deploy": run_deploy_project,
-                "host_check": run_host_check,
-                "nvr_cameras": run_nvr_cameras, "network_device": run_network_device,
-                "weather": run_weather, "diagram": run_diagram,
-                "site_audit": run_site_audit, "content_write": run_content_writer,
-                "keyword_research": run_keyword_research, "compare_sites": run_compare_sites,
-                "seo_projects": run_seo_projects}
-# tools only admins may run (doc/SECURITY_TOOLS_DECISION.md §2): they probe the local network in depth.
-# server_audit / server_diagnose need a stored server login, so they are already gated by who holds the
-# credentials (SERVER_ACCESS_DECISION.md §8) — not listed here.
-ADMIN_TOOLS = frozenset({"security_check", "image_scan"})
 
 
 def _is_admin(config: Config, user_id: int | None) -> bool:
@@ -341,9 +310,11 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                         return
                 mode = "agentic"
 
-        runner = DIRECT_TOOLS.get(intent)
-        if runner is not None and intent in ADMIN_TOOLS and not _is_admin(config, user_id):
-            _refuse(config, job_id, query, on_progress, intent)
+        # a tool that does the whole job itself (its runner and admin flag are on its entry in assistant.TOOLS)
+        tool = BY_INTENT.get(intent)
+        runner = tool.runner() if tool else None
+        if runner is not None and tool.admin_only and not _is_admin(config, user_id):
+            _refuse(config, job_id, query, on_progress, tool.name)
             return
         if runner is not None:
             # user_id: tools that use the session's server logins (src/server_vault.py) find this user's only

@@ -230,3 +230,14 @@ def test_the_prompt_names_added_servers_only_when_given():
     with_servers = assistant.messages_for("go to /var/www", CFG, [], "m", servers="pk server, uk server")
     assert "already added in Settings → Devices: pk server, uk server" in with_servers[0]["content"]
     assert "already added" not in assistant.messages_for("hi", CFG, [], "m")[0]["content"]
+
+
+def test_every_tools_runner_loads_and_each_intent_is_one_tool():
+    """The runners are "module:function" strings (imported on first use): a typo must fail here, not in a chat."""
+    from src.llm.assistant import BY_INTENT, TOOLS
+
+    assert len(BY_INTENT) == len(TOOLS)                  # the worker finds a tool by its intent: never two per intent
+    for tool in TOOLS:
+        if tool.run:
+            assert callable(tool.runner()), tool.name
+    assert {t.name for t in TOOLS if t.admin_only} == {"security_check", "image_scan"}
