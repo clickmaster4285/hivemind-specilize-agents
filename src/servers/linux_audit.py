@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 CONNECT_TIMEOUT = 10
 COMMAND_TIMEOUT = 25            # s a command may go without any output before we stop waiting for it
+TIMED_OUT = 124                 # the exit code timeout(1) gives a command it stopped
 
 
 class CommandTimeout(TimeoutError):
@@ -166,9 +167,10 @@ class Shell:
     os_family: str = "linux"            # linux | windows
     is_admin: bool = False              # Windows: the account is an Administrator
 
-    def raw(self, command: str, stdin_text: str | None = None) -> tuple[int, str, str]:
+    def raw(self, command: str, stdin_text: str | None = None, silence: int = COMMAND_TIMEOUT) -> tuple[int, str, str]:
+        """silence: seconds the command may send nothing before CommandTimeout (an install or build: longer)."""
         full = ps_wrap(command) if self.os_family == "windows" else f"LC_ALL=C PATH=$PATH:/usr/sbin:/sbin {command}"
-        stdin, stdout, stderr = self.client.exec_command(full, timeout=COMMAND_TIMEOUT)
+        stdin, stdout, stderr = self.client.exec_command(full, timeout=silence)
         if stdin_text is not None:
             stdin.write(stdin_text)
             stdin.flush()
@@ -178,7 +180,7 @@ class Shell:
             err = stderr.read().decode("utf-8", "replace")
         except TimeoutError as exc:                 # socket.timeout: silent for COMMAND_TIMEOUT
             stdout.channel.close()                  # stop waiting; the session stays usable for the next command
-            raise CommandTimeout(f"no output for {COMMAND_TIMEOUT} s") from exc
+            raise CommandTimeout(f"no output for {silence} s") from exc
         return stdout.channel.recv_exit_status(), out, err
 
     def detect_sudo(self) -> None:
@@ -394,10 +396,29 @@ class Audit:
 
 
 def collect(shell: Shell, audit: Audit, should_continue: Callable[[], bool], status: Callable[[str], None]) -> None:
+    silent: list[str] = []
+
     def run(key: str) -> tuple[int, str, str]:
         if not should_continue():
             raise InterruptedError
-        return shell.run(key)
+        try:
+            return shell.run(key)
+        except CommandTimeout:
+            # one silent command is skipped and named; the uk server's audit was lost whole to one (ISSUES_LOG O93)
+            logger.warning("server audit: `%s` sent no output for %d s — skipped", COMMANDS[key][0], COMMAND_TIMEOUT)
+            silent.append(f"`{COMMANDS[key][0]}`")
+            return TIMED_OUT, "", f"no output for {COMMAND_TIMEOUT} s"
+
+    try:
+        _collect(run, shell, audit, status)
+    finally:
+        if silent:
+            audit.unread.append(f"what these commands show — no output for {COMMAND_TIMEOUT} s, skipped: "
+                                + ", ".join(silent))
+
+
+def _collect(run: Callable[[str], tuple[int, str, str]], shell: Shell, audit: Audit,
+             status: Callable[[str], None]) -> None:
 
     status("Reading the system…")
     audit.user = run("whoami")[1].strip()
@@ -571,7 +592,11 @@ def run_audit(login: ServerLogin, *, should_continue: Callable[[], bool] = lambd
     packages: list[package_scan.Package] = []
     try:
         shell = Shell(client, password=login.password)
-        shell.detect_sudo()
+        try:
+            shell.detect_sudo()
+        except CommandTimeout:          # a hanging sudo check: audit as the login itself (the notes say root-only parts)
+            logger.warning("server audit: the sudo check sent no output for %d s — going on without sudo",
+                           COMMAND_TIMEOUT)
         try:
             collect(shell, audit, should_continue, status)
             packages = read_packages(shell, audit, should_continue, status)

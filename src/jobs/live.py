@@ -137,3 +137,31 @@ def answer_confirm(job_id: str, command_id: str, approved: bool) -> bool:
         entry["approved"] = approved
         entry["event"].set()
     return True
+
+
+# ── a choice card (deploy_project: which folder, which branch, what to install / build / restart) ──
+# Kept in the confirm store, so clear() releases a waiting choice when the job ends.
+def wait_choice(job_id: str | None, choice_id: str, timeout: float) -> list[str] | None:
+    """Block until the browser sends the picked option ids, or timeout. None = timed out or the job was stopped."""
+    if not job_id:
+        return None
+    event = threading.Event()
+    with _lock:
+        _confirm[(job_id, choice_id)] = {"event": event, "approved": None}
+    answered = event.wait(timeout)
+    with _lock:
+        entry = _confirm.pop((job_id, choice_id), None)
+    if not answered or entry is None or is_stopped(job_id) or not isinstance(entry["approved"], list):
+        return None
+    return entry["approved"]
+
+
+def answer_choice(job_id: str, choice_id: str, picked: list[str]) -> bool:
+    """From the choose endpoint. True if a waiter was found and released."""
+    with _lock:
+        entry = _confirm.get((job_id, choice_id))
+        if entry is None:
+            return False
+        entry["approved"] = list(picked)
+        entry["event"].set()
+    return True

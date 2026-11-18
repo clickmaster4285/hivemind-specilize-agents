@@ -42,6 +42,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
 | [L24](#l24-ui-like-the-big-chat-apps--planned-2026-11-17-issues_log-o86) | UI like the big chat apps | U1–U8 built; connectors later | user's screenshots of DeepSeek, ChatGPT, Claude |
 | [L25](#l25-vulnerability-finders--explained-2026-11-17-issues_log-o87) | Vulnerability finders (nmap + CVEs, Nuclei, Trivy, OpenVAS) | V1, V3 (images) built; V2, V4 later | [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md) |
+| [L27](#l27-server-work-like-a-developer--2026-11-18-issues_log-o93o96) | Server work like a developer: guided deploy, look-questions, logins kept open | built 2026-11-18 | live check on the uk server |
 | [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H1, H2, H3 built (2026-11-18) | NousResearch hermes-agent (MIT) |
 
 ---
@@ -706,5 +707,20 @@ Telegram / email gateway). Plan, not built:
 
 - [x] H3 search all chats — built 2026-11-17 (word search; the semantic match from chat_passages later)
 - [x] H1 scheduled tasks — built 2026-11-18: ⋮ → Repeat… on a chat (every hour / day / week, the browser's zone), /schedules page, unattended runs without operate_server or clarify ([schedules.py](../src/jobs/schedules.py))
+- [ ] H1 rebuild (user, 2026-11-18: after L27): the first version was not understood. Research of 8 products: a
+      schedule is a check or digest that comes to you. Plan: create from chat in words + a confirm card; offer
+      "re-check this every week?" after a run; an unread badge + browser notification; report only what changed
+      since the last run (failures always); one chat per schedule, Run now, history
+
+### L27. Server work like a developer — 2026-11-18 (ISSUES_LOG O93–O96)
+
+From the user's uk-server chat: look-questions went to web search / the security audit, a misspelt folder made
+the agent search the disk and offer `mkdir`, a "pull the latest and deploy" pulled master blindly and stopped,
+every message logged in again. How it works: [SERVER_ACCESS_DECISION.md §9](SERVER_ACCESS_DECISION.md).
+
+- [x] O93 look-questions → `diagnose_server`; follow-ups keep the chat's server; an audit survives a silent command
+- [x] O94 + O95 `deploy_project`: folder from a misspelt name, branch choice, install / build / restart on choice cards
+- [x] O96 SSH logins kept open 10 minutes and reused
+- [ ] Live check on the uk server (the user); later: remember the chat's project folder
 - [x] H2 skills from tasks — built 2026-11-17: "Save as skill" (✦) under every answer → `POST /api/skills/draft` (src/llm/skill_draft.py) → the skill editor opens filled in; saved only by the user
 

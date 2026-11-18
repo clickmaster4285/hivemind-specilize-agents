@@ -32,7 +32,7 @@ from src.agentic.tools import ToolError
 from src.tools.answer_export import answer_in_events, export_answer, topic_title
 from src.tools.artifacts import resolve_job_file
 from src.tools.attachments import image_path
-from web.schemas import ConfirmPayload, ExportPayload, JobCreatePayload, SoftDeleteJobsPayload
+from web.schemas import ChoicePayload, ConfirmPayload, ExportPayload, JobCreatePayload, SoftDeleteJobsPayload
 
 router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 
@@ -176,6 +176,20 @@ def confirm_command_endpoint(
 
     found = live.answer_confirm(job_id, payload.command_id, payload.approved)
     return {"ok": found, "approved": payload.approved}
+
+
+@router.post("/{job_id}/choose")
+def choose_endpoint(
+    job_id: str,
+    payload: ChoicePayload,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    """The user answered a choice card (deploy_project: which folder, branch, what to install / build / restart)."""
+    _owned_job(db, job_id, user, forbid_status=404)
+    from src.jobs import live
+
+    return {"ok": live.answer_choice(job_id, payload.choice_id, payload.picked)}
 
 
 @router.get("/{job_id}/history")

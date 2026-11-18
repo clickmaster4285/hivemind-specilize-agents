@@ -191,7 +191,7 @@ def _names(tools: list[dict]) -> set[str]:
 def test_an_unattended_run_never_gets_a_tool_that_waits_for_a_click():
     config = replace(Config.from_env(), security_scan_enabled=True)
     waiting = {t.name for t in assistant.TOOLS if t.waits_for_user}
-    assert waiting == {"operate_server"}
+    assert waiting == {"operate_server", "deploy_project"}
     assert waiting <= _names(assistant.tool_schemas(config))
     unattended = _names(assistant.tool_schemas(config, unattended=True))
     assert not waiting & unattended and "server_audit" in unattended       # read-only server tools stay

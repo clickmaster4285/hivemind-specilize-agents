@@ -194,6 +194,37 @@ Only the in-process worker (`main.py --gui`) can serve confirmations. Credential
 
 This completes **P0–P2** of `doc/requirment.md` (validate audit → read-only diagnosis → approval + audit).
 
+### Built 2026-11-18 — `deploy_project` (guided deploy) and logins kept open (ISSUES_LOG O94–O96)
+
+`src/servers/deploy.py`, tool `deploy_project`. A deploy is fixed steps in code, not a free model loop; each
+step asks on a **choice card** (`choice_ask` event → `ChoiceCard`; the worker blocks on `live.wait_choice`, 5-min
+timeout; `POST /api/jobs/{id}/choose`; `choice_resolved` is saved so a reloaded chat shows the answer):
+
+1. **Project** — git repositories under /var/www, /srv, /opt, /home, /root (depth 3) plus /var/www folders; the
+   typed name is matched (difflib, typos and case ignored, a part of the name counts). One clear match → used;
+   two or more close → "which one?"; none → every project, plus "None — stop".
+2. **Branch** — `git fetch --all --prune`, remote branches newest first with commits ahead of HEAD → "pull
+   which?" (newest, current and the one the user named are marked). Uncommitted changes are asked about first
+   (stash / pull anyway / stop). The pull is `--ff-only` (never a merge); another branch is checked out first.
+3. **Install** — dependency files the pull changed (package.json, lock files, requirements.txt, composer.json)
+   and Node folders with no node_modules → "install in which folders?" (the right command per lock file; pip from
+   the folder's .venv / venv when there is one).
+4. **Build** — Node folders with a `build` script; those the pull touched are ticked.
+5. **Restart** — pm2 processes whose folder is in the project, systemd units with that WorkingDirectory, nginx
+   when a site config names the folder (`nginx -t` first); their state is read back.
+
+A failed step stops the deploy before anything is restarted (the site keeps the last good build). Every
+changing command passes the deny-list and the command log; on an audit-mode server nothing changes; a click on
+the card is the approval for the commands the card shows. git runs with `-c safe.directory=<project>` (root in a
+repository another user owns), npm / pm2 from nvm get nvm's newest node on PATH, installs and builds may be
+silent for 15 minutes (`Shell.raw(silence=…)`), and their output keeps its end (where errors are).
+
+**Logins kept open (O96):** a finished job hands its SSH session back (`release_session`); the next job for the
+same login within 10 minutes takes it (`open_session`) instead of logging in again; keepalive every 30 s; a
+session is used by one job at a time; changed credentials or host key → a new login; removing a server or
+clearing a user's devices closes its kept connection at once (`server_vault.remove` / `clear` → `forget`).
+Tested with a fake server (`tests/test_deploy.py`, `tests/test_server_ops.py`). **Not yet real-world tested.**
+
 ## 10. Questions
 
 1. **Build order above** — does it match what you need first? (I'd start with the read-only diagnose loop.)

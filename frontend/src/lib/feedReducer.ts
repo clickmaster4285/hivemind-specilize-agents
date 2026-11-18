@@ -3,6 +3,8 @@ import type {
   AnswerUsage,
   AnswerVerification,
   BrainSource,
+  ChoiceAnswer,
+  ChoiceOption,
   ClarifyQuestion,
   ConfirmAnswer,
   QuizQuestion,
@@ -184,11 +186,30 @@ export function markConfirmAnswered(prev: FeedItem[], commandId: string, answere
   );
 }
 
-/** The job is over: a card nobody answered can no longer run (O66). */
+/** After the user picks on a choice card, or the server's `choice_resolved` event (also on a reloaded chat). */
+export function markChoiceAnswered(prev: FeedItem[], choiceId: string, answered: ChoiceAnswer, picked: string[]): FeedItem[] {
+  return prev.map((item) =>
+    item.choice && item.choice.choiceId === choiceId ? { ...item, choice: { ...item.choice, answered, picked } } : item,
+  );
+}
+
+/** The job is over: a card nobody answered can no longer run (O66), nor a choice be made. */
 function closeOpenConfirms(prev: FeedItem[]): FeedItem[] {
   return prev.map((item) =>
-    item.confirm && !item.confirm.answered ? { ...item, confirm: { ...item.confirm, answered: "closed" } } : item,
+    item.confirm && !item.confirm.answered
+      ? { ...item, confirm: { ...item.confirm, answered: "closed" } }
+      : item.choice && !item.choice.answered
+        ? { ...item, choice: { ...item.choice, answered: "closed" } }
+        : item,
   );
+}
+
+function choiceOptions(raw: unknown): ChoiceOption[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((o): o is Record<string, unknown> => Boolean(o) && typeof o === "object")
+    .map((o) => ({ id: String(o.id ?? ""), label: String(o.label ?? ""), detail: String(o.detail ?? ""), checked: Boolean(o.checked) }))
+    .filter((o) => o.id);
 }
 
 const CONFIRM_ANSWERS: readonly ConfirmAnswer[] = ["run", "cancel", "timeout"];
@@ -248,6 +269,29 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
         },
       },
     ];
+  }
+  if (type === "choice_ask") {
+    // deploy_project is waiting for the user to pick (which folder, branch, what to install / build / restart)
+    return [
+      ...prev.filter((item) => item.id !== STATUS_ID),
+      {
+        id: uid(),
+        kind: "system",
+        title: "Choose",
+        body: "",
+        choice: {
+          choiceId: String(event.choice_id || ""),
+          question: String(event.question || ""),
+          options: choiceOptions(event.options),
+          multi: Boolean(event.multi),
+          server: String(event.server || ""),
+        },
+      },
+    ];
+  }
+  if (type === "choice_resolved") {
+    const picked = Array.isArray(event.picked) ? event.picked.map(String) : [];
+    return markChoiceAnswered(prev, String(event.choice_id || ""), event.answer === "timeout" ? "timeout" : "picked", picked);
   }
   if (type === "confirm_resolved") {
     const answer = CONFIRM_ANSWERS.find((a) => a === event.answer);

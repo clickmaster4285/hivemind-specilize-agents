@@ -18,11 +18,11 @@ import { useSpecialists } from "@/hooks/useSpecialists";
 import { useThreadMemory } from "@/hooks/useThreadMemory";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
 import type { MemoryBusy } from "@/components/chat/ChatMemory";
-import { compactThread, confirmCommand, continueThread, summarizeThread, type ImageProfile } from "@/lib/api";
+import { chooseOptions, compactThread, confirmCommand, continueThread, summarizeThread, type ImageProfile } from "@/lib/api";
 import { chatImagesToPending, COMPACT_COMMAND, errorText, IMAGE_QUESTION, type EditStrength } from "@/lib/chat";
 import { saveText } from "@/lib/download";
 import { newId } from "@/lib/id";
-import { markConfirmAnswered } from "@/lib/feedReducer";
+import { markChoiceAnswered, markConfirmAnswered } from "@/lib/feedReducer";
 import type { ChatThread } from "@/lib/threads";
 import type { AuthUser, FeedItem, RunMode } from "@/lib/types";
 
@@ -145,6 +145,13 @@ function useAppState() {
     void confirmCommand(jobId, commandId, approved).catch(() => undefined);
   }
 
+  function onChoose(choiceId: string, picked: string[]) {
+    const jobId = chat.activeJobId;
+    if (!jobId) return;
+    chat.setFeed((prev) => markChoiceAnswered(prev, choiceId, "picked", picked));
+    void chooseOptions(jobId, choiceId, picked).catch(() => undefined);
+  }
+
   // Chat memory (BACKLOG L12): the "this chat is getting long" banner's two actions. Both summarise the
   // open chat with the model on the server, so they take a few seconds (memoryBusy drives the buttons).
   const [memoryBusy, setMemoryBusy] = useState<MemoryBusy>(null);
@@ -228,7 +235,7 @@ function useAppState() {
     pickSuggestion: (q: string) => void chat.send(q, []),
     canStop: Boolean(chat.activeJobId && chat.running),
     stop: () => void chat.stop(),
-    send, newChat, cancelEdit, beginEdit, editAndResend, retry, regenerate, onConfirm, deleteThread,
+    send, newChat, cancelEdit, beginEdit, editAndResend, retry, regenerate, onConfirm, onChoose, deleteThread,
     memoryBusy, continueInNewChat, saveSummary,
   };
 }

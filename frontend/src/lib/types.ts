@@ -44,6 +44,10 @@ export type SkillCategory = { name: string; count: number };
 export type ServerMode = "audit" | "confirm" | "trusted";
 /** How a "Run this?" card ended (the server's `confirm_resolved` event, or the job ending first — O66). */
 export type ConfirmAnswer = "run" | "cancel" | "timeout" | "closed";
+/** How a choice card ended (deploy_project's `choice_resolved` event, or the job ending first). */
+export type ChoiceAnswer = "picked" | "timeout" | "closed";
+/** One option on a choice card: `detail` = the command it runs or why it is offered; `checked` = ticked at first. */
+export type ChoiceOption = { id: string; label: string; detail: string; checked: boolean };
 
 /** A Linux server login kept in the API's memory for this session (src/server_vault.py) — never the secret. */
 export type ServerInfo = {
@@ -349,6 +353,11 @@ export type FeedItem = {
   imagesPending?: string[];
   /** operate_server: a command waiting for the user to approve or cancel. */
   confirm?: { commandId: string; command: string; server: string; answered?: ConfirmAnswer };
+  /** deploy_project: a question with options (which folder, branch, what to install / build / restart). */
+  choice?: {
+    choiceId: string; question: string; options: ChoiceOption[]; multi: boolean; server: string;
+    answered?: ChoiceAnswer; picked?: string[];
+  };
   /** While running: when the step started (ms), what it is doing now, and whether text is streaming in */
   startedAt?: number;
   statusText?: string;

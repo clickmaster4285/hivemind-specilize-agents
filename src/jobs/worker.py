@@ -19,6 +19,7 @@ from src.servers.net_scan import run_network_scan
 from src.servers.image_scan import run_image_scan
 from src.servers.security_scan import run_security_check
 from src.servers.linux_audit import run_server_audit
+from src.servers.deploy import run_deploy_project
 from src.servers.server_ops import run_server_diagnose, run_server_operate
 from src.servers.host_check import run_host_check
 from src.servers.netdev import run_network_device
@@ -51,7 +52,8 @@ _stop = threading.Event()
 # tools that run on their own: (query, job_id, config, on_progress, conversation, **tool_args) -> (output, errors, s)
 DIRECT_TOOLS = {"network_scan": run_network_scan, "security_check": run_security_check, "image_scan": run_image_scan,
                 "server_audit": run_server_audit, "server_diagnose": run_server_diagnose,
-                "server_operate": run_server_operate, "host_check": run_host_check,
+                "server_operate": run_server_operate, "server_deploy": run_deploy_project,
+                "host_check": run_host_check,
                 "nvr_cameras": run_nvr_cameras, "network_device": run_network_device,
                 "weather": run_weather, "diagram": run_diagram,
                 "site_audit": run_site_audit, "content_write": run_content_writer,

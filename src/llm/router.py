@@ -55,6 +55,9 @@ route:
   not say. E.g. "tell me the issues in this website from seo perspective
   https://example.pk/" → {{"route": "tool", "tool": "site_audit", "args": {{"url": "https://example.pk/"}}}};
   "put the prices of 5 phones in an Excel file" → "tool" create_document.
+  A message about the server, device or website the chat is already working on continues that work, even
+  when it does not name it again ("tell me all the project names", "now restart it"): the same kind of tool
+  with the earlier message's target, never "search".
   Not sure which tool → "model".
 - "search": the answer depends on facts that may have changed since your training or that must be looked up:
   news and recent events, real people (who someone is, their life, work, roles, what they did), companies,

@@ -27,6 +27,7 @@ export default function ChatView() {
       onRetry: () => void latest.current.retry(),
       onRegenerate: (reason: string) => void latest.current.regenerate(reason),
       onConfirm: (...a: Parameters<AppValue["onConfirm"]>) => latest.current.onConfirm(...a),
+      onChoose: (...a: Parameters<AppValue["onChoose"]>) => latest.current.onChoose(...a),
       onPickOption: (...a: Parameters<AppValue["pickOption"]>) => latest.current.pickOption(...a),
       onClarifySubmit: (...a: Parameters<AppValue["submitClarify"]>) => latest.current.submitClarify(...a),
       onPickSuggestion: (...a: Parameters<AppValue["pickSuggestion"]>) => latest.current.pickSuggestion(...a),

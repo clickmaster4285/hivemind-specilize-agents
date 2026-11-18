@@ -225,6 +225,13 @@ class JobCreatePayload(BaseModel):
     client_time_zone: str | None = Field(default=None, max_length=64)
 
 
+class ChoicePayload(BaseModel):
+    """The options the user picked on a choice card (deploy_project); the job checks they were offered."""
+
+    choice_id: str = Field(min_length=1, max_length=40)
+    picked: list[str] = Field(default_factory=list, max_length=40)
+
+
 class ConfirmPayload(BaseModel):
     command_id: str
     approved: bool

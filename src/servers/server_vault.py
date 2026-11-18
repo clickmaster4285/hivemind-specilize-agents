@@ -198,11 +198,24 @@ def set_mode(user_id: int, server_id: str, mode: str) -> ServerLogin:
 
 def remove(user_id: int, server_id: str) -> bool:
     with _scope() as session:
-        return session.execute(delete(DeviceRow).where(DeviceRow.user_id == user_id,
-                                                       DeviceRow.id == server_id)).rowcount > 0
+        removed = session.execute(delete(DeviceRow).where(DeviceRow.user_id == user_id,
+                                                          DeviceRow.id == server_id)).rowcount > 0
+    if removed:
+        _forget({server_id})
+    return removed
 
 
 def clear(user_id: int) -> int:
     """Every device of this user (their Devices access was taken away)."""
     with _scope() as session:
-        return session.execute(delete(DeviceRow).where(DeviceRow.user_id == user_id)).rowcount
+        ids = set(session.scalars(select(DeviceRow.id).where(DeviceRow.user_id == user_id)))
+        count = session.execute(delete(DeviceRow).where(DeviceRow.user_id == user_id)).rowcount
+    _forget(ids)
+    return count
+
+
+def _forget(server_ids: set[str]) -> None:
+    """A removed login's connection kept open between messages is closed at once (ISSUES_LOG O96)."""
+    from src.servers.server_ops import forget      # server_ops imports this module
+
+    forget(server_ids)

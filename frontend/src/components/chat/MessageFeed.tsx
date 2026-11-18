@@ -5,6 +5,7 @@ import { Fragment, memo, useEffect, useRef, useState, type CSSProperties, type U
 import LiveStatus from "@/components/chat/LiveStatus";
 import MarkdownBody from "@/components/answer/MarkdownBody";
 import MessageAvatar from "@/components/chat/MessageAvatar";
+import ChoiceCard from "@/components/chat/ChoiceCard";
 import ConfirmCard from "@/components/chat/ConfirmCard";
 import { IconChevronDown } from "@/components/chat/Icons";
 import PromptRail, { promptAnchorId } from "@/components/chat/PromptRail";
@@ -87,7 +88,7 @@ function InlineEdit({ initial, onCancel, onSend }: { initial: string; onCancel: 
 }
 
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
-function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
+function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onChoose, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -147,6 +148,9 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
         if (item.confirm) {
           return <ConfirmCard key={item.id} item={item} onConfirm={onConfirm} />;
         }
+        if (item.choice) {
+          return <ChoiceCard key={item.id} item={item} onChoose={onChoose} />;
+        }
         const isError = item.kind === "system" && (item.meta === "error" || item.title === "Error");
         const isLastError = isError && index === feed.length - 1;
         return (
@@ -200,6 +204,7 @@ type Props = {
   onRetry: () => void;
   onRegenerate: (reason: string) => void;
   onConfirm: (commandId: string, approved: boolean) => void;
+  onChoose: (choiceId: string, picked: string[]) => void;
   onPickOption: (query: string, card: AnswerOption) => void;
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
   onPickSuggestion: (q: string) => void;

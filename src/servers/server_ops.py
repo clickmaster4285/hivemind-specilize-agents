@@ -12,9 +12,11 @@ to decide what is safe — the classifier is.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import shlex
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -288,29 +290,32 @@ class RemoteSession:
         logger.info("server_ops reconnecting to %s after a dropped session", self.login.host)
         self._log_in()
 
-    def _raw(self, command: str) -> tuple[int, str, str]:
+    def _raw(self, command: str, silence: int) -> tuple[int, str, str]:
         import paramiko
 
         try:
-            return self.shell.raw(command)
+            return self.shell.raw(command, silence=silence)
         except paramiko.SSHException:
             self._reconnect()                 # one retry on a dropped session
-            return self.shell.raw(command)
+            return self.shell.raw(command, silence=silence)
 
-    def execute(self, command: str) -> CommandRun:
+    def execute(self, command: str, *, silence: int = COMMAND_TIMEOUT, keep_end: bool = False) -> CommandRun:
         """Run the command with no read-only check (the caller has already decided it may run). A command that
-        goes silent comes back as a timed-out run, so the model can go on instead of the job failing (O64)."""
+        goes silent comes back as a timed-out run, so the model can go on instead of the job failing (O64).
+        silence: seconds it may send nothing (an install or a build: minutes); keep_end: a long output keeps its
+        end (where a build says what failed) instead of its start."""
         try:
-            code, out, err = self._raw(command)
+            code, out, err = self._raw(command, silence)
         except CommandTimeout:
-            logger.warning("server_ops: no output for %d s on %s, stopped waiting: %s", COMMAND_TIMEOUT,
+            logger.warning("server_ops: no output for %d s on %s, stopped waiting: %s", silence,
                            self.login.host, mask_text(command)[0][:LOG_COMMAND_CHARS])
             run = CommandRun(command=command, timed_out=True)
             self.runs.append(run)
             return run
         text = (out + (("\n" + err) if err.strip() else "")).strip()
         if len(text) > MAX_OUTPUT_CHARS:
-            text = text[:MAX_OUTPUT_CHARS] + f"\n… (output cut at {MAX_OUTPUT_CHARS} characters)"
+            text = (f"… (start cut, last {MAX_OUTPUT_CHARS} characters)\n" + text[-MAX_OUTPUT_CHARS:] if keep_end
+                    else text[:MAX_OUTPUT_CHARS] + f"\n… (output cut at {MAX_OUTPUT_CHARS} characters)")
         run = CommandRun(command=command, code=code, output=text or "(no output)")
         self.runs.append(run)
         return run
@@ -327,6 +332,103 @@ class RemoteSession:
 
     def close(self) -> None:
         self.client.close()
+
+    @property
+    def alive(self) -> bool:
+        transport = getattr(self.client, "get_transport", lambda: None)()
+        return bool(transport and transport.is_active())
+
+
+# ── logins kept open between messages (ISSUES_LOG O96) ─────────────────────
+# Every server message used to log in again (~1.2 s with password auth, more with a slow DNS or a busy sshd).
+# A finished job hands its session back; the next job for the same login within KEEP_OPEN_SECONDS takes it
+# instead of logging in. One job at a time per session (taken out while in use). Changed credentials make a new
+# key, so a stale connection is never reused; removing a server closes its connection at once (forget).
+KEEP_OPEN_SECONDS = 600         # a follow-up usually comes within minutes; idle root logins should not linger
+KEEPALIVE_SECONDS = 30          # keeps a NAT or firewall from dropping the idle connection
+SWEEP_SECONDS = 60
+_idle: dict[tuple[str, ...], tuple[RemoteSession, float]] = {}
+_idle_lock = threading.Lock()
+_sweeper: threading.Thread | None = None
+
+
+def _pool_key(login: ServerLogin) -> tuple[str, ...]:
+    secret = (login.password or "") + "\0" + (login.private_key or "") + "\0" + (login.key_passphrase or "")
+    return (login.id, login.host, str(login.port), login.username, login.host_key,
+            hashlib.sha256(secret.encode()).hexdigest())
+
+
+def _close_quietly(session: RemoteSession) -> None:
+    try:
+        session.close()
+    except Exception:  # noqa: BLE001 — closing a dead connection is best-effort
+        pass
+
+
+def _expired(now: float) -> list[RemoteSession]:
+    """Take the sessions idle too long out of the pool (the caller closes them, outside the lock)."""
+    with _idle_lock:
+        old = [key for key, (_s, since) in _idle.items() if now - since > KEEP_OPEN_SECONDS]
+        return [_idle.pop(key)[0] for key in old]
+
+
+def open_session(login: ServerLogin) -> RemoteSession:
+    """A logged-in session for this login: the one kept from the last job when it is still connected, else a
+    new login."""
+    for stale in _expired(time.monotonic()):
+        _close_quietly(stale)
+    with _idle_lock:
+        kept = _idle.pop(_pool_key(login), None)
+    if kept is not None:
+        if kept[0].alive:
+            kept[0].login, kept[0].runs = login, []        # the mode may have changed in Settings since
+            logger.info("server_ops: reusing the open login to %s", login.host)
+            return kept[0]
+        _close_quietly(kept[0])
+    fresh = RemoteSession(login)
+    transport = getattr(fresh.client, "get_transport", lambda: None)()
+    if transport is not None:
+        transport.set_keepalive(KEEPALIVE_SECONDS)
+    return fresh
+
+
+def release_session(session: RemoteSession) -> None:
+    """The job is done with it: keep it for the next message, or close it when the connection is gone."""
+    if not session.alive:
+        _close_quietly(session)
+        return
+    key = _pool_key(session.login)
+    with _idle_lock:
+        previous = _idle.pop(key, None)
+        _idle[key] = (session, time.monotonic())
+    if previous is not None:
+        _close_quietly(previous[0])
+    _start_sweeper()
+
+
+def forget(login_ids: set[str]) -> None:
+    """These logins were removed (Settings → Devices, or access taken away): close their kept connections now."""
+    with _idle_lock:
+        gone = [_idle.pop(key)[0] for key in [k for k in _idle if k[0] in login_ids]]
+    for session in gone:
+        _close_quietly(session)
+
+
+def _start_sweeper() -> None:
+    """Closes idle sessions on time even when no new message comes (open_session also sweeps)."""
+    global _sweeper
+    with _idle_lock:
+        if _sweeper is not None and _sweeper.is_alive():
+            return
+
+        def loop() -> None:
+            while True:
+                time.sleep(SWEEP_SECONDS)
+                for stale in _expired(time.monotonic()):
+                    _close_quietly(stale)
+
+        _sweeper = threading.Thread(target=loop, name="ssh-idle-sweeper", daemon=True)
+        _sweeper.start()
 
 
 # ── the diagnose loop (the model drives, the classifier guards) ────────────
@@ -372,8 +474,10 @@ Rules:
 - Read-only only. You cannot change anything on this server (commands that would are refused). If the fix
   needs a change, do NOT try to run it — describe it instead at the end.
 - One command per step. Base the next command on what you just saw.
-- Stop when you can explain the issue (or confirm all is well). Then write a short report:
-  what you checked, what you found, the likely cause, and the fix to apply (as commands the user can run).
+- Stop when you can answer the question or explain the issue (or confirm all is well). A question that only
+  asks to see something (which projects, folders or services there are) gets the list, not a diagnosis. For a
+  problem write a short report: what you checked, what you found, the likely cause, and the fix to apply (as
+  commands the user can run).
 - Be concrete and use the real values from the output. Do not invent."""
 
 DIAGNOSE_SYSTEM_WIN = """You are an IT engineer logged in to a Windows server over SSH (PowerShell). {access}
@@ -432,7 +536,7 @@ def diagnose(
 ) -> DiagnoseResult:
     """The model runs read-only commands until it can answer `question`, then reports. Never changes the server."""
     model = model or config.model_fast or config.llm_model
-    session = RemoteSession(login)
+    session = open_session(login)
     access = _access_line(session.shell)
     prompt = DIAGNOSE_SYSTEM_WIN if login.os_family == "windows" else DIAGNOSE_SYSTEM
     run_tool = run_tool_for(login.os_family)
@@ -473,7 +577,7 @@ def diagnose(
                 tools=[run_tool], model=model, temperature=0.1)
             result.report = text or "Could not finish diagnosing within the command limit."
     finally:
-        session.close()
+        release_session(session)
     return result
 
 
@@ -620,7 +724,7 @@ def operate(
     from src.servers.command_audit import log_command
 
     model = model or config.model_fast or config.llm_model
-    session = RemoteSession(login)
+    session = open_session(login)
     access = _access_line(session.shell)
     prompt = OPERATE_SYSTEM_WIN if login.os_family == "windows" else OPERATE_SYSTEM
     run_tool = run_tool_for(login.os_family)
@@ -670,7 +774,7 @@ def operate(
                 tools=[run_tool], model=model, temperature=0.1)
             result.report = text or "Reached the command limit."
     finally:
-        session.close()
+        release_session(session)
     return result
 
 

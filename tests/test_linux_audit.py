@@ -355,3 +355,18 @@ def test_security_check_on_a_saved_server_is_its_audit(monkeypatch):
     out, _, _ = sec.run_security_check("check the security of my server , server pk", job_id="j", config=CFG,
                                        target="server pk", user_id=1)
     assert out == "audited" and seen == [pk.id]
+
+
+def test_one_silent_command_is_skipped_and_named_not_the_whole_audit(monkeypatch):
+    """ISSUES_LOG O93: "The audit failed (CommandTimeout)" five times on one server — one hanging command lost it all."""
+    class OneSilent(la.Shell):
+        def raw(self, command, stdin_text=None):
+            if command.endswith("apt list --upgradable"):
+                raise la.CommandTimeout("no output")
+            return 0, "Status: active\n" if "ufw" in command else "", ""
+
+    shell = OneSilent(client=None, root=True)
+    audit = la.Audit("uk server", "203.0.113.5")
+    la.collect(shell, audit, lambda: True, lambda message: None)
+    assert audit.ufw is not None                             # read before and after the silent one
+    assert any("`apt list --upgradable`" in note and f"{la.COMMAND_TIMEOUT} s" in note for note in audit.unread)

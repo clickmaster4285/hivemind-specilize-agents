@@ -68,7 +68,17 @@ cases:
     tool: operate_server
   - text: "Clickmastersoftware go to this and run this git pull origin master and then npm run build if any issue came tell me"
     previous: "in the setting i add a server name uk, login and go and /var/www and then ls and tell me"
-    tool: operate_server
+    tool: [operate_server, deploy_project]
+  # a deploy with a misspelt folder (O94, O95, 2026-11-18): the guided deploy finds the folder and asks
+  - text: "go the uk server softwaredevelopemnen folder took the pull from latest branh , and delop the new code"
+    tool: deploy_project
+    expect: {project: "softwaredevelopemnen"}
+  # a look at a server went to web search, then to the security audit (O93, 2026-11-18)
+  - text: "tell me all the projects name in the uk server"
+    tool: diagnose_server
+  - text: "tell me all the project's name"
+    previous: "go the uk server softwaredevelopemnen folder took the pull from latest branh , and delop the new code"
+    tool: [diagnose_server, operate_server]
   - text: "Access the NVR's web interface and tell me all the cameras"
     tool: nvr_cameras
   - text: "Show me who is connected to the MikroTik router and its interface status"

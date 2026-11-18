@@ -68,7 +68,7 @@ MARKET_ARG = ("two-letter country code of the market the user named (PK for Paki
 # The server tools find the login themselves: the only one added, else the one named, else they ask with the list
 # (server_vault.find). The model asked "which server?" instead of calling (eval 2026-11-16, ISSUES_LOG O69).
 # the tools that log in to the user's servers; when one is offered, the prompt names the servers added (O83)
-SERVER_TOOLS = frozenset({"operate_server", "server_audit", "diagnose_server"})
+SERVER_TOOLS = frozenset({"operate_server", "deploy_project", "server_audit", "diagnose_server"})
 SERVER_ARG = ("the server's name or IP if the user named one; else leave it empty: the tool uses the only server "
               "added, or asks which with the list. Never ask the user which server yourself")
 TOOLS: tuple[Tool, ...] = (
@@ -122,9 +122,10 @@ TOOLS: tuple[Tool, ...] = (
          {"image": "a part of one image's name (postgres, searxng); empty = every image on this PC"},
          (), lambda c: c.security_scan_enabled and image_scan.available()),
     Tool("server_audit", "server_audit",
-         # the router reads only the first sentence (TOOL_LINE_CHARS): "server" + "vulnerable packages" must be in it
-         "Audit the user's own Linux server over SSH (Settings → Devices): known vulnerabilities (CVEs) in its "
-         "installed packages, firewall, open ports, SSH settings. Read-only: ufw / iptables, open ports with "
+         # the router reads only the first sentence (TOOL_LINE_CHARS): "server" + "vulnerable packages" must be in it;
+         # "security" keeps "list the projects on the uk server" out of it (ISSUES_LOG O93)
+         "Security audit of the user's own Linux server over SSH (Settings → Devices): known vulnerabilities (CVEs) "
+         "in its installed packages, firewall, open ports, SSH settings. Read-only: ufw / iptables, open ports with "
          "programs, root and password login, missing security updates, failed SSH logins and fail2ban; the package "
          "list is checked by Trivy with the version that fixes each CVE. Use for 'audit my server', 'check ufw on "
          "web01', 'is my Linux server hardened', 'check my server for vulnerable packages'.",
@@ -145,10 +146,14 @@ TOOLS: tuple[Tool, ...] = (
          {"device": "the router's or switch's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled),
     Tool("diagnose_server", "server_diagnose",
-         "Log in to one of the user's Linux servers (Settings → Devices) and INVESTIGATE a problem read-only: "
-         "the agent runs its own read-only commands (service status, logs, disk, config, processes), reads the "
-         "output and keeps going until it can explain the issue, then reports the cause and the fix. Use for "
-         "'log in to web01 and check why nginx is down', 'why is the server slow', 'is the disk full on db01'. "
+         # the router reads only the first sentence: looking and listing are in it, so "tell me all the projects on
+         # the uk server" comes here, not to the security audit (ISSUES_LOG O93)
+         "Log in to one of the user's Linux servers (Settings → Devices) and LOOK read-only: list its projects, "
+         "folders, files, services, processes or logs, or investigate a problem. The agent runs its own read-only "
+         "commands (service status, logs, disk, config, processes), reads the "
+         "output and keeps going until it can answer or explain the issue, then reports what it found and the fix. "
+         "Use for 'which projects are in /var/www on uk', 'log in to web01 and check why nginx is down', 'why is "
+         "the server slow', 'is the disk full on db01'. "
          "It cannot change anything (read-only); applying a fix is a separate confirmed step.",
          {"server": SERVER_ARG},
          (), lambda c: c.security_scan_enabled),
@@ -164,6 +169,18 @@ TOOLS: tuple[Tool, ...] = (
          {"server": SERVER_ARG,
           "task": "what to do on the server (a command, a file to create/run, or the change to make)"}, ("task",),
          lambda c: c.security_scan_enabled, waits_for_user=True),
+    Tool("deploy_project", "server_deploy",
+         # the router reads only the first sentence (TOOL_LINE_CHARS): pull + deploy + project must be in it
+         "Deploy a project on the user's Linux server: pull the latest code from a branch, install new "
+         "dependencies, build and restart it (pm2, systemd, nginx). It finds the project folder even from a "
+         "misspelt name, compares every branch and asks which to pull, then asks what to install, build and restart "
+         "— each step on a card the user clicks. Use for 'pull the latest code on uk and deploy', 'deploy "
+         "Clickmastersoftware', 'update the site on web01 from the dev branch and rebuild'. For other work on a "
+         "server use operate_server.",
+         {"server": SERVER_ARG,
+          "project": "the project or folder name exactly as the user wrote it, typos included; empty if none",
+          "branch": "the branch the user named; empty if none"},
+         (), lambda c: c.security_scan_enabled, waits_for_user=True),
     Tool("generate_image", "image_gen", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
          {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None),
     Tool("draw_diagram", "diagram",

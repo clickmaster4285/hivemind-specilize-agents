@@ -69,7 +69,7 @@ class FakeShell:
     def detect_access(self):
         return "root"
 
-    def raw(self, command, stdin_text=None):
+    def raw(self, command, stdin_text=None, silence=None):
         self.ran.append(command)
         for key, val in self.outputs.items():
             if key in command:
@@ -395,3 +395,78 @@ def test_the_chat_shows_server_names_never_addresses():
     listed = server_vault.names([named, unnamed])
     assert "94.72" not in listed and "10.0.0.5" not in listed
     assert listed.startswith("uk server, ")
+
+
+# ── logins kept open between messages (ISSUES_LOG O96) ─────────────────
+class _Transport:
+    def __init__(self):
+        self.active, self.keepalive = True, None
+
+    def is_active(self):
+        return self.active
+
+    def set_keepalive(self, seconds):
+        self.keepalive = seconds
+
+
+class _LiveClient:
+    def __init__(self):
+        self.transport, self.closed = _Transport(), False
+
+    def get_transport(self):
+        return self.transport
+
+    def close(self):
+        self.closed, self.transport.active = True, False
+
+
+@pytest.fixture
+def pool(monkeypatch):
+    logins = []
+    monkeypatch.setattr(so, "connect", lambda login: (logins.append(login) or _LiveClient(), "fp"))
+    monkeypatch.setattr(so, "Shell", lambda client, password=None, os_family="linux": FakeShell({}))
+    monkeypatch.setattr(so, "_idle", {})
+    monkeypatch.setattr(so, "_start_sweeper", lambda: None)
+    clock = [1000.0]
+    monkeypatch.setattr(so.time, "monotonic", lambda: clock[0])
+    return logins, clock
+
+
+def _web01(**changes):
+    return replace(so.ServerLogin(id="1", label="web01", host="192.168.1.9", port=22, username="u", password="p"),
+                   **changes)
+
+
+def test_the_next_message_reuses_the_open_login(pool):
+    logins, clock = pool
+    first = so.open_session(_web01())
+    first.runs.append(so.CommandRun("ls", 0, "x"))
+    so.release_session(first)
+    clock[0] += so.KEEP_OPEN_SECONDS - 1
+    again = so.open_session(_web01(mode="trusted"))
+    assert again is first and len(logins) == 1
+    assert again.runs == [] and again.login.mode == "trusted"             # this job's commands, today's mode
+    assert first.client.transport.keepalive == so.KEEPALIVE_SECONDS
+
+
+def test_a_new_login_after_idle_time_a_changed_password_or_a_dropped_connection(pool):
+    logins, clock = pool
+    old = so.open_session(_web01())
+    so.release_session(old)
+    clock[0] += so.KEEP_OPEN_SECONDS + 1
+    assert so.open_session(_web01()) is not old and old.client.closed                    # idle too long
+    kept = so.open_session(_web01())
+    so.release_session(kept)
+    assert so.open_session(_web01(password="new")) is not kept                          # other credentials
+    dropped = so.open_session(_web01(id="2"))
+    so.release_session(dropped)
+    dropped.client.transport.active = False
+    assert so.open_session(_web01(id="2")) is not dropped
+    assert len(logins) == 6          # every one above was a new login; none reused
+
+
+def test_a_removed_server_closes_its_kept_login(pool):
+    kept = so.open_session(_web01())
+    so.release_session(kept)
+    so.forget({"1"})
+    assert kept.client.closed and so._idle == {}

@@ -310,6 +310,14 @@ export async function setServerMode(id: string, mode: ServerMode): Promise<Serve
 }
 
 
+/** The user answered a choice card (deploy_project): the ids of the options picked. */
+export async function chooseOptions(jobId: string, choiceId: string, picked: string[]): Promise<void> {
+  await request(`/api/jobs/${encodeURIComponent(jobId)}/choose`, {
+    method: "POST",
+    body: JSON.stringify({ choice_id: choiceId, picked }),
+  });
+}
+
 /** The user clicked Run / Cancel on a command the agent asked to run (operate_server). */
 export async function confirmCommand(jobId: string, commandId: string, approved: boolean): Promise<void> {
   await request(`/api/jobs/${encodeURIComponent(jobId)}/confirm`, {
