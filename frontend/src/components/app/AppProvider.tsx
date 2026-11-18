@@ -60,6 +60,7 @@ function useAppState() {
   const { load: loadSpecialists, clear: clearSpecialists } = specialists;
   const { load: loadSkills, clear: clearSkills } = skills;
   const { refresh: refreshModels } = models;
+  const { refresh: refreshHealth } = health;
   const { refreshJobs, loadHistory, clear: clearJobs } = history;
   const { setFeed } = chat;
   const onSignedIn = useCallback(
@@ -67,12 +68,14 @@ function useAppState() {
       await loadSpecialists();
       await loadSkills();
       await refreshModels(fresh);
+      // the memory meter (context.history_budget) and the image settings need it (ISSUES_LOG O76)
+      void refreshHealth();
       // load the chat/project metadata first so refreshed jobs group under their saved titles/pins;
       // the user id scopes the per-device open-chat pointer and the one-time history migration
       await loadHistory(user.id);
       await refreshJobs();
     },
-    [loadSpecialists, loadSkills, refreshModels, loadHistory, refreshJobs],
+    [loadSpecialists, loadSkills, refreshModels, refreshHealth, loadHistory, refreshJobs],
   );
   const onSignedOut = useCallback(
     () => {

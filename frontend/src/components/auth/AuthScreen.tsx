@@ -1,16 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type FormEvent, type KeyboardEvent } from "react";
 
 import Captcha from "@/components/auth/Captcha";
 
 import { signUp, signupInfo } from "@/lib/api";
-import type { CaptchaAnswer, Health, SignupInfo } from "@/lib/types";
-import { brandMark, btn, formField, formLabel } from "@/lib/ui";
+import type { CaptchaAnswer, SignupInfo } from "@/lib/types";
+import { brandMark, btn, formField, formLabel, iconBtn } from "@/lib/ui";
 
 type Props = {
-  health: Health | null;
-  healthError: string | null;
   error: string | null;
   /** the API wants a CAPTCHA with the next sign-in (after a few failed passwords) */
   captchaRequired: boolean;
@@ -20,21 +18,30 @@ type Props = {
 type Mode = "signin" | "signup";
 
 const noSubscribe = () => () => undefined;
-// the API is reached through the page's own origin (lib/api.ts)
-const apiAddress = () => `${window.location.origin}/api`;
 // an invite link is this page with ?invite=<token> (Settings → Users → Invite someone)
 const INVITE_PARAM = "invite";
 const inviteToken = () => new URLSearchParams(window.location.search).get(INVITE_PARAM);
+
+/** The password's show / hide toggle, in the app's line-icon style (components/app/NavIcons.tsx). */
+function EyeIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+         strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+      {open ? null : <path d="M4 4l16 16" />}
+    </svg>
+  );
+}
 
 const errorBox =
   "m-0 rounded-[0.7rem] border border-[color-mix(in_srgb,var(--danger)_40%,var(--line))] bg-danger-soft px-[0.9rem] py-[0.7rem] text-danger-text";
 const noteBox = "m-0 rounded-[0.7rem] border border-line bg-panel-2 px-[0.9rem] py-[0.7rem] text-sm";
 
 /** The sign-in card shown when nobody is signed in; it turns into the sign-up form (BACKLOG L16 S7). */
-export default function AuthScreen({ health, healthError, error, captchaRequired, onSignIn }: Props) {
-  // the API address and the invite depend on the page's address: empty on the server, filled in the
-  // browser (rendering them on the server gave different markup → React hydration error)
-  const apiOrigin = useSyncExternalStore(noSubscribe, apiAddress, () => "");
+export default function AuthScreen({ error, captchaRequired, onSignIn }: Props) {
+  // the invite depends on the page's address: empty on the server, filled in the browser (rendering it on the
+  // server gave different markup → React hydration error)
   const invite = useSyncExternalStore(noSubscribe, inviteToken, () => null);
   const [chosen, setChosen] = useState<Mode | null>(null);
   const mode: Mode = chosen ?? (invite ? "signup" : "signin");
@@ -48,6 +55,8 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
   const [signupError, setSignupError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [capsLock, setCapsLock] = useState(false);
   const [captcha, setCaptcha] = useState<CaptchaAnswer | null>(null);
   const [captchaRound, setCaptchaRound] = useState(0);     // a CAPTCHA works once: new picture per try
   const onCaptcha = useCallback((answer: CaptchaAnswer | null) => setCaptcha(answer), []);
@@ -75,6 +84,12 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
     setNotice(null);
     setPassword("");
     setRepeat("");
+    setShowPassword(false);
+  }
+
+  /** Caps Lock turns a right password into a wrong one: say so while typing it. */
+  function watchCaps(event: KeyboardEvent<HTMLInputElement>) {
+    setCapsLock(event.getModifierState("CapsLock"));
   }
 
   async function submitSignIn(event: FormEvent) {
@@ -120,10 +135,10 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
   return (
     <div className="grid min-h-screen place-items-center p-4">
       <form
-        className="flex w-full max-w-[420px] flex-col gap-3 rounded-2xl border border-line bg-panel p-5 shadow-shadow"
+        className="flex w-full max-w-[400px] flex-col gap-4 rounded-2xl border border-line bg-panel px-6 py-7 shadow-shadow"
         onSubmit={signingUp ? submitSignUp : submitSignIn}
       >
-        <div className="flex items-center gap-[0.85rem]">
+        <div className="mb-1 flex items-center gap-[0.85rem]">
           <span className={brandMark()} aria-hidden />
           <div>
             <h1 className="m-0 text-[1.65rem] leading-none tracking-[-0.03em] [font-family:var(--font-display)]">
@@ -148,6 +163,7 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
             name="username"
             autoComplete="username"
             placeholder={signingUp ? "e.g. sara.khan" : "username or name@example.com"}
+            autoFocus
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
@@ -183,22 +199,37 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
         ) : null}
         <label className={formLabel}>
           Password
-          <input
-            className={formField}
-            type="password"
-            name="password"
-            autoComplete={signingUp ? "new-password" : "current-password"}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <span className="relative block">
+            <input
+              className={`${formField} pr-10`}
+              type={showPassword ? "text" : "password"}
+              name="password"
+              autoComplete={signingUp ? "new-password" : "current-password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyUp={watchCaps}
+              onBlur={() => setCapsLock(false)}
+              required
+            />
+            <button
+              type="button"
+              className={`${iconBtn()} absolute right-1.5 top-1/2 grid -translate-y-1/2 place-items-center`}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+              title={showPassword ? "Hide password" : "Show password"}
+              onClick={() => setShowPassword((v) => !v)}
+            >
+              <EyeIcon open={!showPassword} />
+            </button>
+          </span>
+          {capsLock ? <span className="text-[0.78rem] text-copper">Caps Lock is on</span> : null}
         </label>
         {signingUp ? (
           <label className={formLabel}>
             Password again
             <input
               className={formField}
-              type="password"
+              type={showPassword ? "text" : "password"}
               name="repeat"
               autoComplete="new-password"
               value={repeat}
@@ -209,20 +240,8 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
         ) : null}
 
         {signingUp || captchaRequired ? <Captcha round={captchaRound} onChange={onCaptcha} /> : null}
-        {shownError ? <p className={errorBox}>{shownError}</p> : null}
-        {signingUp ? null : (
-          <div className="inline-flex items-center gap-[0.55rem] rounded-full border border-line bg-glass px-[0.8rem] py-[0.45rem] text-[0.85rem] text-muted">
-            <span className={`h-[0.55rem] w-[0.55rem] rounded-full ${health?.llm_reachable ? "bg-ok shadow-[0_0_0_4px_rgba(95,191,122,0.15)]" : "bg-danger"}`} />
-            <span>
-              {health
-                ? health.llm_reachable
-                  ? `${health.model} ready`
-                  : "LLM offline"
-                : healthError || `API · ${apiOrigin}`}
-            </span>
-          </div>
-        )}
-        <button type="submit" className={btn("primary", "full")} disabled={busy || (signingUp && !mayCreate)}>
+        {shownError ? <p role="alert" className={errorBox}>{shownError}</p> : null}
+        <button type="submit" className={`${btn("primary", "full")} mt-1`} disabled={busy || (signingUp && !mayCreate)}>
           {signingUp ? (busy ? "Creating…" : "Create account") : busy ? "Signing in…" : "Sign in"}
         </button>
         {signingUp ? (
@@ -230,9 +249,13 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
             I already have an account
           </button>
         ) : mayCreate ? (
-          <button type="button" className={btn("ghost", "full")} onClick={() => switchTo("signup")}>
-            Create account
-          </button>
+          <p className="m-0 text-center text-[0.85rem] text-muted">
+            New here?{" "}
+            <button type="button" className="cursor-pointer border-0 bg-transparent p-0 font-medium text-copper hover:underline"
+                    onClick={() => switchTo("signup")}>
+              Create an account
+            </button>
+          </p>
         ) : null}
       </form>
     </div>
