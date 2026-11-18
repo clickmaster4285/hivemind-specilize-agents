@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import re
-import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
@@ -25,6 +24,7 @@ from src.tools.serp import bare_host, phrases, serp
 from src.tools.site_audit import (AUDIT_AGENT, AuditError, Score, Site, crawl_site, resolve_start, score_site,
                                   site_url)
 from src.tools.web_search import WebSearchError
+from src.tools.tool_run import ToolRun
 
 ROLE = "Competitor comparison"
 MAX_COMPETITORS = 3
@@ -103,15 +103,11 @@ def run_compare_sites(query: str, *, job_id: str, config: Config, on_progress: C
                       market: str | None = None, **_: object) -> tuple[str, list[str], float]:
     emit = on_progress or (lambda event: None)
     model = config.model_fast or config.llm_model
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": ROLE, "stage": "chat", "accent": "#c45c8a",
-             "job_id": job_id}
+    run = ToolRun(on_progress, query=query, job_id=job_id, role=ROLE, model=model, accent="#c45c8a")
     status = lambda message: emit({"type": "status", "agent_id": "assistant", "message": message})  # noqa: E731
     going = lambda: not live.is_stopped(job_id)  # noqa: E731
-    started = time.monotonic()
     errors: list[str] = []
     clarify: dict = {}
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": model})
     try:
         mine = site_url(url or "") or site_url(query)
         if not mine:
@@ -180,8 +176,5 @@ def run_compare_sites(query: str, *, job_id: str, config: Config, on_progress: C
     except (AuditError, WebSearchError) as exc:
         errors.append(str(exc))
         output = f"I could not compare the sites: {exc}."
-    elapsed = time.monotonic() - started
     live.finish_agent(job_id, "assistant")
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output, **clarify})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors, **clarify)

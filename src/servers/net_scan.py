@@ -23,6 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from src.core.config import Config
+from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger(__name__)
 
@@ -1102,15 +1103,12 @@ def run_network_scan(
     from src.tools.artifacts import artifact_event, write_bytes
 
     emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Network scan", "stage": "chat",
-             "accent": "#3aa89a", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="Network scan", model="network_scan", accent="#3aa89a")
+    agent = run.agent
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "network_scan"})
     try:
         subnet = (subnet or '').strip() or subnet_from_text(query) or local_subnet()
-        emit({"type": "status", "agent_id": "assistant", "message": f"Scanning {subnet}…"})
+        run.status(f"Scanning {subnet}…")
         result = scan(
             subnet, config,
             should_continue=lambda: not live.is_stopped(job_id),
@@ -1131,7 +1129,4 @@ def run_network_scan(
         logger.exception("network scan failed")
         output = f"The scan failed: {exc}"
         errors.append(str(exc))
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

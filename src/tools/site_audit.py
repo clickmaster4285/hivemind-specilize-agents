@@ -21,7 +21,6 @@ import json
 import re
 import socket
 import statistics
-import time
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -36,6 +35,7 @@ from src.core.config import Config
 from src.jobs import live
 from src.llm.llm_client import LLMClient, LLMError, LLMStopped
 from src.tools.artifacts import artifact_event
+from src.tools.tool_run import ToolRun
 
 ROLE = "Site audit"
 AUDIT_AGENT = "MulteAgentAudit/0.1 (SEO audit on a user's request; respects robots.txt)"
@@ -673,13 +673,9 @@ def run_site_audit(query: str, *, job_id: str, config: Config, on_progress: Call
                    **_: object) -> tuple[str, list[str], float]:
     emit = on_progress or (lambda event: None)
     model = config.model_fast or config.llm_model
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": ROLE, "stage": "chat", "accent": "#c45c8a",
-             "job_id": job_id}
+    run = ToolRun(on_progress, query=query, job_id=job_id, role=ROLE, model=model, accent="#c45c8a")
     status = lambda message: emit({"type": "status", "agent_id": "assistant", "message": message})  # noqa: E731
-    started = time.monotonic()
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": model})
     try:
         target = site_url(url or "") or site_url(query)
         if not target:
@@ -724,8 +720,5 @@ def run_site_audit(query: str, *, job_id: str, config: Config, on_progress: Call
     except AuditError as exc:
         errors.append(str(exc))
         output = f"I could not audit the site: {exc}."
-    elapsed = time.monotonic() - started
     live.finish_agent(job_id, "assistant")
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

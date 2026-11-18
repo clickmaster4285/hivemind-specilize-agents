@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -17,6 +16,7 @@ from typing import Any
 from src.core.config import Config
 from src.servers.linux_audit import AuditError, connect
 from src.servers.server_vault import ServerLogin, VaultError
+from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger("multeagent.netdev")
 
@@ -217,12 +217,8 @@ def run_network_device(
     from src.tools.artifacts import artifact_event, write_bytes
 
     emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Network device", "stage": "chat",
-             "accent": "#3b82c4", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="Network device", model="network_device", accent="#3b82c4")
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "network_device"})
     try:
         devices = server_vault.list_servers(user_id, "network") if user_id is not None else []
         named = device or next((d.host for d in devices if d.host in query), None)
@@ -233,7 +229,7 @@ def run_network_device(
         elif login is None:
             output = f"Which device? Added this session: {server_vault.names(devices)}."
         else:
-            emit({"type": "status", "agent_id": "assistant", "message": f"Reading {login.shown}…"})
+            run.status(f"Reading {login.shown}…")
             rep, _fingerprint = read_device(login)
             output = markdown(rep)
             meta = write_bytes(config, job_id, f"device-{rep.host}.xlsx", xlsx_bytes(rep), kind="xlsx")
@@ -245,7 +241,4 @@ def run_network_device(
         logger.error("network device read failed: %s", type(exc).__name__)
         output = f"The device could not be read ({type(exc).__name__})."
         errors.append(type(exc).__name__)
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

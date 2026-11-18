@@ -23,6 +23,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from src.core.config import Config
+from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger(__name__)
 
@@ -236,12 +237,8 @@ def run_image_scan(
     from src.tools.artifacts import artifact_event, write_bytes
 
     emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Image scan", "stage": "chat",
-             "accent": "#c45c5c", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="Image scan", model="image_scan", accent="#c45c5c")
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "image_scan"})
     try:
         if not available():
             raise ImageScanError("Trivy is not installed on this PC (an admin installs a verified release — "
@@ -255,9 +252,9 @@ def run_image_scan(
         for n, name in enumerate(images, start=1):
             if live.is_stopped(job_id):
                 break
-            emit({"type": "status", "agent_id": "assistant", "message": f"Checking {name} ({n}/{len(images)})…"})
+            run.status(f"Checking {name} ({n}/{len(images)})…")
             reports.append(scan_image(name))
-        output = markdown(reports, time.monotonic() - started)
+        output = markdown(reports, time.monotonic() - run.started)
         meta = write_bytes(config, job_id, "docker-images-vulnerabilities.xlsx", xlsx_bytes(reports), kind="xlsx")
         emit(artifact_event(meta, job_id=job_id))
     except ImageScanError as exc:
@@ -267,7 +264,4 @@ def run_image_scan(
         logger.exception("image scan failed")
         output = f"The image check failed: {exc}"
         errors.append(str(exc))
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

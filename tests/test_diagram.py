@@ -1,52 +1,13 @@
-"""Diagram requests: routing, Mermaid clean-up/checks, retry — no LLM needed."""
+"""Diagram requests: Mermaid clean-up/checks, retry — no LLM needed."""
 
 from __future__ import annotations
-
-import dataclasses
 
 import pytest
 
 from src.core.config import Config
 from src.tools.diagram_gen import check_mermaid, extract, fix_mermaid, run_diagram, write_diagram
-from src.llm.intent_router import classify_query
 
-# these test the example-based backup router (the assistant normally picks tools itself)
-CFG = dataclasses.replace(Config.from_env(), assistant_tools=False)
-
-
-@pytest.mark.parametrize(
-    "query, after, intent",
-    [
-        ("create an architecture diagram for our FastAPI + Next.js + Ollama app", False, "diagram"),
-        ("draw a flowchart of the user login process", False, "diagram"),
-        ("create a schematic of a home network with router, switch and NAS", False, "diagram"),
-        ("mere app ka architecture diagram banao", False, "diagram"),
-        ("sequence diagram for OAuth login", False, "diagram"),
-        ("explain the architecture of DNS", False, "chat"),
-        ("what is a flowchart?", False, "chat"),
-        ("draw a cat sitting on a sofa", False, "image_gen"),
-        ("create a photorealistic image of a server room", False, "image_gen"),
-        ("make a pdf report of the network diagram", False, "doc_gen"),
-        ("add a Redis cache between the API and the database", True, "diagram"),
-        ("add a Redis cache between the API and the database", False, "chat"),
-    ],
-)
-def test_routing(query, after, intent):
-    assert classify_query(query, config=CFG, allow_llm=False, after_diagram=after).intent == intent
-
-
-def test_forced_and_manual_modes():
-    assert classify_query("anything", config=CFG, force_intent="diagram").intent == "diagram"
-    assert classify_query("draw a flowchart of CI/CD", requested_mode="agentic", config=CFG).intent == "diagram"
-
-
-def test_last_answer_was_diagram():
-    from src.jobs.jobs import _last_answer_was_diagram
-
-    conv = [{"role": "user", "content": "draw it"}, {"role": "assistant", "content": "**X**\n```mermaid\nflowchart LR\n```"}]
-    assert _last_answer_was_diagram(conv) is True
-    assert _last_answer_was_diagram(conv + [{"role": "assistant", "content": "plain answer"}]) is False
-    assert _last_answer_was_diagram(None) is False
+CFG = Config.from_env()
 
 
 def test_fix_quotes_risky_labels_only():
@@ -142,21 +103,6 @@ def test_style_lines_are_dropped():
     assert "style" not in fix_mermaid('flowchart LR\n  a --> b\n  style a fill:#f9f,stroke:#333')
 
 
-@pytest.mark.parametrize("query", [
-    "create an image of Technical engineering schematic of a compact security room (500 sq ft), floor plan view",
-    "generate a picture of a network topology with glowing cables, cyberpunk style",
-    "YouTube thumbnail for a flowchart tutorial, bold colours",
-])
-def test_explicit_image_requests_stay_images(query):
-    assert classify_query(query, config=CFG, allow_llm=False).intent == "image_gen"
-
-
-def test_diagram_without_image_words_is_a_diagram():
-    q = ("diagram of school connected to classes, each class with a teacher, each teacher with students, "
-         "clean white background, isometric perspective, blueprint style, precise labels")
-    assert classify_query(q, config=CFG, allow_llm=False).intent == "diagram"
-
-
 FLAT_MINDMAP = """mindmap
   root((School))
     Class_1["Class A"]
@@ -187,23 +133,6 @@ def test_arrow_into_own_subgraph_is_a_problem():
     assert any('subgraph "school" and "A"' in p for p in check_mermaid(bad))
     ok = 'flowchart TD\n  school["School"] --> A["Class A"]\n  subgraph g["Grade 1"]\n    A\n  end\n  other["Office"] --> g'
     assert check_mermaid(ok) == []
-
-
-@pytest.mark.parametrize("query, intent", [
-    ("what is in your brain", "about"),
-    ("in your brain you have any microsoft data?", "about"),
-    ("tell me how you're working and how you're generating the response", "about"),
-    ("in which field your specialized", "about"),
-    ("who are you", "about"),
-    ("what is MulteAgent", "about"),
-    ("hello", "chat"),
-    ("how do I configure DNS scavenging", "chat"),
-    ("do you know how DNS forwarders work", "chat"),
-    ("can you explain python decorators", "chat"),
-    ("can you generate an image of a cat", "image_gen"),
-])
-def test_questions_about_the_assistant(query, intent):
-    assert classify_query(query, config=CFG, allow_llm=False).intent == intent
 
 
 def test_stop_ends_a_diagram(monkeypatch):

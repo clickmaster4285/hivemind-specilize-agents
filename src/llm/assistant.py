@@ -29,7 +29,7 @@ from src.jobs import live
 from src.core.config import ROOT, Config
 from src.core.conversation import split_summary
 from src.llm.diagram_rules import MATH_RULE, diagram_block
-from src.llm.router import CLARIFY, NOT_LISTED, NOT_RUN, SEARCH, TOOL, Route, previous_question, route_message
+from src.llm.router import CLARIFY, NOT_LISTED, SEARCH, TOOL, Route, previous_question, route_message
 from src.servers import image_scan
 from src.tools.calculator import CALCULATE_TOOL, chat_tools_with_calculator
 
@@ -64,6 +64,13 @@ class Tool:
     # only admins may run it: it probes the local network in depth (SECURITY_TOOLS_DECISION.md §2). The server tools
     # need a stored login, so they are gated by who holds it (SERVER_ACCESS_DECISION.md §8), not by a role
     admin_only: bool = False
+    # probes or acts on machines (scans, logins): only the IT specialist is given it (specialists.default_specialists)
+    acts_on_machines: bool = False
+    # logs in to one of the user's servers: when offered, the prompt names the servers added (O83)
+    needs_server_login: bool = False
+    # False: the router may name it (so it does not name a near one) but never start it on its word; it changes a
+    # server, so only the full tool choice, with every rule in view, picks it
+    router_runs: bool = True
 
     @property
     def job(self) -> str:
@@ -93,8 +100,6 @@ MARKET_ARG = ("two-letter country code of the market the user named (PK for Paki
 
 # The server tools find the login themselves: the only one added, else the one named, else they ask with the list
 # (server_vault.find). The model asked "which server?" instead of calling (eval 2026-11-16, ISSUES_LOG O69).
-# the tools that log in to the user's servers; when one is offered, the prompt names the servers added (O83)
-SERVER_TOOLS = frozenset({"operate_server", "deploy_project", "server_audit", "diagnose_server"})
 SERVER_ARG = ("the server's name or IP if the user named one; else leave it empty: the tool uses the only server "
               "added, or asks which with the list. Never ask the user which server yourself")
 TOOLS: tuple[Tool, ...] = (
@@ -124,14 +129,16 @@ TOOLS: tuple[Tool, ...] = (
          "Actually scan the local private network now and list its devices (IP, name, MAC, open ports) as a table: "
          "an inventory, not a security check.",
          {"subnet": "e.g. 192.168.1.0/24; empty = this computer's network"}, (), lambda c: c.network_scan_enabled,
-         run="src.servers.net_scan:run_network_scan"),
+         run="src.servers.net_scan:run_network_scan",
+         acts_on_machines=True),
     Tool("ping_host",
          "Actually ping ONE device now and check it is up / running / online: replies and response time, "
          "its name, MAC address and manufacturer, open common ports. Use for 'ping 192.168.1.20', 'is the "
          "printer up', 'check 10.0.0.5 is running'. Never answer 'I cannot ping' — call this.",
          {"host": "the device's IP address (exactly as the user wrote it) or name"}, ("host",),
          lambda c: c.network_scan_enabled,
-         run="src.servers.host_check:run_host_check"),
+         run="src.servers.host_check:run_host_check",
+         acts_on_machines=True),
     Tool("security_check",
          # the router reads only the first sentence (TOOL_LINE_CHARS): it alone must tell this from network_scan
          "Actually check the security of a device or a whole network now: open ports, software versions and their "
@@ -143,7 +150,8 @@ TOOLS: tuple[Tool, ...] = (
          "and checks its firewall from the inside.",
          {"target": "an IP (192.168.1.10), a network (192.168.1.0/24), 'this pc', or empty = the whole local network"},
          (), lambda c: c.security_scan_enabled,
-         run="src.servers.security_scan:run_security_check", admin_only=True),
+         run="src.servers.security_scan:run_security_check", admin_only=True,
+         acts_on_machines=True),
     Tool("image_scan",
          # the router reads only the first sentence (TOOL_LINE_CHARS)
          "Actually check the Docker images (containers) on this PC for known vulnerabilities in their packages. "
@@ -152,7 +160,8 @@ TOOLS: tuple[Tool, ...] = (
          "(security_check).",
          {"image": "a part of one image's name (postgres, searxng); empty = every image on this PC"},
          (), lambda c: c.security_scan_enabled and image_scan.available(),
-         run="src.servers.image_scan:run_image_scan", admin_only=True),
+         run="src.servers.image_scan:run_image_scan", admin_only=True,
+         acts_on_machines=True),
     Tool("server_audit",
          # the router reads only the first sentence (TOOL_LINE_CHARS): "server" + "vulnerable packages" must be in it;
          # "security" keeps "list the projects on the uk server" out of it (ISSUES_LOG O93)
@@ -163,7 +172,8 @@ TOOLS: tuple[Tool, ...] = (
          "web01', 'is my Linux server hardened', 'check my server for vulnerable packages'.",
          {"server": SERVER_ARG},
          (), lambda c: c.security_scan_enabled,
-         run="src.servers.linux_audit:run_server_audit"),
+         run="src.servers.linux_audit:run_server_audit",
+         acts_on_machines=True, needs_server_login=True),
     Tool("nvr_cameras",
          "Log in to a camera recorder (NVR/DVR, Hikvision or Dahua) added this session in Settings → Devices and "
          "list ALL its cameras as a table: channel, camera name, IP address, model, online/offline. Read-only. "
@@ -171,7 +181,8 @@ TOOLS: tuple[Tool, ...] = (
          "192.168.1.64 and list the cameras'. Never tell the user to open the NVR's web page — call this.",
          {"nvr": "the recorder's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled,
-         run="src.servers.nvr:run_nvr_cameras"),
+         run="src.servers.nvr:run_nvr_cameras",
+         acts_on_machines=True),
     Tool("network_device",
          "Log in to a router or switch (MikroTik) added this session in Settings → Devices and read it, read-only: "
          "model, firmware, uptime, CPU and memory, every interface/port and whether it is up, the devices connected "
@@ -179,7 +190,8 @@ TOOLS: tuple[Tool, ...] = (
          "'who is connected to the mikrotik', 'which ports are down on the switch', 'show the router log'.",
          {"device": "the router's or switch's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled,
-         run="src.servers.netdev:run_network_device"),
+         run="src.servers.netdev:run_network_device",
+         acts_on_machines=True),
     Tool("diagnose_server",
          # the router reads only the first sentence: looking and listing are in it, so "tell me all the projects on
          # the uk server" comes here, not to the security audit (ISSUES_LOG O93)
@@ -192,7 +204,8 @@ TOOLS: tuple[Tool, ...] = (
          "It cannot change anything (read-only); applying a fix is a separate confirmed step.",
          {"server": SERVER_ARG},
          (), lambda c: c.security_scan_enabled,
-         run="src.servers.server_ops:run_server_diagnose"),
+         run="src.servers.server_ops:run_server_diagnose",
+         acts_on_machines=True, needs_server_login=True),
     Tool("operate_server",
          "Log in to one of the user's Linux servers (Settings → Devices) and DO WORK that may change it: "
          "run a command or script, CREATE or edit files and folders, WRITE content into a file on the server, "
@@ -205,7 +218,8 @@ TOOLS: tuple[Tool, ...] = (
          {"server": SERVER_ARG,
           "task": "what to do on the server (a command, a file to create/run, or the change to make)"}, ("task",),
          lambda c: c.security_scan_enabled, waits_for_user=True,
-         run="src.servers.server_ops:run_server_operate"),
+         run="src.servers.server_ops:run_server_operate",
+         acts_on_machines=True, needs_server_login=True, router_runs=False),
     Tool("deploy_project",
          # the router reads only the first sentence (TOOL_LINE_CHARS): pull + deploy + project must be in it
          "Deploy a project on the user's Linux server: pull the latest code from a branch, install new "
@@ -218,7 +232,8 @@ TOOLS: tuple[Tool, ...] = (
           "project": "the project or folder name exactly as the user wrote it, typos included; empty if none",
           "branch": "the branch the user named; empty if none"},
          (), lambda c: c.security_scan_enabled, waits_for_user=True,
-         run="src.servers.deploy:run_deploy_project"),
+         run="src.servers.deploy:run_deploy_project",
+         acts_on_machines=True, needs_server_login=True),
     Tool("generate_image", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
          {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None,
          intent="image_gen"),
@@ -374,8 +389,8 @@ def tool_schemas(config: Config, allowed: list[str] | None = None, *, unattended
     return out + [CALCULATE_TOOL]          # exact arithmetic, always (worked out inside decide, ISSUES_LOG O51)
 
 
-def _offers(tools: list[dict[str, Any]], names: frozenset[str]) -> bool:
-    return any(t.get("function", {}).get("name") in names for t in tools)
+def _offers_server_tool(tools: list[dict[str, Any]]) -> bool:
+    return any(getattr(BY_NAME.get(t.get("function", {}).get("name", "")), "needs_server_login", False) for t in tools)
 
 
 def messages_for(
@@ -505,7 +520,7 @@ def _routed_tool(route: Route, config: Config, specialist: Specialist | None, *,
     tool = BY_NAME.get(route.tool)
     offered = {t["function"]["name"]
                for t in tool_schemas(config, specialist.tools if specialist else None, unattended=unattended)}
-    if tool is None or tool.name in NOT_LISTED | NOT_RUN or tool.name not in offered:
+    if tool is None or tool.name in NOT_LISTED or not tool.router_runs or tool.name not in offered:
         logger.info("assistant: the router named %r, not offered here: the tool choice decides", route.tool)
         return None
     args = {k: v for k, v in route.args.items() if k in tool.params}
@@ -601,7 +616,7 @@ def decide(
             LLMClient(config),
             messages=messages_for(query, config, conversation, model, specialist,
                                   refine_note=build_refine_note(refine) if refine else None, diagrams=route.diagram,
-                                  servers=servers if _offers(tools, SERVER_TOOLS) else ""),
+                                  servers=servers if _offers_server_tool(tools) else ""),
             tools=tools, model=model,
             on_delta=on_delta, should_continue=lambda: not live.is_stopped(job_id),
         )

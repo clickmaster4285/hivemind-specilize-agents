@@ -11,10 +11,8 @@ import {
   setSignupSettings,
 } from "@/lib/api";
 import type { Invite, ModuleInfo } from "@/lib/types";
-import { btn } from "@/lib/ui";
+import { btn, formFieldCompact } from "@/lib/ui";
 
-const field =
-  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-2 font-[inherit] text-sm text-text outline-none";
 // how long the copy note stays on the button
 const COPIED_MS = 1500;
 
@@ -126,7 +124,7 @@ export default function InvitesPanel() {
       {making ? (
         <form className="flex flex-col gap-2" onSubmit={make}>
           <input
-            className={field}
+            className={formFieldCompact}
             type="email"
             placeholder="their email (optional — the sign-up must then use it)"
             value={email}
@@ -160,7 +158,7 @@ export default function InvitesPanel() {
           <div className="flex items-center gap-2">
             <input
               ref={linkBox}
-              className={`${field} min-w-0 flex-1`}
+              className={`${formFieldCompact} min-w-0 flex-1`}
               readOnly
               value={made.link}
               onFocus={(e) => e.target.select()}

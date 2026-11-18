@@ -26,9 +26,6 @@ TOOL_LINE_CHARS = 160      # of a tool's description in the router's list: its f
 PARAM_HINT_CHARS = 70      # an argument's own description, shown when this short: its form ("docx, pdf, … xlsx")
 # Tools not in the router's list: web search and clarify are routes of their own; calculate runs inside an answer.
 NOT_LISTED = frozenset({"web_search", "ask_clarification", "calculate"})
-# Listed (so the router knows it exists and does not name a near one) but never run on its word: it changes a
-# server, so only the full tool choice, with every rule in view, picks it.
-NOT_RUN = frozenset({"operate_server"})
 
 ROUTER_SYSTEM = """You sort a chat message before it is answered. Current date: {today}. Your training data is
 older than this date: anything may have changed since.

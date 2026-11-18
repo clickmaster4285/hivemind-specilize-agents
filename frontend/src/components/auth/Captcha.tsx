@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { getCaptcha } from "@/lib/api";
 import type { CaptchaAnswer, CaptchaChallenge } from "@/lib/types";
-import { btn } from "@/lib/ui";
+import { btn, formField } from "@/lib/ui";
 
 type Props = {
   /** a new picture whenever this changes: each one works once (BACKLOG L16 S2b) */
@@ -12,8 +12,6 @@ type Props = {
   onChange: (answer: CaptchaAnswer | null) => void;
 };
 
-const field =
-  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-[0.55rem] font-[inherit] tracking-[0.2em] uppercase text-text outline-none";
 
 /** The login / sign-up CAPTCHA: a picture of characters drawn by our own API, and a box to type them. */
 export default function Captcha({ round, onChange }: Props) {
@@ -58,7 +56,7 @@ export default function Captcha({ round, onChange }: Props) {
         </button>
       </div>
       <input
-        className={field}
+        className={`${formField} tracking-[0.2em] uppercase`}
         name="captcha"
         autoComplete="off"
         spellCheck={false}

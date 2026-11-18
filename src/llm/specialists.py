@@ -37,13 +37,6 @@ STORE_FILE = ROOT / "agents" / "specialists.json"
 EVAL_FILE = ROOT / "data" / "specialists" / "eval.yaml"
 COLLECTIONS = ("it", "development", "marketing", "general")      # brain.collections slugs
 GENERAL = "general"                                                # the picker's "no specialist"
-# tools that probe or act on machines, not only read text — the IT specialist only
-ACTION_TOOLS = frozenset({"network_scan", "security_check", "server_audit", "diagnose_server",
-                          "operate_server", "deploy_project", "ping_host", "nvr_cameras", "network_device",
-                          "image_scan"})
-# tools added after agents/specialists.json files already existed (files saved before "seen_tools")
-ADDED_LATER = frozenset({"security_check", "server_audit", "diagnose_server", "operate_server", "ping_host",
-                         "nvr_cameras", "network_device", "image_scan"})
 PICK_MAX_TOKENS = 6
 
 PICK_SYSTEM = """Pick the specialist for the user's message. Specialists:
@@ -77,7 +70,7 @@ class Specialist:
         # tools that did not exist when this specialist was saved: a built-in specialist gets them when its
         # defaults include them (the IT specialist gets each new IT tool); a tool an admin unchecked stays off
         seen = data.get("seen_tools")
-        seen = set(seen) if isinstance(seen, list) else known - ADDED_LATER
+        seen = set(seen) if isinstance(seen, list) else known      # no list: nothing is new to it
         default = next((d for d in _defaults_by_id() if d.id == str(data["id"])), None)
         for name in names:
             if name not in seen and name not in tools and default is not None and name in default.tools:
@@ -113,7 +106,9 @@ def _defaults_by_id() -> list[Specialist]:
 
 
 def default_specialists() -> list[Specialist]:
-    reading = [t for t in tool_names() if t not in ACTION_TOOLS]
+    from src.llm.assistant import TOOLS
+
+    reading = [t.name for t in TOOLS if not t.acts_on_machines]      # tools that probe or act on machines: IT only
     return [
         Specialist(
             id="it", name="IT", sort_order=10, accent="#3b82c4",

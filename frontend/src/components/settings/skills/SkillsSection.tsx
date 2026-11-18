@@ -9,7 +9,7 @@ import { downloadSkill, listSkillCatalog } from "@/lib/api";
 import { errorText } from "@/lib/chat";
 import { saveUrl } from "@/lib/download";
 import type { CatalogSkill, Skill, SkillCategory } from "@/lib/types";
-import { btn } from "@/lib/ui";
+import { btn, formFieldCompact } from "@/lib/ui";
 
 // Inline Tailwind building blocks (styling stays with the component), matching the other Settings sections.
 const heading = "text-base font-semibold [font-family:var(--font-display)]";
@@ -22,8 +22,6 @@ const chip = "rounded-full border border-line px-2 py-0.5 text-[0.68rem] text-mu
 const menuRow = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[0.8rem] text-text hover:bg-hover disabled:opacity-50 disabled:hover:bg-transparent";
 /** The ⋮ menu's width, to open it leftwards from the button so it stays inside the card's column. */
 const MENU_WIDTH_PX = 176;
-const field =
-  "w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm text-text placeholder:text-muted outline-none focus:border-copper";
 const pill = (on: boolean) =>
   `rounded-full border px-3 py-1 text-xs ${
     on
@@ -312,7 +310,7 @@ export default function SkillsSection({ skills, specialists }: { skills: SkillsA
       ) : (
         <>
           <input
-            className={field}
+            className={formFieldCompact}
             type="search"
             placeholder="Search skills"
             value={search}

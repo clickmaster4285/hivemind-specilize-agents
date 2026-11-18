@@ -370,3 +370,17 @@ def test_one_silent_command_is_skipped_and_named_not_the_whole_audit(monkeypatch
     la.collect(shell, audit, lambda: True, lambda message: None)
     assert audit.ufw is not None                             # read before and after the silent one
     assert any("`apt list --upgradable`" in note and f"{la.COMMAND_TIMEOUT} s" in note for note in audit.unread)
+
+
+def test_every_server_tool_finds_its_login_the_same_way():
+    """One lookup for audit, diagnose, operate and deploy (was copied four times, ISSUES_LOG O97)."""
+    assert vault.login_for(1, None, "audit my server") == (None, vault.NO_LOGIN)
+    web = vault.add(1, label="web01", host="192.168.88.66", port=22, username="u", password=SECRET)
+    assert vault.login_for(1, None, "audit my server") == (web, "")                     # the only one
+    db = vault.add(1, label="db01", host="192.168.88.67", port=22, username="u", password=SECRET)
+    assert vault.login_for(1, None, "check db01 please")[0] == db                       # named in the message
+    assert vault.login_for(1, "web01", "check it")[0] == web                            # named by the model
+    login, ask = vault.login_for(1, None, "audit my server", question="Which server should I audit?")
+    assert login is None and ask == "Which server should I audit? Added this session: db01, web01."
+    assert "192.168" not in ask                                                         # names only (O82)
+    assert vault.login_for(None, None, "x") == (None, vault.NO_LOGIN)

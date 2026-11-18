@@ -84,12 +84,12 @@ Only the cases that are clear without a model are decided here; everything else 
 An action button was pressed (image, edit, diagram, web search, document, describe)?  → that action
 Images attached?   change / regenerate wording → image edit (img2img); otherwise → vision (describe it)
 Image-prompt flags (--ar 16:9, --v 6)?                                              → image generation
+Agentic mode (chosen by the user)                           → the agentic loop
 Otherwise (Auto or Chat)                                     → intent "auto": the assistant decides (Layer 5)
 ```
 
-With `ASSISTANT_TOOLS=false` the older routing is used instead: matching the message against the example
-sentences in `data/router/intents.yaml` with the embedding model (`src/llm/semantic_router.py`), and word
-rules if that model is not reachable.
+The older routing (example sentences matched with the embedding model, then word rules) was removed on
+2026-11-18 (ISSUES_LOG O97): it only ran with `ASSISTANT_TOOLS=false`, a setting that no longer exists.
 
 ---
 

@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 
 import { errorText, toggleIn } from "@/lib/chat";
 import type { Specialist, SpecialistInput, SpecialistOptions } from "@/lib/types";
-import { btn, iconBtn } from "@/lib/ui";
+import { btn, formField, formLabel, iconBtn } from "@/lib/ui";
 
 const emptyForm: SpecialistInput = {
   name: "",
@@ -39,9 +39,6 @@ type Props = {
 };
 
 // Inline Tailwind building blocks (shared classes — icon-btn, btn — stay global utilities).
-const field =
-  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-[0.55rem] font-[inherit] text-text outline-none resize-y";
-const labelCol = "flex flex-col gap-1 text-[0.82rem] text-muted";
 const checkRow = "flex items-center gap-[0.45rem] text-text";
 const fieldset =
   "m-0 grid gap-x-[0.8rem] gap-y-[0.35rem] rounded-[0.65rem] border border-line px-[0.7rem] py-[0.6rem] [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]";
@@ -90,24 +87,24 @@ export default function SpecialistModal({ specialist, options, onSave, onDelete,
             ×
           </button>
         </header>
-        <label className={labelCol}>
+        <label className={formLabel}>
           Name
-          <input className={field} required value={form.name} onChange={(e) => set({ name: e.target.value })} />
+          <input className={formField} required value={form.name} onChange={(e) => set({ name: e.target.value })} />
         </label>
-        <label className={labelCol}>
+        <label className={formLabel}>
           Covers — the assistant picks this specialist from this line
           <textarea
-            className={field}
+            className={formField}
             required
             rows={3}
             value={form.covers}
             onChange={(e) => set({ covers: e.target.value })}
           />
         </label>
-        <label className={labelCol}>
+        <label className={formLabel}>
           Instructions — how it answers
           <textarea
-            className={field}
+            className={formField}
             rows={8}
             value={form.instructions}
             onChange={(e) => set({ instructions: e.target.value })}
@@ -139,7 +136,7 @@ export default function SpecialistModal({ specialist, options, onSave, onDelete,
             </label>
           ))}
         </fieldset>
-        <label className={labelCol}>
+        <label className={formLabel}>
           Colour
           <input
             className="h-9 w-16 cursor-pointer rounded-[0.55rem] border border-line bg-panel-2"

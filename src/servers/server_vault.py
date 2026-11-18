@@ -185,6 +185,35 @@ def find(user_id: int, name: str | None, kind: str = "ssh") -> ServerLogin | Non
                  if wanted in s.label.lower() or s.label.lower() in wanted or s.host.lower() in wanted), None)
 
 
+NO_LOGIN = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
+            "password or key, and its mode) — it stays in memory for this session only, never in the chat.")
+
+
+def server_in(query: str, servers: list[ServerLogin]) -> str | None:
+    """A server named in the message by label or address ("audit web01", "check 192.168.88.66")."""
+    low = (query or "").lower()
+    for s in servers:
+        if s.host in low or (s.label and s.label.lower() in low):
+            return s.id
+    return None
+
+
+def login_for(user_id: int | None, server: str | None, query: str, *,
+              question: str = "Which server?") -> tuple[ServerLogin | None, str]:
+    """The login a server tool should use: the one the model named, else one named in the message, else the only
+    one added → (login, ""); or (None, what to tell the user): add one first, or which of the added ones.
+    One place for every server tool (was copied in four, ISSUES_LOG O97)."""
+    if user_id is None:
+        return None, NO_LOGIN
+    servers = list_servers(user_id)
+    login = find(user_id, server or server_in(query, servers))
+    if login is not None:
+        return login, ""
+    if not servers:
+        return None, NO_LOGIN
+    return None, f"{question} Added this session: {names(servers)}."
+
+
 def set_mode(user_id: int, server_id: str, mode: str) -> ServerLogin:
     if mode not in MODES:
         raise VaultError(f"mode must be one of {', '.join(MODES)}")

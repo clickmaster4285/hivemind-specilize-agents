@@ -143,8 +143,6 @@ class Config:
     network_scan_enabled: bool = True
     network_scan_max_hosts: int = 1024
     network_scan_identify: bool = True      # SSDP/mDNS/SNMP identification pass (model, name, type refinement)
-    # The model picks tools itself (native tool calling, src/assistant.py); false = example-based router
-    assistant_tools: bool = True
     # Deep research mode (the Deep toggle): plan N focused sub-queries, search each, pool the best
     # passages, then write a thorough sourced report. Bounded so a deep answer stays ~1–2 min on local.
     deep_subqueries: int = 4
@@ -285,7 +283,6 @@ class Config:
             # hard ceiling 4096 (a /20) even if .env asks for more
             network_scan_max_hosts=min(4096, max(1, int(os.getenv("NETWORK_SCAN_MAX_HOSTS", "1024")))),
             network_scan_identify=_bool("NETWORK_SCAN_IDENTIFY", True),
-            assistant_tools=_bool("ASSISTANT_TOOLS", True),
             deep_subqueries=max(1, min(8, int(os.getenv("DEEP_SUBQUERIES", "4")))),
             deep_max_passages=max(4, min(24, int(os.getenv("DEEP_MAX_PASSAGES", "12")))),
             context_history_share=max(0.1, min(0.6, float(os.getenv("CONTEXT_HISTORY_SHARE", "0.35")))),

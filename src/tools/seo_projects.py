@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import logging
 import threading
-import time
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -20,9 +19,11 @@ from typing import Any
 from src.brain.web import WebClient
 from src.core.config import Config
 from src.core.db import session_scope
+from src.core.loops import start_loop
 from src.core.models_db import SeoAudit, SeoProject
 from src.tools.site_audit import (AUDIT_AGENT, AuditError, Score, Site, crawl_site, resolve_start, score_site,
                                   site_url)
+from src.tools.tool_run import ToolRun
 
 log = logging.getLogger("seo.projects")
 
@@ -161,20 +162,13 @@ def run_due(config: Config, *, audit: Callable[[str, int], tuple[Site, Score]] =
 
 
 def start_scheduler(config: Config) -> threading.Thread:
-    def loop() -> None:
-        time.sleep(STARTUP_DELAY_SECONDS)
-        while True:
-            try:
-                ran = run_due(config)
-                if ran:
-                    log.info("re-audited %d tracked sites", ran)
-            except Exception:  # noqa: BLE001 — never let the thread die
-                log.exception("SEO tracker crashed")
-            time.sleep(CHECK_MINUTES * 60)
+    def track() -> None:
+        ran = run_due(config)
+        if ran:
+            log.info("re-audited %d tracked sites", ran)
 
-    thread = threading.Thread(target=loop, name="seo-tracker", daemon=True)
-    thread.start()
-    return thread
+    return start_loop("seo-tracker", track, every_seconds=CHECK_MINUTES * 60, first_delay=STARTUP_DELAY_SECONDS,
+                      log=log)
 
 
 # ── the chat tool ──────────────────────────────────────────────────────
@@ -182,12 +176,7 @@ def start_scheduler(config: Config) -> threading.Thread:
 def run_seo_projects(query: str, *, job_id: str, config: Config, on_progress: Callable[[dict], None] | None = None,
                      user_id: int | None = None, untrack: str | None = None,
                      **_: object) -> tuple[str, list[str], float]:
-    emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": ROLE, "stage": "chat", "accent": "#c45c8a",
-             "job_id": job_id}
-    started = time.monotonic()
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "seo-projects"})
+    run = ToolRun(on_progress, query=query, job_id=job_id, role=ROLE, model="seo-projects", accent="#c45c8a")
     errors: list[str] = []
     if user_id is None:
         errors.append("not signed in")
@@ -201,8 +190,5 @@ def run_seo_projects(query: str, *, job_id: str, config: Config, on_progress: Ca
             stopped = any(stop_tracking(config, user_id, h) for h in dict.fromkeys([host, bare, f"www.{bare}"]))
             output = (f"Stopped tracking **{host}**." if stopped else f"**{host}** was not being tracked.") + "\n\n"
         output += projects_report(config, user_id)
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)
 

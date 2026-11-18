@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from datetime import date, datetime, timedelta, timezone
 from datetime import time as clock_time
 from typing import Any, Callable
@@ -23,6 +22,7 @@ from zoneinfo import ZoneInfo
 from src.core.clock import valid_time_zone
 from src.core.config import Config
 from src.core.db import session_scope
+from src.core.loops import start_loop
 from src.core.models_db import USER_ACTIVE, ChatThreadRow, Job, ScheduleRow, User, as_utc
 
 log = logging.getLogger("jobs.schedules")
@@ -197,17 +197,9 @@ def run_due(config: Config, *, now: datetime | None = None, start_job: Callable[
 
 
 def start_scheduler(config: Config) -> threading.Thread:
-    def loop() -> None:
-        time.sleep(STARTUP_DELAY_SECONDS)
-        while True:
-            try:
-                started = run_due(config)
-                if started:
-                    log.info("started %d scheduled tasks", started)
-            except Exception:  # noqa: BLE001 — never let the thread die
-                log.exception("task scheduler crashed")
-            time.sleep(CHECK_SECONDS)
+    def tick() -> None:
+        started = run_due(config)
+        if started:
+            log.info("started %d scheduled tasks", started)
 
-    thread = threading.Thread(target=loop, name="task-scheduler", daemon=True)
-    thread.start()
-    return thread
+    return start_loop("task-scheduler", tick, every_seconds=CHECK_SECONDS, first_delay=STARTUP_DELAY_SECONDS, log=log)

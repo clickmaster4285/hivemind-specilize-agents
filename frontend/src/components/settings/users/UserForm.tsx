@@ -6,11 +6,9 @@ import type { UsersApi } from "@/hooks/useUsers";
 import { listModules } from "@/lib/api";
 import { errorText } from "@/lib/chat";
 import type { ManagedUser, ModuleInfo, UserStatus } from "@/lib/types";
-import { btn } from "@/lib/ui";
+import { btn, formFieldCompact } from "@/lib/ui";
 
 // Inline Tailwind building blocks (styling stays with the component), matching ServersSection.
-const field =
-  "w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm text-text placeholder:text-muted outline-none focus:border-copper";
 const label = "flex flex-col gap-1 text-xs text-muted";
 const section = "flex flex-col gap-3 rounded-xl border border-line p-4";
 const sectionTitle = "m-0 text-sm font-semibold";
@@ -178,7 +176,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           <label className={label}>
             Username
             <input
-              className={field}
+              className={formFieldCompact}
               required
               minLength={3}
               placeholder="e.g. alice"
@@ -190,7 +188,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           <label className={label}>
             {creating ? "Password" : "Reset password (leave blank to keep it)"}
             <input
-              className={field}
+              className={formFieldCompact}
               required={creating}
               minLength={8}
               type="password"
@@ -202,7 +200,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           </label>
           <label className={label}>
             Role
-            <select className={field} value={role} onChange={(e) => setRole(e.target.value as "member" | "admin")}>
+            <select className={formFieldCompact} value={role} onChange={(e) => setRole(e.target.value as "member" | "admin")}>
               <option value="member">Member</option>
               <option value="admin">Admin</option>
             </select>
@@ -210,7 +208,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           {creating || pending ? null : (
             <label className={label}>
               Status
-              <select className={field} value={status} onChange={(e) => setStatus(e.target.value as UserStatus)}>
+              <select className={formFieldCompact} value={status} onChange={(e) => setStatus(e.target.value as UserStatus)}>
                 <option value="active">Active</option>
                 <option value="disabled">Disabled</option>
               </select>
@@ -225,7 +223,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           <label className={label}>
             Team
             <input
-              className={field}
+              className={formFieldCompact}
               list="team-suggestions"
               placeholder="IT, marketing… (optional)"
               value={team}
@@ -240,7 +238,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           <label className={label}>
             Daily job quota
             <input
-              className={field}
+              className={formFieldCompact}
               type="number"
               min={0}
               placeholder="default"
@@ -251,7 +249,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           <label className={label}>
             Email
             <input
-              className={field}
+              className={formFieldCompact}
               type="email"
               placeholder="name@example.com (optional)"
               value={email}
@@ -261,7 +259,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           <label className={label}>
             Phone
             <input
-              className={field}
+              className={formFieldCompact}
               type="tel"
               placeholder="+92 300 1234567 (optional)"
               value={phone}

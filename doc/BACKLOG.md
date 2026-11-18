@@ -42,6 +42,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
 | [L24](#l24-ui-like-the-big-chat-apps--planned-2026-11-17-issues_log-o86) | UI like the big chat apps | U1–U8 built; connectors later | user's screenshots of DeepSeek, ChatGPT, Claude |
 | [L25](#l25-vulnerability-finders--explained-2026-11-17-issues_log-o87) | Vulnerability finders (nmap + CVEs, Nuclei, Trivy, OpenVAS) | V1, V3 (images) built; V2, V4 later | [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md) |
+| [L28](#l28-one-place-for-each-fact--2026-11-18-issues_log-o97) | One place for each fact (clean-up) | ✅ 2026-11-18 |  |
 | [L27](#l27-server-work-like-a-developer--2026-11-18-issues_log-o93o96) | Server work like a developer: guided deploy, look-questions, logins kept open | built 2026-11-18 | live check on the uk server |
 | [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H1, H2, H3 built (2026-11-18) | NousResearch hermes-agent (MIT) |
 
@@ -711,6 +712,17 @@ Telegram / email gateway). Plan, not built:
       schedule is a check or digest that comes to you. Plan: create from chat in words + a confirm card; offer
       "re-check this every week?" after a run; an unread badge + browser notification; report only what changed
       since the last run (failures always); one chat per schedule, Run now, history
+
+### L28. One place for each fact — 2026-11-18 (ISSUES_LOG O97)
+
+After tools got one name and one entry (DIRECT_TOOLS / ADMIN_TOOLS removed), the same kind of duplication elsewhere:
+
+- [x] 2 tool facts as flags on the tool entry: IT-only, needs a server login, router may not start it; ADDED_LATER removed
+- [x] 3 one server-login lookup (`server_vault.login_for`)
+- [x] 4 one helper for a runner's start / finish events
+- [x] 1 the old intent / semantic router removed (buttons, image flags and pictures kept)
+- [x] 5 one background-loop helper
+- [x] 6 the frontend's form classes from `lib/ui.ts`
 
 ### L27. Server work like a developer — 2026-11-18 (ISSUES_LOG O93–O96)
 

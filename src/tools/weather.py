@@ -17,6 +17,7 @@ from datetime import date
 import requests
 
 from src.core.config import Config
+from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger(__name__)
 
@@ -119,19 +120,14 @@ def run_weather(
 ) -> tuple[str, list[str], float]:
     from src.core.clock import current_time_zone
 
-    emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Weather", "stage": "chat",
-             "accent": "#3a8fc4", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="Weather", model="open-meteo", accent="#3a8fc4")
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "open-meteo"})
     named = (place or '').strip() or place_from_text(query)
     place_name = named or place_from_time_zone(current_time_zone())
     try:
         if not place_name:
             raise WeatherError("no place in the question and no time zone from the browser — name a city")
-        emit({"type": "status", "agent_id": "assistant", "message": f"Getting the weather for {place_name}…"})
+        run.status(f"Getting the weather for {place_name}…")
         try:
             place = geocode(place_name)
         except WeatherError:
@@ -145,7 +141,4 @@ def run_weather(
     except (WeatherError, requests.RequestException, KeyError, ValueError) as exc:
         errors.append(str(exc))
         output = f"I could not get the weather: {exc}."
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

@@ -18,7 +18,6 @@ from __future__ import annotations
 import json
 import re
 import statistics
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -32,6 +31,7 @@ from src.tools.market import Market, for_site, requested
 from src.tools.serp import Benchmark, benchmark
 from src.tools.site_audit import (AUDIT_AGENT, DESCRIPTION_CHARS, TITLE_CHARS, AuditError, analyze_page,
                                   resolve_start, site_url)
+from src.tools.tool_run import ToolRun
 
 ROLE = "Content writer"
 # Flesch reading ease each reader can take comfortably (60+ plain English, 30-50 college level)
@@ -324,15 +324,11 @@ def run_content_writer(query: str, *, job_id: str, config: Config, on_progress: 
     client = LLMClient(config)
     emit = on_progress or (lambda event: None)
     model = config.model_fast or config.llm_model
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": ROLE, "stage": "chat", "accent": "#c45c8a",
-             "job_id": job_id}
+    run = ToolRun(on_progress, query=query, job_id=job_id, role=ROLE, model=model, accent="#c45c8a")
     status = lambda message: emit({"type": "status", "agent_id": "assistant", "message": message})  # noqa: E731
     going = lambda: not live.is_stopped(job_id)  # noqa: E731
-    started = time.monotonic()
     errors: list[str] = []
     drafts: list[Draft] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": model})
 
     def evaluate(label: str, text: str, brief: Brief) -> Draft:
         status(f"{label}: checking and scoring…")
@@ -407,8 +403,5 @@ def run_content_writer(query: str, *, job_id: str, config: Config, on_progress: 
         output = best.text + "\n\n" + ("_— stopped —_" if stopped else scoreboard(drafts, best))
     else:
         output = f"I could not write the content: {errors[-1] if errors else 'stopped'}."
-    elapsed = time.monotonic() - started
     live.finish_agent(job_id, "assistant")
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

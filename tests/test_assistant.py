@@ -17,7 +17,7 @@ from src.core.config import Config
 from src.llm.intent_router import classify_query
 from src.llm.llm_client import LLMStopped
 
-CFG = dataclasses.replace(Config.from_env(), assistant_tools=True)
+CFG = Config.from_env()
 
 
 @pytest.fixture(autouse=True)
@@ -245,3 +245,18 @@ def test_every_tools_runner_loads_and_each_tool_has_one_name():
         if tool.run:
             assert callable(tool.runner()), tool.name
     assert {t.name for t in TOOLS if t.admin_only} == {"security_check", "image_scan"}
+
+
+def test_tool_facts_live_on_the_tool_entry():
+    """Were hand lists in three files (ACTION_TOOLS, SERVER_TOOLS, NOT_RUN — ISSUES_LOG O97)."""
+    from src.llm.assistant import TOOLS
+    from src.llm.specialists import default_specialists
+
+    machines = {t.name for t in TOOLS if t.acts_on_machines}
+    assert machines == {"network_scan", "ping_host", "security_check", "image_scan", "server_audit", "nvr_cameras",
+                        "network_device", "diagnose_server", "operate_server", "deploy_project"}
+    assert {t.name for t in TOOLS if t.needs_server_login} == {
+        "server_audit", "diagnose_server", "operate_server", "deploy_project"}
+    assert {t.name for t in TOOLS if not t.router_runs} == {"operate_server"}
+    by_id = {s.id: s for s in default_specialists()}
+    assert machines <= set(by_id["it"].tools) and not machines & set(by_id["development"].tools)

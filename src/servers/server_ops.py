@@ -23,11 +23,13 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from src.core.config import Config
+from src.core.loops import start_loop
 from src.servers.linux_audit import COMMAND_TIMEOUT, AuditError, CommandTimeout, Shell, connect
 from src.llm.llm_client import LLMClient
 from src.llm.prompt_filter import mask_text
 from src.servers.server_vault import ServerLogin, VaultError
 from src.servers.win_commands import classify_windows_command, is_destructive_windows
+from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger(__name__)
 
@@ -421,14 +423,12 @@ def _start_sweeper() -> None:
         if _sweeper is not None and _sweeper.is_alive():
             return
 
-        def loop() -> None:
-            while True:
-                time.sleep(SWEEP_SECONDS)
-                for stale in _expired(time.monotonic()):
-                    _close_quietly(stale)
+        def sweep() -> None:
+            for stale in _expired(time.monotonic()):
+                _close_quietly(stale)
 
-        _sweeper = threading.Thread(target=loop, name="ssh-idle-sweeper", daemon=True)
-        _sweeper.start()
+        _sweeper = start_loop("ssh-idle-sweeper", sweep, every_seconds=SWEEP_SECONDS, first_delay=SWEEP_SECONDS,
+                              log=logger)
 
 
 # ── the diagnose loop (the model drives, the classifier guards) ────────────
@@ -603,29 +603,17 @@ def run_server_diagnose(
     """'log in to web01 and check why it is slow' → read-only investigation + findings. Never changes the server."""
     from src.jobs import live
     from src.servers import server_vault
-    from src.servers.linux_audit import _server_in
 
-    emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Server diagnosis", "stage": "chat",
-             "accent": "#c45c5c", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="Server diagnosis", model="diagnose_server", accent="#c45c5c")
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "diagnose_server"})
 
-    def status(message: str) -> None:
-        emit({"type": "status", "agent_id": "assistant", "message": message})
-
+    status = run.status
     try:
         if not config.security_scan_enabled:
             raise AuditError("security tools are switched off (SECURITY_SCAN_ENABLED=false)")
-        servers = server_vault.list_servers(user_id) if user_id is not None else []
-        login = server_vault.find(user_id, server or _server_in(query, servers)) if user_id is not None else None
-        if login is None and not servers:
-            output = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
-                      "password or key) — it stays in memory for this session only, never in the chat.")
-        elif login is None:
-            output = f"Which server? Added this session: {server_vault.names(servers)}."
+        login, ask_first = server_vault.login_for(user_id, server, query)
+        if login is None:
+            output = ask_first
         else:
             status(f"Logging in to {login.shown}…")
 
@@ -643,10 +631,7 @@ def run_server_diagnose(
         logger.error("server diagnose failed: %s", type(exc).__name__)
         output = f"The diagnosis failed ({type(exc).__name__})."
         errors.append(type(exc).__name__)
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)
 
 
 # ── operate: changes allowed, gated by the server's mode (SERVER_ACCESS_DECISION.md §8) ────────────
@@ -822,19 +807,12 @@ def run_server_operate(
     commands gated by the server's mode (audit/confirm/trusted). Every change is logged."""
     from src.jobs import live
     from src.servers import server_vault
-    from src.servers.linux_audit import _server_in
 
     emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Server operate", "stage": "chat",
-             "accent": "#c45c5c", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="Server operate", model="operate_server", accent="#c45c5c")
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "operate_server"})
 
-    def status(message: str) -> None:
-        emit({"type": "status", "agent_id": "assistant", "message": message})
-
+    status = run.status
     def confirm(command_id: str, command: str) -> bool | None:
         emit({"type": "confirm_command", "agent_id": "assistant", "command_id": command_id, "command": command,
               "server": login.shown})
@@ -848,13 +826,9 @@ def run_server_operate(
     try:
         if not config.security_scan_enabled:
             raise AuditError("security tools are switched off (SECURITY_SCAN_ENABLED=false)")
-        servers = server_vault.list_servers(user_id) if user_id is not None else []
-        login = server_vault.find(user_id, server or _server_in(query, servers)) if user_id is not None else None
-        if login is None and not servers:
-            output = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
-                      "password or key, and its mode) — it stays in memory for this session only, never in the chat.")
-        elif login is None:
-            output = f"Which server? Added this session: {server_vault.names(servers)}."
+        login, ask_first = server_vault.login_for(user_id, server, query)
+        if login is None:
+            output = ask_first
         else:
             status(f"Logging in to {login.shown}…")
 
@@ -874,7 +848,4 @@ def run_server_operate(
         logger.error("server operate failed: %s", type(exc).__name__)
         output = f"The operation failed ({type(exc).__name__})."
         errors.append(type(exc).__name__)
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

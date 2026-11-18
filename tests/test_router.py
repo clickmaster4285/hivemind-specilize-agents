@@ -94,7 +94,7 @@ def test_no_clarifying_twice_in_a_row(monkeypatch):
     monkeypatch.setattr("src.llm.llm_client.LLMClient.chat_tools", lambda self, **k: ("The lead is Zendaya.", []))
     conversation = [{"role": "user", "content": "name of lead woman actress"},
                     {"role": "assistant", "content": assistant.CLARIFY_INTRO}]
-    cfg = dataclasses.replace(Config.from_env(), assistant_tools=True, suggestions_enabled=False,
+    cfg = dataclasses.replace(Config.from_env(), suggestions_enabled=False,
                               quiz_enabled=False, web_images_enabled=False)
     decision = assistant.decide("Spider-Man: Brand New Day", job_id="c2", config=cfg, conversation=conversation)
     assert decision.intent != "clarify"

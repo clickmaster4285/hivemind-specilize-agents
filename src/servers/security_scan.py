@@ -32,6 +32,7 @@ from src.core.config import Config
 from src.servers import cve_db, nmap_versions, web_scan
 from src.servers.cve_db import CveHit
 from src.servers.net_scan import PRIVATE_NETS, ScanError, local_subnet, validate_subnet
+from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger(__name__)
 
@@ -856,16 +857,11 @@ def run_security_check(
                                 user_id=user_id)
 
     emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Security check", "stage": "chat",
-             "accent": "#c45c5c", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="Security check", model="security_check", accent="#c45c5c")
+    agent = run.agent
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "security_check"})
 
-    def status(message: str) -> None:
-        emit({"type": "status", "agent_id": "assistant", "message": message})
-
+    status = run.status
     try:
         result = check(target, query, config, should_continue=lambda: not live.is_stopped(job_id), progress=status)
         output = markdown(result)
@@ -881,7 +877,4 @@ def run_security_check(
         logger.exception("security check failed")
         output = f"The security check failed: {exc}"
         errors.append(str(exc))
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

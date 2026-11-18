@@ -9,7 +9,6 @@ keyword also: the top pages read (length, phrases they share) and keyword ideas.
 from __future__ import annotations
 
 import statistics
-import time
 from collections import Counter
 from collections.abc import Callable
 
@@ -21,6 +20,7 @@ from src.tools.serp import (BENCHMARK_PAGES, TOP, Difficulty, Ranked, bare_host,
                             keyword_ideas, rank_of, read_top, serp)
 from src.tools.site_audit import site_url
 from src.tools.web_search import WebSearchError
+from src.tools.tool_run import ToolRun
 
 ROLE = "Keyword research"
 MAX_KEYWORDS = 5
@@ -60,13 +60,9 @@ def run_keyword_research(query: str, *, job_id: str, config: Config,
                          **_: object) -> tuple[str, list[str], float]:
     emit = on_progress or (lambda event: None)
     model = config.model_fast or config.llm_model
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": ROLE, "stage": "chat", "accent": "#c45c8a",
-             "job_id": job_id}
+    run = ToolRun(on_progress, query=query, job_id=job_id, role=ROLE, model=model, accent="#c45c8a")
     status = lambda message: emit({"type": "status", "agent_id": "assistant", "message": message})  # noqa: E731
-    started = time.monotonic()
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": model})
     asked = [k.strip() for k in (keywords or "").split(",") if k.strip()][:MAX_KEYWORDS] or [query.strip()]
     site = bare_host(site_url(domain or "") or "") or None
     main = asked[0]
@@ -132,8 +128,5 @@ def run_keyword_research(query: str, *, job_id: str, config: Config,
     except WebSearchError as exc:
         errors.append(str(exc))
         output = f"I could not research the keywords: {exc}."
-    elapsed = time.monotonic() - started
     live.finish_agent(job_id, "assistant")
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output, **clarify})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors, **clarify)

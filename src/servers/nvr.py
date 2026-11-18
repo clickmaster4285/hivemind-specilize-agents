@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 import re
-import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from xml.etree.ElementTree import Element
@@ -20,6 +19,7 @@ from defusedxml import DefusedXmlException, ElementTree
 from requests.auth import HTTPDigestAuth
 
 from src.core.config import Config
+from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger("multeagent.nvr")
 
@@ -287,12 +287,8 @@ def run_nvr_cameras(
     from src.tools.artifacts import artifact_event, write_bytes
 
     emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "NVR cameras", "stage": "chat",
-             "accent": "#3b82c4", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="NVR cameras", model="nvr_cameras", accent="#3b82c4")
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "nvr_cameras"})
     try:
         recorders = server_vault.list_servers(user_id, "nvr") if user_id is not None else []
         named = nvr or next((r.host for r in recorders if r.host in query), None)
@@ -303,7 +299,7 @@ def run_nvr_cameras(
         elif login is None:
             output = f"Which recorder? Added this session: {server_vault.names(recorders)}."
         else:
-            emit({"type": "status", "agent_id": "assistant", "message": f"Reading the cameras on {login.shown}…"})
+            run.status(f"Reading the cameras on {login.shown}…")
             rec = read_recorder(login.host, login.username, login.password or "", login.port)
             name, sheet = f"nvr-cameras-{rec.host}.xlsx", xlsx_bytes(rec) if rec.cameras else None
             output = markdown(rec)
@@ -325,7 +321,4 @@ def run_nvr_cameras(
         logger.error("nvr read failed: %s", type(exc).__name__)
         output = f"The cameras could not be read ({type(exc).__name__})."
         errors.append(type(exc).__name__)
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

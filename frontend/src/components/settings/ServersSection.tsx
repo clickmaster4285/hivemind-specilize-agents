@@ -5,7 +5,7 @@ import { useState, type FormEvent } from "react";
 import type { ServersApi } from "@/hooks/useServers";
 import { errorText } from "@/lib/chat";
 import type { ServerKind, ServerLoginInput, ServerMode } from "@/lib/types";
-import { btn } from "@/lib/ui";
+import { btn, formFieldCompact } from "@/lib/ui";
 
 // the usual port of each kind: SSH (servers, routers, switches), and the recorder's web API
 const DEFAULT_PORT: Record<ServerKind, number> = { ssh: 22, nvr: 80, network: 22 };
@@ -31,8 +31,6 @@ const MODE_LABEL: Record<string, string> = {
 };
 
 // Inline Tailwind building blocks (styling stays with the component).
-const field =
-  "w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm text-text placeholder:text-muted outline-none focus:border-copper";
 const label = "flex flex-col gap-1 text-xs text-muted";
 const modeAccent: Record<ServerMode, string> = {
   audit: "border-l-teal",
@@ -111,7 +109,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
               <label className="flex items-center gap-2 text-xs text-muted">
                 <span className="shrink-0">Agent may</span>
                 <select
-                  className={field}
+                  className={formFieldCompact}
                   value={s.mode}
                   onChange={(e) => void servers.setMode(s.id, e.target.value as ServerMode)}
                   title="What the agent may do on this server"
@@ -134,7 +132,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
         <label className={label}>
           Type
           <select
-            className={field}
+            className={formFieldCompact}
             value={form.kind}
             onChange={(e) => {
               const kind = e.target.value as ServerKind;
@@ -150,7 +148,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           <label className={label}>
             Name
             <input
-              className={field}
+              className={formFieldCompact}
               placeholder="web01"
               value={form.label}
               onChange={(e) => set({ label: e.target.value })}
@@ -159,7 +157,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           <label className={label}>
             Address
             <input
-              className={field}
+              className={formFieldCompact}
               required
               placeholder="192.168.1.20 or myvps.example.com"
               value={form.host}
@@ -169,7 +167,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           <label className={label}>
             Port
             <input
-              className={field}
+              className={formFieldCompact}
               type="number"
               min={1}
               max={65535}
@@ -183,7 +181,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           <label className={label}>
             User
             <input
-              className={field}
+              className={formFieldCompact}
               required
               placeholder={recorder ? "admin" : "root"}
               autoComplete="off"
@@ -194,7 +192,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           {recorder ? null : (
             <label className={label}>
               Authentication
-              <select className={field} value={auth} onChange={(e) => setAuth(e.target.value as "password" | "key")}>
+              <select className={formFieldCompact} value={auth} onChange={(e) => setAuth(e.target.value as "password" | "key")}>
                 <option value="password">Password</option>
                 <option value="key">Private key</option>
               </select>
@@ -205,7 +203,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
         {readOnly ? null : (
           <label className={label}>
             What the agent may do
-            <select className={field} value={form.mode} onChange={(e) => set({ mode: e.target.value as ServerMode })}>
+            <select className={formFieldCompact} value={form.mode} onChange={(e) => set({ mode: e.target.value as ServerMode })}>
               <option value="audit">{MODE_LABEL.audit}</option>
               <option value="confirm">{MODE_LABEL.confirm}</option>
               {isAdmin ? <option value="trusted">{MODE_LABEL.trusted}</option> : null}
@@ -217,7 +215,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           <label className={label}>
             Password
             <input
-              className={field}
+              className={formFieldCompact}
               required
               type="password"
               placeholder="••••••••"
@@ -231,7 +229,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
             <label className={label}>
               Private key
               <textarea
-                className={`${field} font-[var(--font-mono)] resize-y`}
+                className={`${formFieldCompact} font-[var(--font-mono)] resize-y`}
                 required
                 rows={4}
                 placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
@@ -243,7 +241,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
             <label className={label}>
               Key passphrase (if any)
               <input
-                className={field}
+                className={formFieldCompact}
                 type="password"
                 placeholder="••••••••"
                 autoComplete="new-password"

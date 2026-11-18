@@ -6,7 +6,7 @@ import Captcha from "@/components/auth/Captcha";
 
 import { signUp, signupInfo } from "@/lib/api";
 import type { CaptchaAnswer, Health, SignupInfo } from "@/lib/types";
-import { brandMark, btn } from "@/lib/ui";
+import { brandMark, btn, formField, formLabel } from "@/lib/ui";
 
 type Props = {
   health: Health | null;
@@ -26,9 +26,6 @@ const apiAddress = () => `${window.location.origin}/api`;
 const INVITE_PARAM = "invite";
 const inviteToken = () => new URLSearchParams(window.location.search).get(INVITE_PARAM);
 
-const field =
-  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-[0.55rem] font-[inherit] text-text outline-none";
-const labelCol = "flex flex-col gap-1 text-[0.82rem] text-muted";
 const errorBox =
   "m-0 rounded-[0.7rem] border border-[color-mix(in_srgb,var(--danger)_40%,var(--line))] bg-danger-soft px-[0.9rem] py-[0.7rem] text-danger-text";
 const noteBox = "m-0 rounded-[0.7rem] border border-line bg-panel-2 px-[0.9rem] py-[0.7rem] text-sm";
@@ -144,10 +141,10 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
         {signingUp && inviteUsable ? <p className={noteBox}>You were invited. Your account still needs an admin&apos;s approval.</p> : null}
         {notice ? <p className={noteBox}>{notice}</p> : null}
 
-        <label className={labelCol}>
+        <label className={formLabel}>
           {signingUp ? "Username" : "Username or email"}
           <input
-            className={field}
+            className={formField}
             name="username"
             autoComplete="username"
             placeholder={signingUp ? "e.g. sara.khan" : "username or name@example.com"}
@@ -158,10 +155,10 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
         </label>
         {signingUp ? (
           <>
-            <label className={labelCol}>
+            <label className={formLabel}>
               Email
               <input
-                className={field}
+                className={formField}
                 type="email"
                 name="email"
                 autoComplete="email"
@@ -171,10 +168,10 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
                 required
               />
             </label>
-            <label className={labelCol}>
+            <label className={formLabel}>
               Phone (optional)
               <input
-                className={field}
+                className={formField}
                 type="tel"
                 name="phone"
                 autoComplete="tel"
@@ -184,10 +181,10 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
             </label>
           </>
         ) : null}
-        <label className={labelCol}>
+        <label className={formLabel}>
           Password
           <input
-            className={field}
+            className={formField}
             type="password"
             name="password"
             autoComplete={signingUp ? "new-password" : "current-password"}
@@ -197,10 +194,10 @@ export default function AuthScreen({ health, healthError, error, captchaRequired
           />
         </label>
         {signingUp ? (
-          <label className={labelCol}>
+          <label className={formLabel}>
             Password again
             <input
-              className={field}
+              className={formField}
               type="password"
               name="repeat"
               autoComplete="new-password"

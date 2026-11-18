@@ -36,6 +36,7 @@ from src.servers.package_scan import PackageGroup, PackageScanError
 from src.servers.security_scan import HIGH, LOW, MEDIUM, PORTS, RISK_LABEL, Finding, _order, _table
 from src.servers.server_vault import ServerLogin, VaultError, check_host
 from src.servers.win_commands import ps_wrap
+from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger(__name__)
 
@@ -699,15 +700,6 @@ def packages_markdown(a: Audit) -> str:
 
 
 # ── as a chat job ────────────────────────────────────────────────────────
-def _server_in(query: str, servers: list[ServerLogin]) -> str | None:
-    """A server named in the message by label or address ("audit web01", "check 192.168.88.66")."""
-    low = (query or "").lower()
-    for s in servers:
-        if s.host in low or (s.label and s.label.lower() in low):
-            return s.id
-    return None
-
-
 def run_server_audit(
     query: str,
     *,
@@ -723,26 +715,16 @@ def run_server_audit(
     from src.servers import server_vault
 
     emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Server audit", "stage": "chat",
-             "accent": "#c45c5c", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="Server audit", model="server_audit", accent="#c45c5c")
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "server_audit"})
 
-    def status(message: str) -> None:
-        emit({"type": "status", "agent_id": "assistant", "message": message})
-
+    status = run.status
     try:
         if not config.security_scan_enabled:
             raise AuditError("security tools are switched off (SECURITY_SCAN_ENABLED=false)")
-        servers = server_vault.list_servers(user_id) if user_id is not None else []
-        login = server_vault.find(user_id, server or _server_in(query, servers)) if user_id is not None else None
-        if login is None and not servers:
-            output = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
-                      "password or key) — it stays in memory for this session only, never in the chat.")
-        elif login is None:
-            output = f"Which server should I audit? Added this session: {server_vault.names(servers)}."
+        login, ask_first = server_vault.login_for(user_id, server, query, question="Which server should I audit?")
+        if login is None:
+            output = ask_first
         else:
             audit = run_audit(login, should_continue=lambda: not live.is_stopped(job_id), status=status)
             output = markdown(audit)
@@ -760,7 +742,4 @@ def run_server_audit(
         logger.error("server audit failed: %s", type(exc).__name__)
         output = f"The audit failed ({type(exc).__name__})."
         errors.append(type(exc).__name__)
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)

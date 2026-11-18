@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import re
 import threading
-import time
 from collections.abc import Callable
 from datetime import datetime
 
@@ -23,6 +22,7 @@ from src.brain.ingest import IngestStats, ingest_source
 from src.brain.migrate import MigrationError, migrate
 from src.brain.sources import RegistryError, sync_sources
 from src.core.config import Config
+from src.core.loops import start_loop
 
 log = logging.getLogger("brain.scheduler")
 
@@ -95,18 +95,12 @@ def start_scheduler(config: Config | None = None) -> threading.Thread | None:
         return None
     in_window(config.brain_refresh_window)  # fail fast on a malformed window
 
-    def loop() -> None:
-        time.sleep(STARTUP_DELAY_SECONDS)
-        while True:
-            try:
-                if in_window(config.brain_refresh_window):
-                    run_due(config)
-            except (BrainDBError, MigrationError, RegistryError, psycopg.Error) as exc:
-                log.warning("brain refresh failed: %s", exc)
-            except Exception:  # noqa: BLE001 — never let the thread die
-                log.exception("brain refresh crashed")
-            time.sleep(config.brain_scheduler_minutes * 60)
+    def refresh() -> None:
+        try:
+            if in_window(config.brain_refresh_window):
+                run_due(config)
+        except (BrainDBError, MigrationError, RegistryError, psycopg.Error) as exc:
+            log.warning("brain refresh failed: %s", exc)       # expected (database down …): a line, not a trace
 
-    thread = threading.Thread(target=loop, name="brain-scheduler", daemon=True)
-    thread.start()
-    return thread
+    return start_loop("brain-scheduler", refresh, every_seconds=config.brain_scheduler_minutes * 60,
+                      first_delay=STARTUP_DELAY_SECONDS, log=log)

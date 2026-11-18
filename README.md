@@ -84,7 +84,7 @@ Ask Auto to search ("**search the web for** …", "**google** …") or click **W
 
 - Runs against a **local SearXNG** container (`docker compose up -d searxng`, `127.0.0.1:8888` only) — the question leaves your machine only towards the search engines SearXNG asks (Google, Bing, DuckDuckGo…).
 - The top pages are read with the brain's polite fetcher, the closest passages are picked, and the answer **cites its web sources** under the reply.
-- Nothing found on the web is stored in the knowledge base. Router intent: `web_search` (`data/router/intents.yaml`).
+- Nothing found on the web is stored in the knowledge base. The assistant picks it (the `web_search` route, `src/llm/router.py`), or the **Web** button forces it.
 
 ## Documents (Word / PDF / PPT / Excel / HTML)
 

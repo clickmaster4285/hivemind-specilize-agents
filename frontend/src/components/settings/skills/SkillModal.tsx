@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 
 import { errorText, toggleIn } from "@/lib/chat";
 import type { Skill, SkillInput, Specialist, SpecialistOptions } from "@/lib/types";
-import { btn, iconBtn } from "@/lib/ui";
+import { btn, formField, formLabel, iconBtn } from "@/lib/ui";
 
 const emptyForm: SkillInput = {
   name: "",
@@ -57,9 +57,6 @@ type Props = {
 };
 
 // Inline Tailwind building blocks, matching SpecialistModal.
-const field =
-  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-[0.55rem] font-[inherit] text-text outline-none resize-y disabled:opacity-80";
-const labelCol = "flex flex-col gap-1 text-[0.82rem] text-muted";
 const checkRow = "flex items-center gap-[0.45rem] text-text";
 const toolGrid =
   "m-0 grid gap-x-[0.8rem] gap-y-[0.35rem] rounded-[0.65rem] border border-line px-[0.7rem] py-[0.6rem] [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]";
@@ -113,10 +110,10 @@ export default function SkillModal(props: Props) {
         {/* disabled fieldset: a preview shows every field without letting it change */}
         <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className={labelCol}>
+            <label className={formLabel}>
               Title
               <input
-                className={field}
+                className={formField}
                 required
                 value={form.title}
                 onChange={(e) =>
@@ -124,10 +121,10 @@ export default function SkillModal(props: Props) {
                 }
               />
             </label>
-            <label className={labelCol}>
+            <label className={formLabel}>
               Name — typed as /name in the chat
               <input
-                className={field}
+                className={formField}
                 required
                 value={form.name}
                 onChange={(e) => {
@@ -137,10 +134,10 @@ export default function SkillModal(props: Props) {
               />
             </label>
           </div>
-          <label className={labelCol}>
+          <label className={formLabel}>
             What it does and when to use it
             <textarea
-              className={field}
+              className={formField}
               required
               rows={2}
               value={form.description}
@@ -148,10 +145,10 @@ export default function SkillModal(props: Props) {
             />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className={labelCol}>
+            <label className={formLabel}>
               Category
               <input
-                className={field}
+                className={formField}
                 list="skill-categories"
                 value={form.category}
                 onChange={(e) => set({ category: e.target.value })}
@@ -162,9 +159,9 @@ export default function SkillModal(props: Props) {
                 ))}
               </datalist>
             </label>
-            <label className={labelCol}>
+            <label className={formLabel}>
               Who answers
-              <select className={field} value={form.specialist} onChange={(e) => set({ specialist: e.target.value })}>
+              <select className={formField} value={form.specialist} onChange={(e) => set({ specialist: e.target.value })}>
                 <option value="">The usual pick</option>
                 {specialists.map((s) => (
                   <option key={s.id} value={s.id}>
@@ -174,9 +171,9 @@ export default function SkillModal(props: Props) {
               </select>
             </label>
           </div>
-          <label className={labelCol}>
+          <label className={formLabel}>
             What it needs from the user — one per line (asked for first when the message lacks it)
-            <textarea className={field} rows={3} value={inputsText} onChange={(e) => setInputsText(e.target.value)} />
+            <textarea className={formField} rows={3} value={inputsText} onChange={(e) => setInputsText(e.target.value)} />
           </label>
           <fieldset className={toolGrid}>
             <legend className="px-[0.3rem] text-[0.85rem] text-muted">
@@ -193,10 +190,10 @@ export default function SkillModal(props: Props) {
               </label>
             ))}
           </fieldset>
-          <label className={labelCol}>
+          <label className={formLabel}>
             Instructions — the steps and the output format (Markdown)
             <textarea
-              className={`${field} [font-family:var(--font-mono)] text-[0.8rem]`}
+              className={`${formField} [font-family:var(--font-mono)] text-[0.8rem]`}
               required
               rows={12}
               value={form.instructions}

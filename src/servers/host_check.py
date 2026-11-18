@@ -33,6 +33,7 @@ from src.servers.net_scan import (
     _port_open,
     manufacturer,
 )
+from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger(__name__)
 
@@ -214,16 +215,11 @@ def run_host_check(
     **_: object,
 ) -> tuple[str, list[str], float]:
     """'ping 192.168.88.18' / 'is the printer at 10.0.0.5 up?' → up/down, latency, name, MAC, ports. No model."""
-    emit = on_progress or (lambda event: None)
-    agent = {"agent_id": "assistant", "name": "Assistant", "role": "Ping", "stage": "chat",
-             "accent": "#3aa89a", "job_id": job_id}
-    started = time.monotonic()
+    run = ToolRun(on_progress, query=query, job_id=job_id, role="Ping", model="ping_host", accent="#3aa89a")
     errors: list[str] = []
-    emit({"type": "session_start", "mode": "chat", "query": query})
-    emit({"type": "agent_start", **agent, "model": "ping_host"})
     target = pick_target(query, host)
     try:
-        emit({"type": "status", "agent_id": "assistant", "message": f"Pinging {target or 'the device'}…"})
+        run.status(f"Pinging {target or 'the device'}…")
         output = markdown(check(target, config))
     except ScanError as exc:
         output = f"Not checked: {exc}"
@@ -232,7 +228,4 @@ def run_host_check(
         logger.exception("host check failed")
         output = f"The check failed: {exc}"
         errors.append(str(exc))
-    elapsed = time.monotonic() - started
-    emit({"type": "agent_done", **agent, "elapsed_seconds": elapsed, "output": output})
-    emit({"type": "session_done", "total_seconds": elapsed, "errors": errors, "mode": "chat"})
-    return output, errors, elapsed
+    return run.finish(output, errors)
