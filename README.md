@@ -101,7 +101,7 @@ Agentic tools write files under `artifacts/{job_id}/files/`; the feed shows **Do
 | Piece | Role |
 |-------|------|
 | FastAPI (`web/server.py`) | Auth, agents, models, jobs, SSE |
-| Intent router (`src/intent_router.py`) | Forced intents, attachments; hands Auto to the assistant (tool calling) |
+| Job start (`src/llm/job_start.py`) | Composer buttons, attached pictures, image flags, agentic mode; hands everything else to the assistant (tool calling) |
 | Chat (`src/chat_runner.py`) | Single-call Assistant replies |
 | Worker (`src/jobs/worker.py` / `worker_main.py`) | Claims jobs: picks the specialist, then chat / tools / agentic |
 | DB (SQLite or Postgres) | Users, jobs, events, model registry |

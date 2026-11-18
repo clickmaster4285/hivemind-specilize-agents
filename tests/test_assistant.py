@@ -14,7 +14,7 @@ import pytest
 from src.llm import assistant
 from src.jobs import live
 from src.core.config import Config
-from src.llm.intent_router import classify_query
+from src.llm.job_start import classify_query
 from src.llm.llm_client import LLMStopped
 
 CFG = Config.from_env()

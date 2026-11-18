@@ -76,7 +76,7 @@ The job then waits until a worker claims it (`claim_next_job` → `status=runnin
 
 ## Layer 4 — First routing (fast, no model call)
 
-**File:** `src/llm/intent_router.py` → `classify_query`
+**File:** `src/llm/job_start.py` → `classify_query`
 
 Only the cases that are clear without a model are decided here; everything else goes to the assistant:
 

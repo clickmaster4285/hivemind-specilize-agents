@@ -10,7 +10,7 @@ What we already have (context)
 
 
 
-Intent routing already flags image asks as image_gen in [src/intent_router.py](src/intent_router.py).
+Intent routing already flags image asks as image_gen in [src/llm/job_start.py](../src/llm/job_start.py).
 
 
 
@@ -30,7 +30,7 @@ Hardware reality: Quadro P4000, 8GB, compute capability 6.1 (Pascal). Newer CUDA
 
 flowchart LR
   userMsg[User_message] --> createJob[create_job]
-  createJob --> router[intent_router]
+  createJob --> router[job_start]
   router -->|image_gen| worker[worker]
   worker --> imgGen[image_gen.run_image_gen]
   imgGen --> pipe[Diffusers_SDXL_singleton]

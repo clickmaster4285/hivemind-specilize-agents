@@ -15,7 +15,7 @@ from src.tools.attachments import save_images
 from src.core.config import Config
 from src.core.conversation import normalize_conversation
 from src.jobs.history_store import touch_thread
-from src.llm.intent_router import classify_query
+from src.llm.job_start import classify_query
 from src.llm.prompt_filter import BLOCK, MASK, check_prompt, mask_text
 from src.llm.model_registry import force_vision_model, resolve_model_plan
 from src.core.models_db import Job, JobEvent, User

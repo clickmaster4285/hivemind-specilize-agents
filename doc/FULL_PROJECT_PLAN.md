@@ -74,7 +74,7 @@ MulteAgent is a **team-usable, local-first platform** where people submit goals/
 ```text
 User submits job (mode=auto|chat|debate|agentic|mixed)
     │
-    ├─ auto ──► intent_router.classify_query
+    ├─ auto ──► job_start.classify_query
     │              ├─ chat ─────► single Assistant reply
     │              ├─ debate ───► panel → consensus
     │              └─ agentic ──► plan → tools/steps → critic
@@ -84,7 +84,7 @@ User submits job (mode=auto|chat|debate|agentic|mixed)
     └─ mixed ───► agentic → debate on findings
 ```
 
-**Router location:** `src/intent_router.py` (heuristics first; optional `MODEL_FAST` classify for ambiguous mid/long text).  
+**Router location:** `src/llm/job_start.py` (heuristics first; optional `MODEL_FAST` classify for ambiguous mid/long text).  
 **Chat path:** `src/chat_runner.py`. Wired in `create_job` + `process_job`. UI emits / shows `route_decided`.
 
 ---
@@ -143,7 +143,7 @@ User submits job (mode=auto|chat|debate|agentic|mixed)
 | `src/llm_client.py`              | Ollama + OpenAI-compatible chat       |
 | `src/llm_lock.py`                | Global GPU concurrency gate           |
 | `src/runner.py`                  | Debate panel → consensus              |
-| `src/intent_router.py`           | Auto mode: chat vs debate vs agentic  |
+| `src/llm/job_start.py`           | Auto mode: chat vs debate vs agentic  |
 | `src/chat_runner.py`             | Single-call Assistant path            |
 | `src/agentic/`                   | Planner / tools / critic loop         |
 | `src/jobs.py`                    | Create/claim/cancel jobs + events     |
@@ -435,7 +435,7 @@ Job states: `queued → running → succeeded | failed | cancelled`
 
 ### Phase C2 — Adaptive intent router (done)
 
-- `src/intent_router.py` heuristics (+ optional fast-model classify)  
+- `src/llm/job_start.py` heuristics (+ optional fast-model classify)  
 - `src/chat_runner.py` single Assistant path  
 - Modes: **Auto** (default), Chat, Debate, Agentic, Mixed  
 - `route_decided` event + UI route chip  
