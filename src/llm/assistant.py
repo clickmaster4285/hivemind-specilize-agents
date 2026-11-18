@@ -46,12 +46,14 @@ REPLY_PREVIEW_CHARS = 160
 
 @dataclass(frozen=True)
 class Tool:
-    name: str
-    intent: str                      # the worker branch that does the work
+    name: str                        # the tool's one name: the model, the router, the evals and the worker use it
     description: str
     params: dict[str, str] = field(default_factory=dict)      # parameter → description (all strings)
     required: tuple[str, ...] = ()
     available: Callable[[Config], bool] = lambda config: True
+    # only for a tool whose job the composer's buttons and the intent router also start (image_gen, doc_gen,
+    # diagram, kb, about, clarify): the job's kind, which those use too; "" = the tool's own name
+    intent: str = ""
     # stops to wait for the user's click (a confirm card): never offered when nobody is watching (a scheduled run)
     waits_for_user: bool = False
     # "module:function" that does the whole job in the worker, (query, *, job_id, config, on_progress, conversation,
@@ -62,6 +64,11 @@ class Tool:
     # only admins may run it: it probes the local network in depth (SECURITY_TOOLS_DECISION.md §2). The server tools
     # need a stored login, so they are gated by who holds it (SERVER_ACCESS_DECISION.md §8), not by a role
     admin_only: bool = False
+
+    @property
+    def job(self) -> str:
+        """The worker branch that does the work."""
+        return self.intent or self.name
 
     def runner(self) -> Callable[..., tuple[str, list[str], float]] | None:
         return _load_runner(self.run) if self.run else None
@@ -91,12 +98,13 @@ SERVER_TOOLS = frozenset({"operate_server", "deploy_project", "server_audit", "d
 SERVER_ARG = ("the server's name or IP if the user named one; else leave it empty: the tool uses the only server "
               "added, or asks which with the list. Never ask the user which server yourself")
 TOOLS: tuple[Tool, ...] = (
-    Tool("search_knowledge_base", "kb",
+    Tool("search_knowledge_base",
          "Search MulteAgent's own trusted documents ({sources}) and answer with citations. Use when the question "
          "is specifically about those documents' topics. Not for the latest version, release or news of "
          "something — the documents are a snapshot; use web_search for those.",
-         {"query": "the question"}, ("query",), lambda c: c.brain_enabled),
-    Tool("web_search", "web_search",
+         {"query": "the question"}, ("query",), lambda c: c.brain_enabled,
+         intent="kb"),
+    Tool("web_search",
          "Search the internet and answer WITH SOURCE LINKS. Prefer this over your own memory for substantive "
          "factual, technical or how-to questions where citing current, authoritative sources makes the answer "
          "trustworthy — e.g. 'how to configure a firewall', 'best practices for securing nginx', 'compare X vs Y', "
@@ -109,22 +117,22 @@ TOOLS: tuple[Tool, ...] = (
           "news": "'yes' when the question is about news or recent events (something that happened in the last "
                   "days, weeks or months — a scandal, an announcement, a launch, an election); empty otherwise"},
          ("query",), lambda c: bool(c.web_search_url)),
-    Tool("get_weather", "weather", "Current weather and a 3-day forecast for a place.",
+    Tool("get_weather", "Current weather and a 3-day forecast for a place.",
          {"place": "city name; empty = the user's own city"},
          run="src.tools.weather:run_weather"),
-    Tool("network_scan", "network_scan",
+    Tool("network_scan",
          "Actually scan the local private network now and list its devices (IP, name, MAC, open ports) as a table: "
          "an inventory, not a security check.",
          {"subnet": "e.g. 192.168.1.0/24; empty = this computer's network"}, (), lambda c: c.network_scan_enabled,
          run="src.servers.net_scan:run_network_scan"),
-    Tool("ping_host", "host_check",
+    Tool("ping_host",
          "Actually ping ONE device now and check it is up / running / online: replies and response time, "
          "its name, MAC address and manufacturer, open common ports. Use for 'ping 192.168.1.20', 'is the "
          "printer up', 'check 10.0.0.5 is running'. Never answer 'I cannot ping' — call this.",
          {"host": "the device's IP address (exactly as the user wrote it) or name"}, ("host",),
          lambda c: c.network_scan_enabled,
          run="src.servers.host_check:run_host_check"),
-    Tool("security_check", "security_check",
+    Tool("security_check",
          # the router reads only the first sentence (TOOL_LINE_CHARS): it alone must tell this from network_scan
          "Actually check the security of a device or a whole network now: open ports, software versions and their "
          "known vulnerabilities (CVEs), risky services. Risky: RDP, Telnet, databases, SMB; also HTTPS certificates, "
@@ -136,7 +144,7 @@ TOOLS: tuple[Tool, ...] = (
          {"target": "an IP (192.168.1.10), a network (192.168.1.0/24), 'this pc', or empty = the whole local network"},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.security_scan:run_security_check", admin_only=True),
-    Tool("image_scan", "image_scan",
+    Tool("image_scan",
          # the router reads only the first sentence (TOOL_LINE_CHARS)
          "Actually check the Docker images (containers) on this PC for known vulnerabilities in their packages. "
          "Trivy lists each CVE, its package and the version that fixes it. Use for 'scan my docker images', 'are "
@@ -145,7 +153,7 @@ TOOLS: tuple[Tool, ...] = (
          {"image": "a part of one image's name (postgres, searxng); empty = every image on this PC"},
          (), lambda c: c.security_scan_enabled and image_scan.available(),
          run="src.servers.image_scan:run_image_scan", admin_only=True),
-    Tool("server_audit", "server_audit",
+    Tool("server_audit",
          # the router reads only the first sentence (TOOL_LINE_CHARS): "server" + "vulnerable packages" must be in it;
          # "security" keeps "list the projects on the uk server" out of it (ISSUES_LOG O93)
          "Security audit of the user's own Linux server over SSH (Settings → Devices): known vulnerabilities (CVEs) "
@@ -156,7 +164,7 @@ TOOLS: tuple[Tool, ...] = (
          {"server": SERVER_ARG},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.linux_audit:run_server_audit"),
-    Tool("nvr_cameras", "nvr_cameras",
+    Tool("nvr_cameras",
          "Log in to a camera recorder (NVR/DVR, Hikvision or Dahua) added this session in Settings → Devices and "
          "list ALL its cameras as a table: channel, camera name, IP address, model, online/offline. Read-only. "
          "Use for 'tell me all the cameras on the NVR', 'which cameras are offline', 'access the NVR at "
@@ -164,7 +172,7 @@ TOOLS: tuple[Tool, ...] = (
          {"nvr": "the recorder's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.nvr:run_nvr_cameras"),
-    Tool("network_device", "network_device",
+    Tool("network_device",
          "Log in to a router or switch (MikroTik) added this session in Settings → Devices and read it, read-only: "
          "model, firmware, uptime, CPU and memory, every interface/port and whether it is up, the devices connected "
          "(DHCP leases with IP, MAC and host name), the ARP table and the recent log. Use for 'check the router', "
@@ -172,7 +180,7 @@ TOOLS: tuple[Tool, ...] = (
          {"device": "the router's or switch's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.netdev:run_network_device"),
-    Tool("diagnose_server", "server_diagnose",
+    Tool("diagnose_server",
          # the router reads only the first sentence: looking and listing are in it, so "tell me all the projects on
          # the uk server" comes here, not to the security audit (ISSUES_LOG O93)
          "Log in to one of the user's Linux servers (Settings → Devices) and LOOK read-only: list its projects, "
@@ -185,7 +193,7 @@ TOOLS: tuple[Tool, ...] = (
          {"server": SERVER_ARG},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.server_ops:run_server_diagnose"),
-    Tool("operate_server", "server_operate",
+    Tool("operate_server",
          "Log in to one of the user's Linux servers (Settings → Devices) and DO WORK that may change it: "
          "run a command or script, CREATE or edit files and folders, WRITE content into a file on the server, "
          "restart or install a service, edit config, apply a fix. Each changing command is gated by the server's "
@@ -198,7 +206,7 @@ TOOLS: tuple[Tool, ...] = (
           "task": "what to do on the server (a command, a file to create/run, or the change to make)"}, ("task",),
          lambda c: c.security_scan_enabled, waits_for_user=True,
          run="src.servers.server_ops:run_server_operate"),
-    Tool("deploy_project", "server_deploy",
+    Tool("deploy_project",
          # the router reads only the first sentence (TOOL_LINE_CHARS): pull + deploy + project must be in it
          "Deploy a project on the user's Linux server: pull the latest code from a branch, install new "
          "dependencies, build and restart it (pm2, systemd, nginx). It finds the project folder even from a "
@@ -211,13 +219,15 @@ TOOLS: tuple[Tool, ...] = (
           "branch": "the branch the user named; empty if none"},
          (), lambda c: c.security_scan_enabled, waits_for_user=True,
          run="src.servers.deploy:run_deploy_project"),
-    Tool("generate_image", "image_gen", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
-         {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None),
-    Tool("draw_diagram", "diagram",
+    Tool("generate_image", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
+         {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None,
+         intent="image_gen"),
+    Tool("draw_diagram",
          "Draw or change a diagram with boxes, arrows and exact labels: architecture, flowchart, network schematic, "
          "sequence, hierarchy, org chart.", {"request": "what the diagram shows"}, ("request",),
-         run="src.tools.diagram_gen:run_diagram"),
-    Tool("site_audit", "site_audit",
+         run="src.tools.diagram_gen:run_diagram",
+         intent="diagram"),
+    Tool("site_audit",
          "Actually read a PUBLIC website now (politely, up to a few dozen pages) and audit its SEO and content: "
          "titles, meta descriptions, headings, broken pages, image alt text, mobile, canonical, structured data, "
          "robots.txt and sitemap → a maturity score per area and the fixes in order of impact. Use for 'audit "
@@ -226,13 +236,13 @@ TOOLS: tuple[Tool, ...] = (
           "track": "only when the user asks to track / monitor the site: re-audit every N days (7 = weekly, "
                    "30 = monthly); empty otherwise"}, ("url",),
          run="src.tools.site_audit:run_site_audit"),
-    Tool("seo_projects", "seo_projects",
+    Tool("seo_projects",
          "Show the websites the user has audited or tracks, with each one's SEO score trend over time and what "
          "changed (fixed and new issues); can stop tracking a site. Use for 'show my SEO projects', 'how is my "
          "site's SEO trending', 'stop tracking example.com'.",
          {"untrack": "a website to stop tracking; empty otherwise"},
          run="src.tools.seo_projects:run_seo_projects"),
-    Tool("compare_sites", "compare_sites",
+    Tool("compare_sites",
          "Compare the user's website with competitors: audits each site, scores them side by side, lists what "
          "competitors do better and the topics they cover that the user's site doesn't (content gap), with pages to "
          "write. Competitors can be named, or found from the sites ranking for a keyword. Use for 'compare mysite.com "
@@ -241,7 +251,7 @@ TOOLS: tuple[Tool, ...] = (
           "keyword": "a keyword to find competitors by when none are named; empty otherwise",
           "market": MARKET_ARG}, ("url",),
          run="src.tools.compare_sites:run_compare_sites"),
-    Tool("keyword_research", "keyword_research",
+    Tool("keyword_research",
          "Keyword research from live search results (approximate, no search volume): who ranks for a keyword, where "
          "a given website ranks for it, keyword ideas people search, an estimated difficulty and what the top pages "
          "cover. Use for 'keyword ideas for X', 'where does mysite.com rank for Y', 'how hard is it to rank for Z', "
@@ -251,7 +261,7 @@ TOOLS: tuple[Tool, ...] = (
           "market": MARKET_ARG}, ("keywords",),
          lambda c: bool(c.web_search_url),
          run="src.tools.keyword_research:run_keyword_research"),
-    Tool("write_content", "content_write",
+    Tool("write_content",
          "Write a full piece of marketing or web copy — blog post, article, landing page, product or service page, "
          "email, newsletter, ad or social post — in rounds: brief, draft, checks (keywords, length, readability, meta "
          "title and description) and an editor's review, then improved drafts; shows every draft's score. Also "
@@ -262,7 +272,7 @@ TOOLS: tuple[Tool, ...] = (
           "url": "address of an existing page to improve; empty for new content",
           "market": MARKET_ARG}, ("request",),
          run="src.tools.content_writer:run_content_writer"),
-    Tool("create_document", "doc_gen",
+    Tool("create_document",
          "Create a downloadable Word, PDF, PowerPoint or Excel file for the user to save on their own computer. "
          "Use whenever the user asks for the result as a file (a PDF, a spreadsheet, 'into Excel', a deck), even "
          "when its content needs facts or prices — the file is made with them. This is NOT for creating files on a server — to create or write a file on a Linux server, use "
@@ -270,20 +280,23 @@ TOOLS: tuple[Tool, ...] = (
          {"format": "docx, pdf, pptx, xlsx, html, md or txt", "request": "what the file should contain",
           "source": "'previous_answer' when the user wants an answer already given in this chat turned into the "
                     "file as it is ('this', 'that', 'the above', 'your answer' as a PDF); otherwise 'new'"},
-         ("format", "request")),
-    Tool("about_multeagent", "about",
+         ("format", "request"),
+         intent="doc_gen"),
+    Tool("about_multeagent",
          "Live facts about this assistant: what is in its knowledge base ('your brain', your data, your sources), "
-         "its model, and what it can do. Use whenever the user asks about you — you do not know your sources by heart."),
-    Tool("ask_clarification", "clarify",
+         "its model, and what it can do. Use whenever the user asks about you — you do not know your sources by heart.",
+         intent="about"),
+    Tool("ask_clarification",
          "Ask the user 1–2 short multiple-choice questions FIRST — but ONLY when the request is genuinely ambiguous "
          "or missing key information needed to answer well (unstated budget, scale, platform, goal, audience, "
          "experience level). Do NOT use for clear questions, greetings, or anything you can reasonably answer. "
          "After the user ticks their choices you will answer the original question using them.",
          {"questions": 'a JSON array of 1-2 items, each {"question": "...", "options": ["choice A", "choice B", ...]} '
-          "with 2-4 short options per question"}, ("questions",)),
+          "with 2-4 short options per question"}, ("questions",),
+         intent="clarify"),
 )
 BY_NAME = {t.name: t for t in TOOLS}
-BY_INTENT = {t.intent: t for t in TOOLS}          # the worker branches on the intent (a forced one has no tool)
+BY_JOB = {t.job: t for t in TOOLS}                # the worker branches on the job (a forced one has no tool)
 
 
 def tool_flag(args: dict[str, Any], name: str, default: bool = False) -> bool:
@@ -501,7 +514,7 @@ def _routed_tool(route: Route, config: Config, specialist: Specialist | None, *,
                     [n for n in tool.required if not args.get(n)])
         return None
     logger.info("assistant: the router runs %s %s", tool.name, args)
-    return Decision(False, tool.intent, tool.name, args, learning=route.learning)
+    return Decision(False, tool.job, tool.name, args, learning=route.learning)
 
 
 def pre_route(route: Route, query: str, config: Config, specialist: Specialist | None, *,
@@ -616,7 +629,7 @@ def decide(
                 return Decision(False, "clarify", "ask_clarification", {"questions": questions})
             live.finish_agent(job_id, "assistant")
             logger.info("assistant chose %s %s", tool.name, call["arguments"])
-            return Decision(False, tool.intent, tool.name, dict(call["arguments"] or {}), learning=route.learning)
+            return Decision(False, tool.job, tool.name, dict(call["arguments"] or {}), learning=route.learning)
     if calls:               # it wanted a tool we can't run: its text was only a preface cut off mid-sentence
         logger.info("assistant: unusable tool call(s) %s — answering normally", [c["name"] for c in calls])
     if not text or calls:   # no usable answer: the knowledge-base path answers (its bubble replaces this one)

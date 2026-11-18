@@ -137,7 +137,7 @@ def test_wired_for_the_it_specialist_credential_gated_not_admin_only():
     from src.llm.assistant import BY_NAME
     from src.llm.specialists import default_specialists
 
-    assert BY_NAME["diagnose_server"].intent == "server_diagnose"
+    assert BY_NAME["diagnose_server"].job == "diagnose_server"
     assert BY_NAME["diagnose_server"].runner() is so.run_server_diagnose
     assert not BY_NAME["diagnose_server"].admin_only         # gated by who holds the server login, not a role
     by_id = {s.id: s for s in default_specialists()}
@@ -239,7 +239,7 @@ def test_operate_wired_and_it_only():
     from src.llm.assistant import BY_NAME
     from src.llm.specialists import default_specialists
 
-    assert BY_NAME["operate_server"].intent == "server_operate"
+    assert BY_NAME["operate_server"].job == "operate_server"
     assert BY_NAME["operate_server"].runner() is so.run_server_operate
     by_id = {s.id: s for s in default_specialists()}
     assert "operate_server" in by_id["it"].tools and "operate_server" not in by_id["development"].tools

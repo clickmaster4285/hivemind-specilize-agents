@@ -14,7 +14,7 @@ from src.core.conversation import normalize_conversation
 from src.jobs.chat_memory import chat_memory, prefold, remember_job
 from src.jobs.chat_runner import run_chat
 from src.core.clock import set_time_zone
-from src.llm.assistant import BY_INTENT, CLARIFY_INTRO, decide, speaker, tool_flag
+from src.llm.assistant import BY_JOB, CLARIFY_INTRO, decide, speaker, tool_flag
 from src.llm.skills import Skill
 from src.llm.skills import apply as apply_skill
 from src.llm.skills import for_job as skill_for_job
@@ -311,7 +311,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                 mode = "agentic"
 
         # a tool that does the whole job itself (its runner and admin flag are on its entry in assistant.TOOLS)
-        tool = BY_INTENT.get(intent)
+        tool = BY_JOB.get(intent)
         runner = tool.runner() if tool else None
         if runner is not None and tool.admin_only and not _is_admin(config, user_id):
             _refuse(config, job_id, query, on_progress, tool.name)

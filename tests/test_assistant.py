@@ -115,7 +115,7 @@ def test_stopped_answer_gets_no_extras(monkeypatch):
 def test_tool_call_returns_tool_and_arguments(monkeypatch):
     _fake_model(monkeypatch, calls=[{"name": "get_weather", "arguments": {"place": "Lahore"}}])
     d = assistant.decide("kal Lahore mein barish hogi?", job_id="a2", config=CFG)
-    assert not d.answered and (d.intent, d.tool, d.args) == ("weather", "get_weather", {"place": "Lahore"})
+    assert not d.answered and (d.intent, d.tool, d.args) == ("get_weather", "get_weather", {"place": "Lahore"})
 
 
 def test_unknown_or_switched_off_tool_falls_back_to_the_knowledge_base(monkeypatch):
@@ -232,11 +232,15 @@ def test_the_prompt_names_added_servers_only_when_given():
     assert "already added" not in assistant.messages_for("hi", CFG, [], "m")[0]["content"]
 
 
-def test_every_tools_runner_loads_and_each_intent_is_one_tool():
+def test_every_tools_runner_loads_and_each_tool_has_one_name():
     """The runners are "module:function" strings (imported on first use): a typo must fail here, not in a chat."""
-    from src.llm.assistant import BY_INTENT, TOOLS
+    from src.llm.assistant import BY_JOB, TOOLS
 
-    assert len(BY_INTENT) == len(TOOLS)                  # the worker finds a tool by its intent: never two per intent
+    assert len(BY_JOB) == len(TOOLS)                     # the worker finds a tool by its job: never two per job
+    # a second name only where the composer's buttons and the intent router start the same job
+    assert {t.name: t.intent for t in TOOLS if t.intent} == {
+        "search_knowledge_base": "kb", "generate_image": "image_gen", "draw_diagram": "diagram",
+        "create_document": "doc_gen", "about_multeagent": "about", "ask_clarification": "clarify"}
     for tool in TOOLS:
         if tool.run:
             assert callable(tool.runner()), tool.name
