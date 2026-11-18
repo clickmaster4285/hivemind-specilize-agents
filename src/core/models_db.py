@@ -334,3 +334,27 @@ class ChatThreadRow(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_through: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     continued_from: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class ScheduleRow(Base):
+    """A question that asks itself again on a timetable (BACKLOG L26 H1, src/jobs/schedules.py): at its time a
+    normal job is started in the chat `thread_id`, so the answer lands there. `every` = hour | day | week;
+    `at_minute` = minutes after the hour (hour) or after local midnight (day, week), in `time_zone`;
+    `weekday` 0 = Monday (week only)."""
+
+    __tablename__ = "schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    thread_id: Mapped[str] = mapped_column(String(36), index=True)
+    prompt: Mapped[str] = mapped_column(Text)
+    every: Mapped[str] = mapped_column(String(8))
+    at_minute: Mapped[int] = mapped_column(Integer, default=0)
+    weekday: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    time_zone: Mapped[str] = mapped_column(String(64))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

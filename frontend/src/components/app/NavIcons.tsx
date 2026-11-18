@@ -60,6 +60,12 @@ export const IconLibrary = () => (
     <path d="M14 3v5h5M9 13h6M9 17h4" />
   </Icon>
 );
+export const IconClock = () => (
+  <Icon>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5V12l3 2" />
+  </Icon>
+);
 export const IconDevices = () => (
   <Icon>
     <rect x="3" y="4" width="18" height="6" rx="1.5" />

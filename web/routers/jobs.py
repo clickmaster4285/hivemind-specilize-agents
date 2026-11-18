@@ -79,6 +79,7 @@ def create_job_endpoint(
                 "options": payload.options,
                 "followup": payload.followup,
                 "refine": payload.refine,
+                "client_time_zone": payload.client_time_zone,
             },
             config=config,
             priority=payload.priority if user.role == "admin" else 100,

@@ -29,7 +29,8 @@ from src.llm.model_registry import sync_models_from_ollama
 from web.brain_routes import router as brain_router
 from web.headers import SecurityHeaders
 from web.limits import RequestLimits
-from web.routers import auth, history, jobs, library, models, servers, skills, specialists, system, usage, users
+from web.routers import (auth, history, jobs, library, models, schedules, servers, skills, specialists, system, usage,
+                         users)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -63,6 +64,10 @@ async def lifespan(_app: FastAPI):
     from src.tools.seo_projects import start_scheduler as start_seo_tracker
 
     start_seo_tracker(config)
+    # Scheduled tasks (BACKLOG L26 H1): a saved question asks itself again in its chat on time
+    from src.jobs.schedules import start_scheduler as start_task_scheduler
+
+    start_task_scheduler(config)
     if config.image_warm_on_start:
         # SDXL lives in its own process; start it (and load the model) in the background
         import threading
@@ -101,7 +106,8 @@ app.add_middleware(RequestLimits)
 app.add_middleware(SecurityHeaders)
 
 # One router per domain (web/routers/*). brain_router carries its own /api/brain prefix.
-for module in (system, auth, users, specialists, skills, servers, models, jobs, history, library, usage):
+for module in (system, auth, users, specialists, skills, servers, models, jobs, history, library, schedules,
+               usage):
     app.include_router(module.router)
 app.include_router(brain_router)
 

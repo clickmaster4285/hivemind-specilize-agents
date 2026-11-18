@@ -221,6 +221,8 @@ class JobCreatePayload(BaseModel):
     followup: bool = False
     # "Try again, better": the user's reason for a 👎, steered into this regenerate (feedback phase 2)
     refine: str | None = None
+    # the browser's IANA time zone: the job's prompts tell the time in it (was dropped before, ISSUES_LOG O92)
+    client_time_zone: str | None = Field(default=None, max_length=64)
 
 
 class ConfirmPayload(BaseModel):
@@ -232,3 +234,18 @@ class ExportPayload(BaseModel):
     """"Download as": the answer exactly as shown (markdown) and the format to convert it to."""
     format: Literal["md", "txt", "docx", "pdf", "pptx", "html"]
     text: str = Field(min_length=1, max_length=400_000)
+
+
+class ScheduleCreatePayload(BaseModel):
+    """A question repeated in a chat every hour / day / week (BACKLOG L26 H1, src/jobs/schedules.py)."""
+
+    thread_id: str = Field(min_length=1, max_length=36)
+    prompt: str = Field(min_length=1)
+    every: Literal["hour", "day", "week"]
+    at_minute: int = 0
+    weekday: int | None = None
+    time_zone: str = Field(min_length=1, max_length=64)
+
+
+class ScheduleUpdatePayload(BaseModel):
+    enabled: bool

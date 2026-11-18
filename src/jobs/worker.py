@@ -318,7 +318,9 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                               on_progress=on_progress, specialist=specialist,
                               # a skill already says what is wanted: no clarifying questions (ISSUES_LOG O73)
                               clarify_ok=not bool(payload.get("followup")) and skill is None, refine=refine,
-                              may_hand_over=picked, servers=_server_names(user_id))
+                              may_hand_over=picked, servers=_server_names(user_id),
+                              # a scheduled run: nobody is there to click a confirm card (BACKLOG L26 H1)
+                              unattended=bool(payload.get("scheduled")))
             if decision.answered:
                 _finish(config, job_id, decision.errors)
                 return

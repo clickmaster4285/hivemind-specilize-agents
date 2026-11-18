@@ -42,7 +42,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L23](#l23-frontend-components-in-feature-folders---done-2026-11-11-issues_log-o43) | Frontend components in feature folders | ✅ 2026-11-11 |  |
 | [L24](#l24-ui-like-the-big-chat-apps--planned-2026-11-17-issues_log-o86) | UI like the big chat apps | U1–U8 built; connectors later | user's screenshots of DeepSeek, ChatGPT, Claude |
 | [L25](#l25-vulnerability-finders--explained-2026-11-17-issues_log-o87) | Vulnerability finders (nmap + CVEs, Nuclei, Trivy, OpenVAS) | V1, V3 (images) built; V2, V4 later | [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md) |
-| [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H3 built; H1, H2 later | NousResearch hermes-agent (MIT) |
+| [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H1, H2, H3 built (2026-11-18) | NousResearch hermes-agent (MIT) |
 
 ---
 
@@ -705,6 +705,6 @@ Telegram / email gateway). Plan, not built:
 | H3 | Search across all chats | full-text search + summaries over past sessions | sidebar search over the titles of the latest 100 jobs; chat recall (brain.chat_passages) for chats since O63 | `GET /api/search?q=`: Postgres full-text over questions and answers (all chats, owner only) plus the semantic match from chat_passages; results with a snippet open the chat at that message; also fixes "older chats than the latest 100 don't open" |
 
 - [x] H3 search all chats — built 2026-11-17 (word search; the semantic match from chat_passages later)
-- [ ] H1 scheduled tasks
+- [x] H1 scheduled tasks — built 2026-11-18: ⋮ → Repeat… on a chat (every hour / day / week, the browser's zone), /schedules page, unattended runs without operate_server or clarify ([schedules.py](../src/jobs/schedules.py))
 - [x] H2 skills from tasks — built 2026-11-17: "Save as skill" (✦) under every answer → `POST /api/skills/draft` (src/llm/skill_draft.py) → the skill editor opens filled in; saved only by the user
 

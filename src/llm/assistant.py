@@ -50,6 +50,8 @@ class Tool:
     params: dict[str, str] = field(default_factory=dict)      # parameter → description (all strings)
     required: tuple[str, ...] = ()
     available: Callable[[Config], bool] = lambda config: True
+    # stops to wait for the user's click (a confirm card): never offered when nobody is watching (a scheduled run)
+    waits_for_user: bool = False
 
     def schema(self, description: str | None = None) -> dict[str, Any]:
         return {"type": "function", "function": {
@@ -161,7 +163,7 @@ TOOLS: tuple[Tool, ...] = (
          "follow-up file and command tasks — do NOT use create_document, which only makes a local download.",
          {"server": SERVER_ARG,
           "task": "what to do on the server (a command, a file to create/run, or the change to make)"}, ("task",),
-         lambda c: c.security_scan_enabled),
+         lambda c: c.security_scan_enabled, waits_for_user=True),
     Tool("generate_image", "image_gen", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
          {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None),
     Tool("draw_diagram", "diagram",
@@ -291,11 +293,12 @@ def _source_titles(config: Config) -> str:
     return text
 
 
-def tool_schemas(config: Config, allowed: list[str] | None = None) -> list[dict[str, Any]]:
-    """allowed = a specialist's tools (None = every tool); about_multeagent and calculate are always offered."""
+def tool_schemas(config: Config, allowed: list[str] | None = None, *, unattended: bool = False) -> list[dict[str, Any]]:
+    """allowed = a specialist's tools (None = every tool); about_multeagent and calculate are always offered.
+    unattended = nobody is watching (a scheduled run, BACKLOG L26 H1): no tool that waits for the user's click."""
     out = []
     for tool in TOOLS:
-        if not tool.available(config):
+        if not tool.available(config) or (unattended and tool.waits_for_user):
             continue
         if allowed is not None and tool.name not in allowed and tool.name not in ("about_multeagent", "ask_clarification"):
             continue
@@ -428,11 +431,13 @@ def hand_over(tool_name: str, specialist: Specialist | None,
     return other or specialist
 
 
-def _routed_tool(route: Route, config: Config, specialist: Specialist | None) -> Decision | None:
+def _routed_tool(route: Route, config: Config, specialist: Specialist | None, *,
+                 unattended: bool = False) -> Decision | None:
     """The router named a tool (O61): run it straight away, skipping the ~20 s tool choice, when the tool is one
     the tool choice would offer here and every required argument is filled; else None (the tool choice)."""
     tool = BY_NAME.get(route.tool)
-    offered = {t["function"]["name"] for t in tool_schemas(config, specialist.tools if specialist else None)}
+    offered = {t["function"]["name"]
+               for t in tool_schemas(config, specialist.tools if specialist else None, unattended=unattended)}
     if tool is None or tool.name in NOT_LISTED | NOT_RUN or tool.name not in offered:
         logger.info("assistant: the router named %r, not offered here: the tool choice decides", route.tool)
         return None
@@ -446,11 +451,11 @@ def _routed_tool(route: Route, config: Config, specialist: Specialist | None) ->
 
 
 def pre_route(route: Route, query: str, config: Config, specialist: Specialist | None, *,
-              clarify_ok: bool = True, previous: str = "") -> Decision | None:
+              clarify_ok: bool = True, previous: str = "", unattended: bool = False) -> Decision | None:
     """Act on the router's verdict before the model sees the tools; None = let the model choose.
     decide() and evaluate() share it, so the eval measures the path real chats take."""
     if route.route == TOOL:
-        return _routed_tool(route, config, specialist)
+        return _routed_tool(route, config, specialist, unattended=unattended)
     if route.route == SEARCH and _web_allowed(config, specialist):
         logger.info("assistant: the router sends this to web_search")
         args = ({"query": route.query or query} | ({"news": "yes"} if route.news else {})
@@ -478,11 +483,14 @@ def decide(
     refine: str | None = None,
     may_hand_over: bool = False,
     servers: str = "",
+    unattended: bool = False,
 ) -> Decision:
     """One model call with the tools: a direct answer streams into the chat; a tool call returns.
     may_hand_over: the specialist was picked by the model (not a skill or the user's choice), so a tool it lacks
     moves the job to the specialist that has it (O69).
     servers: the names of the servers the user added; named in the prompt when a server tool is offered (O83).
+    unattended: a scheduled run nobody watches (BACKLOG L26 H1): no clarifying questions, no tool that waits for
+    the user's click.
     With a specialist: its instructions join the prompt and only its tools are offered.
     clarify_ok=False (a follow-up to an approach/clarify) drops the ask_clarification tool, so the
     model routes normally (web search still available) but cannot ask to clarify again."""
@@ -495,18 +503,19 @@ def decide(
     opened = {"done": False}
 
     emit({"type": "status", "message": "Thinking…"})
-    clarify_ok = clarify_ok and not _just_clarified(conversation)
+    clarify_ok = clarify_ok and not unattended and not _just_clarified(conversation)
     # a picked specialist: the router sees every tool, so it can name one this specialist lacks, and the job goes
     # to one that has it. A skill or the user's choice keeps its own tools (the keyword-plan skill went to the
     # site audit when the router saw every tool, O72)
     own_tools = specialist.tools if specialist else None
-    route = route_message(query, config, conversation, tools=tool_schemas(config, None if may_hand_over else own_tools))
+    route = route_message(query, config, conversation,
+                          tools=tool_schemas(config, None if may_hand_over else own_tools, unattended=unattended))
     if may_hand_over:
         specialist = hand_over(route.tool if route.route == TOOL else "", specialist)
-    tools = tool_schemas(config, specialist.tools if specialist else None)
+    tools = tool_schemas(config, specialist.tools if specialist else None, unattended=unattended)
     agent = {"agent_id": "assistant", **speaker(specialist), "role": "Direct reply", "stage": "chat", "model": model}
     routed = pre_route(route, query, config, specialist, clarify_ok=clarify_ok,
-                       previous=previous_question(conversation))
+                       previous=previous_question(conversation), unattended=unattended)
     if routed is not None:
         return routed
 
@@ -542,7 +551,8 @@ def decide(
         if (may_hand_over and tool and allowed is not None and tool.name not in allowed
                 and hand_over(tool.name, specialist) is not specialist):
             allowed.add(tool.name)            # another specialist has it: run it rather than answer without it (O69)
-        if tool and tool.available(config) and (allowed is None or tool.name in allowed):
+        if (tool and tool.available(config) and (allowed is None or tool.name in allowed)
+                and not (unattended and tool.waits_for_user)):
             if tool.name == "ask_clarification":
                 questions = _parse_clarify(call["arguments"])
                 if not questions:

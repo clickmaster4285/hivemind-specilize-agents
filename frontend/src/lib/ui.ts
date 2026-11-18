@@ -88,3 +88,8 @@ export const diagram = {
 export const HOVER_CARD_DELAY_MS = 450;
 
 export const composerColumn = "mx-auto w-full max-w-[820px] px-4";
+
+/** A form's text box / select and its label above it (dialogs: Repeat…). */
+export const formField =
+  "w-full rounded-[0.55rem] border border-line bg-panel-2 px-[0.7rem] py-[0.55rem] font-[inherit] text-text outline-none resize-y";
+export const formLabel = "flex flex-col gap-1 text-[0.82rem] text-muted";

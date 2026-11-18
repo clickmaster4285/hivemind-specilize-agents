@@ -7,6 +7,7 @@ export const SETTINGS_PATH = "/settings";
 export const DEVICES_PATH = "/devices";
 export const PROJECTS_PATH = "/projects";
 export const LIBRARY_PATH = "/library";
+export const SCHEDULES_PATH = "/schedules";
 const CHAT_PREFIX = "/chat/";
 
 /** The navbar title of each own page; a chat page shows the chat's title instead. */
@@ -16,6 +17,7 @@ export const PAGE_TITLES: Record<string, string> = {
   [DEVICES_PATH]: "Devices",
   [PROJECTS_PATH]: "Projects",
   [LIBRARY_PATH]: "Library",
+  [SCHEDULES_PATH]: "Scheduled",
 };
 
 export function chatPath(id: string): string {

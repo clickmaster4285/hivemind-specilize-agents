@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  IconDevices, IconFilter, IconFolder, IconLibrary, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch,
+  IconClock, IconDevices, IconFilter, IconFolder, IconLibrary, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch,
   IconSettings,
 } from "@/components/app/NavIcons";
+import RepeatDialog from "@/components/app/RepeatDialog";
 import type { HistoryApi } from "@/hooks/useHistory";
 import { searchChats, type ChatSearchHit } from "@/lib/api";
-import { DEVICES_PATH, LIBRARY_PATH, PLUGINS_PATH, PROJECTS_PATH, SETTINGS_PATH } from "@/lib/routes";
+import { DEVICES_PATH, LIBRARY_PATH, PLUGINS_PATH, PROJECTS_PATH, SCHEDULES_PATH, SETTINGS_PATH } from "@/lib/routes";
 import { groupThreads, threadDate, type ThreadView } from "@/lib/threadGroups";
 import type { ChatThread } from "@/lib/threads";
 import { brandMark, btn, HOVER_CARD_DELAY_MS, iconBtn } from "@/lib/ui";
@@ -33,6 +34,7 @@ type Props = {
 const PAGES = [
   { path: PROJECTS_PATH, label: "Projects", Icon: IconFolder },
   { path: LIBRARY_PATH, label: "Library", Icon: IconLibrary },
+  { path: SCHEDULES_PATH, label: "Scheduled", Icon: IconClock },
   { path: DEVICES_PATH, label: "Devices", Icon: IconDevices, module: "devices" },
   { path: PLUGINS_PATH, label: "Plugins", Icon: IconPlug },
 ];
@@ -240,6 +242,7 @@ function ThreadList({
   };
   // the per-chat ⋮ menu — one at a time, positioned from the button so the scrolling list can't clip it
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [repeating, setRepeating] = useState<ChatThread | null>(null);
   const menuThread = history.filteredThreads.find((t) => t.id === menu?.id) || null;
   // the hover card: full title and date beside the row (one-line titles are cut with "…", L24 U3)
   const [card, setCard] = useState<{ thread: ChatThread; x: number; y: number } | null>(null);
@@ -473,6 +476,10 @@ function ThreadList({
               <span>✏️</span>
               Rename
             </button>
+            <button type="button" className={menuRow} onClick={() => { setMenu(null); setRepeating(menuThread); }}>
+              <span>🔁</span>
+              Repeat…
+            </button>
             {history.projects.length ? (
               <>
                 <div className="my-1 border-t border-line" />
@@ -511,6 +518,9 @@ function ThreadList({
             </button>
           </div>
         </>
+      ) : null}
+      {repeating ? (
+        <RepeatDialog thread={repeating} onClose={() => setRepeating(null)} onSaved={() => setRepeating(null)} />
       ) : null}
     </div>
   );

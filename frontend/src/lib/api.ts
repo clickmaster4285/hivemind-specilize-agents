@@ -499,6 +499,43 @@ export async function listLibrary(): Promise<LibraryFile[]> {
   return request("/api/library");
 }
 
+/** A question repeated in a chat every hour / day / week (BACKLOG L26 H1, web/routers/schedules.py).
+ *  at_minute: minutes past the hour (hour) or after local midnight (day, week); weekday 0 = Monday. */
+export type ScheduleEvery = "hour" | "day" | "week";
+export type Schedule = {
+  id: number;
+  thread_id: string;
+  chat_title: string;
+  prompt: string;
+  every: ScheduleEvery;
+  at_minute: number;
+  weekday: number | null;
+  time_zone: string;
+  enabled: boolean;
+  next_run_at: string | null;
+  last_run_at: string | null;
+  last_job_id: string | null;
+  last_error: string;
+  created_at: string | null;
+};
+export type ScheduleInput = Pick<Schedule, "thread_id" | "prompt" | "every" | "at_minute" | "weekday" | "time_zone">;
+
+export async function listSchedules(): Promise<Schedule[]> {
+  return request("/api/schedules");
+}
+
+export async function createSchedule(input: ScheduleInput): Promise<Schedule> {
+  return request("/api/schedules", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function setScheduleEnabled(id: number, enabled: boolean): Promise<Schedule> {
+  return request(`/api/schedules/${id}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
+}
+
+export async function deleteSchedule(id: number): Promise<void> {
+  return request(`/api/schedules/${id}`, { method: "DELETE" });
+}
+
 /** One chat found by a search of every message (GET /api/search, BACKLOG L26 H3): its newest matching message,
  *  a snippet around the hit, and all its message ids, so a chat older than the loaded list still opens. */
 export type ChatSearchHit = {
