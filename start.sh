@@ -151,14 +151,12 @@ stop_service() {  # stop_service <name> <port>
     fi
 }
 
-# One line from /api/health: what the health check and --status print
+# One line on the API: what the health check and --status print. /api/health tells an anonymous caller only that the API
+# is up, so the details come from the project itself on this machine (src/core/status.py)
 api_summary() {
-    curl -fsS --max-time 5 "http://127.0.0.1:$API_PORT/api/health" | "$PYTHON" -c '
-import json, sys
-h = json.load(sys.stdin)
-image = (h.get("image_pipeline") or {}).get("state")
-print(f"   \033[32mOK\033[0m   API up - model {h.get("model")}, Ollama reachable: {h.get("llm_reachable")}, "
-      f"image model: {image}, jobs waiting: {h.get("queue_depth")}")'
+    local line
+    line=$(cd "$ROOT" && "$PYTHON" -m src.core.status 2>/dev/null) || return 1
+    ok "API up - $line"
 }
 
 pid_note() {  # pid_note <name> — "(pid N, log logs/<name>.log)" when this script started it
@@ -226,7 +224,7 @@ if not models:
 
     step "API (port $API_PORT)"
     if port_open "$API_PORT"; then
-        api_summary || bad "listening, but /api/health does not answer — see logs/api.log"
+        api_summary || bad "listening, but its status could not be read — see logs/api.log"
         ok "listening$(pid_note api)"
     else
         bad "not running — start it:  ./start.sh"

@@ -91,7 +91,6 @@ export type Health = {
   ok: boolean;
   llm_reachable: boolean;
   model: string;
-  base_url: string;
   queue_depth?: number;
   estimated_wait_seconds?: number;
   llm_slots?: number;
@@ -103,7 +102,6 @@ export type Health = {
     loaded?: boolean;
     path?: string | null;
   };
-  auth_required?: boolean;
   /** Chat memory (BACKLOG L12): the model's context window and how much of it a chat's history may use. */
   context?: { window: number; history_budget: number };
 };

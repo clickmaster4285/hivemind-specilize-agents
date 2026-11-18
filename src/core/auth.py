@@ -218,6 +218,15 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
+def optional_user(request: Request, db: Session) -> User | None:
+    """The signed-in user, or None (no cookie, an expired or revoked session) — for answers that only say less to an
+    anonymous caller instead of refusing them (GET /api/health)."""
+    try:
+        return get_current_user(request, db)
+    except HTTPException:
+        return None
+
+
 def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin role required")

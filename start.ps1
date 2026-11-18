@@ -122,8 +122,11 @@ if (-not $NoUI) {
 # ── 5. Health ─────────────────────────────────────────────────────────
 Write-Step "Health check"
 if (Wait-Until { Test-Http "http://127.0.0.1:8787/api/health" } 120 "API") {
-    $health = Invoke-RestMethod -Uri "http://127.0.0.1:8787/api/health" -TimeoutSec 5
-    Write-Ok ("API up - model {0}, Ollama reachable: {1}, image model: {2}" -f $health.model, $health.llm_reachable, $health.image_pipeline.state)
+    # /api/health tells an anonymous caller only that the API is up: the details come from the project (src/core/status.py)
+    Push-Location $Root
+    $line = & $Python -m src.core.status
+    Pop-Location
+    Write-Ok ("API up - " + $line)
 }
 if (-not $NoUI) {
     if (Wait-Until { Test-Http "http://127.0.0.1:3000" } 120 "UI") {
