@@ -5,12 +5,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
 from src.core.auth import get_current_user, get_db
 from src.core.config import Config
-from src.core.models_db import User
+from src.core.models_db import ChatThreadRow, User
 from src.jobs import history_store
 from src.jobs.chat_search import DEFAULT_RESULTS, search_chats
 from src.jobs.chat_memory import compact_chat, memory_status, summarize_chat
@@ -89,6 +89,16 @@ def _chat_summary(thread_id: str, user: User) -> str:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except LLMError as exc:
         raise HTTPException(status_code=503, detail=f"The model could not summarise this chat: {exc}") from exc
+
+
+@router.post("/api/threads/{thread_id}/seen", status_code=204)
+def thread_seen(thread_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> Response:
+    """The user opened the chat: a scheduled run's new result is read (ISSUES_LOG O99)."""
+    row = db.get(ChatThreadRow, thread_id)
+    if row is not None and row.user_id == user.id and row.unread:
+        row.unread = False
+        db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/api/threads/{thread_id}/summary")

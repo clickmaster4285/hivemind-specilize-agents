@@ -27,16 +27,16 @@ import posixpath
 import re
 import shlex
 import time
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from src.core.config import Config
-from src.servers.server_ops import (CONFIRM_TIMEOUT, CommandRun, RemoteSession, _commands_block,
+from src.servers.server_ops import (CommandRun, RemoteSession, _commands_block,
                                     destructive_for, open_session, release_session)
 from src.servers.server_vault import ServerLogin, VaultError
 from src.servers.linux_audit import AuditError
+from src.tools.choice import Ask, Option, card_asker
 from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger(__name__)
@@ -62,21 +62,6 @@ DEPENDENCY_FILES = frozenset({"package.json", "package-lock.json", "yarn.lock", 
 SKIPPED_DIRS = ("node_modules", ".git", "vendor", ".venv", "venv")
 
 STOP, SKIP = "stop", "skip"
-
-
-@dataclass
-class Option:
-    id: str
-    label: str
-    detail: str = ""
-    checked: bool = False
-
-    def as_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "label": self.label, "detail": self.detail, "checked": self.checked}
-
-
-# ask(question, options, multi) → the picked option ids, or None (no answer in time / the job was stopped)
-Ask = Callable[[str, list[Option], bool], "list[str] | None"]
 
 
 class Stopped(Exception):
@@ -554,7 +539,6 @@ def run_deploy_project(
     from src.servers import server_vault
     from src.servers.command_audit import log_command
 
-    emit = on_progress or (lambda event: None)
     run = ToolRun(on_progress, query=query, job_id=job_id, role="Deploy", model="deploy_project", accent="#c45c5c")
     errors: list[str] = []
 
@@ -568,16 +552,7 @@ def run_deploy_project(
         elif login.os_family == "windows":
             output = f"{login.shown} is a Windows server: the guided deploy works on Linux servers only."
         else:
-            def ask(question: str, options: list[Option], multi: bool) -> list[str] | None:
-                choice_id = uuid.uuid4().hex[:12]
-                emit({"type": "choice_ask", "agent_id": "assistant", "choice_id": choice_id, "question": question,
-                      "options": [o.as_dict() for o in options], "multi": multi, "server": login.shown})
-                status("Waiting for your choice…")
-                picked = live.wait_choice(job_id, choice_id, CONFIRM_TIMEOUT)
-                # saved with the job's events, so a reloaded chat shows the card answered (as confirm cards, O66)
-                emit({"type": "choice_resolved", "agent_id": "assistant", "choice_id": choice_id,
-                      "answer": "timeout" if picked is None else "picked", "picked": picked or []})
-                return picked
+            ask = card_asker(run.emit, job_id, status=status, server=login.shown)
 
             def log(command: str, decision: str, run: CommandRun | None) -> None:
                 log_command(config=config, user_id=user_id, job_id=job_id, server_label=login.label,

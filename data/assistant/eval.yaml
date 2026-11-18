@@ -79,6 +79,13 @@ cases:
   - text: "tell me all the project's name"
     previous: "go the uk server softwaredevelopemnen folder took the pull from latest branh , and delop the new code"
     tool: [diagnose_server, operate_server]
+  # scheduled tasks made in words (O99, 2026-11-18)
+  - text: "check the uk server every Monday at 9 and tell me what changed"
+    tool: schedule_task
+    expect: {every: "week", weekday: "Monday"}
+  - text: "every morning at 8 tell me the latest AI news"
+    tool: schedule_task
+    expect: {every: "day"}
   - text: "Access the NVR's web interface and tell me all the cameras"
     tool: nvr_cameras
   - text: "Show me who is connected to the MikroTik router and its interface status"

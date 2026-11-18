@@ -8,6 +8,7 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useScheduledResults } from "@/hooks/useScheduledResults";
 import { useChat, type SendOptions } from "@/hooks/useChat";
 import { useHealth } from "@/hooks/useHealth";
 import { useHistory } from "@/hooks/useHistory";
@@ -87,6 +88,13 @@ function useAppState() {
     [clearSpecialists, clearSkills, clearJobs, setFeed],
   );
   const auth = useAuth({ onSignedIn, onSignedOut });
+  // a scheduled run wrote something new: reload the chat list so its dot shows (ISSUES_LOG O99)
+  const signedInId = auth.user?.id ?? null;
+  const onNewResults = useCallback(() => {
+    if (signedInId === null) return;
+    void loadHistory(signedInId).then(() => refreshJobs());
+  }, [signedInId, loadHistory, refreshJobs]);
+  useScheduledResults(signedInId !== null, onNewResults);
 
   // A diagram that failed to draw asks the assistant to fix it (MermaidDiagram sends "multeagent:ask").
   useWindowEvent<string>("multeagent:ask", (text) => {

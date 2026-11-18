@@ -392,7 +392,12 @@ function ThreadList({
                         onMouseLeave={hoverEnd}
                       >
                         <button type="button" className={navMain} onClick={() => { hoverEnd(); onOpen(thread); }}>
-                          <span className={navMainTitle}>{thread.title}</span>
+                          <span className="flex items-center gap-1.5">
+                            <span className={`${navMainTitle} min-w-0`}>{thread.title}</span>
+                            {thread.unread ? (
+                              <span className="h-2 w-2 shrink-0 rounded-full bg-copper" aria-label="new result" title="New result" />
+                            ) : null}
+                          </span>
                         </button>
                         <button
                           type="button"
@@ -520,7 +525,7 @@ function ThreadList({
         </>
       ) : null}
       {repeating ? (
-        <RepeatDialog thread={repeating} onClose={() => setRepeating(null)} onSaved={() => setRepeating(null)} />
+        <RepeatDialog prompt={repeating.title} onClose={() => setRepeating(null)} onSaved={() => setRepeating(null)} />
       ) : null}
     </div>
   );

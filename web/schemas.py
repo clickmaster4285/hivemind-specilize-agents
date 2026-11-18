@@ -246,7 +246,6 @@ class ExportPayload(BaseModel):
 class ScheduleCreatePayload(BaseModel):
     """A question repeated in a chat every hour / day / week (BACKLOG L26 H1, src/jobs/schedules.py)."""
 
-    thread_id: str = Field(min_length=1, max_length=36)
     prompt: str = Field(min_length=1)
     every: Literal["hour", "day", "week"]
     at_minute: int = 0

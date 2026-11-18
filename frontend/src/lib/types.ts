@@ -351,6 +351,10 @@ export type FeedItem = {
   imagesPending?: string[];
   /** operate_server: a command waiting for the user to approve or cancel. */
   confirm?: { commandId: string; command: string; server: string; answered?: ConfirmAnswer };
+  /** A scheduled run compared with the last one (src/jobs/schedules.py after_run): quiet = nothing changed. */
+  scheduleResult?: { status: "ok" | "quiet" | "failed"; first: boolean; changes: string };
+  /** the answer of a check whose result changes over time (Tool.repeatable): offer to repeat it (O99 step 5) */
+  repeatable?: boolean;
   /** deploy_project: a question with options (which folder, branch, what to install / build / restart). */
   choice?: {
     choiceId: string; question: string; options: ChoiceOption[]; multi: boolean; server: string;

@@ -270,6 +270,18 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
       },
     ];
   }
+  if (type === "repeatable") {
+    // the worker's note after a check worth repeating: the answer offers a schedule (ISSUES_LOG O99, step 5)
+    const at = prev.map((item) => item.kind).lastIndexOf("agent");
+    return at < 0 ? prev : prev.map((item, i) => (i === at ? { ...item, repeatable: true } : item));
+  }
+  if (type === "schedule_result") {
+    // a scheduled run's comparison with the last run: it follows the answer in the same job's events
+    const status = event.status === "quiet" || event.status === "failed" ? event.status : "ok";
+    const result = { status, first: Boolean(event.first), changes: String(event.changes || "") } as const;
+    const at = prev.map((item) => item.kind).lastIndexOf("agent");
+    return at < 0 ? prev : prev.map((item, i) => (i === at ? { ...item, scheduleResult: result } : item));
+  }
   if (type === "choice_ask") {
     // deploy_project is waiting for the user to pick (which folder, branch, what to install / build / restart)
     return [

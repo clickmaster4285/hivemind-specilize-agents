@@ -260,3 +260,13 @@ def test_tool_facts_live_on_the_tool_entry():
     assert {t.name for t in TOOLS if not t.router_runs} == {"operate_server"}
     by_id = {s.id: s for s in default_specialists()}
     assert machines <= set(by_id["it"].tools) and not machines & set(by_id["development"].tools)
+
+
+def test_checks_whose_result_changes_offer_a_schedule():
+    """ISSUES_LOG O99 step 5: under these answers the chat offers to repeat the check on a timetable."""
+    from src.llm.assistant import TOOLS
+
+    assert {t.name for t in TOOLS if t.repeatable} == {
+        "network_scan", "ping_host", "security_check", "image_scan", "server_audit", "nvr_cameras", "network_device",
+        "site_audit", "compare_sites", "keyword_research"}
+    assert not any(t.repeatable and t.waits_for_user for t in TOOLS)        # nothing that changes a server

@@ -108,6 +108,7 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
   /** Rebuild a saved chat from its jobs' event histories. */
   async function openThread(thread: ChatThread) {
     history.selectThread(thread.id);
+    history.markSeen(thread);
     setTitle(thread.title);
     setActiveJobId(thread.jobIds[thread.jobIds.length - 1] || null);
     const count = thread.jobIds.length;

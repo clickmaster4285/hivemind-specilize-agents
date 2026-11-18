@@ -406,6 +406,8 @@ export type ThreadMeta = {
   /** "Summarize & continue in a new chat": the chat this one continues, and the summary it carried over. */
   continuedFrom?: string | null;
   carriedSummary?: string | null;
+  /** a scheduled run wrote something new here, not opened yet */
+  unread?: boolean;
 };
 export type ProjectMeta = { id: string; name: string; createdAt: string | null };
 
@@ -418,6 +420,7 @@ type ThreadRow = {
   updated_at?: string | null;
   continued_from?: string | null;
   carried_summary?: string | null;
+  unread?: boolean;
 };
 type ProjectRow = { id: string; name: string; created_at?: string | null };
 
@@ -431,7 +434,13 @@ function toThreadMeta(t: ThreadRow): ThreadMeta {
     updatedAt: t.updated_at ?? null,
     continuedFrom: t.continued_from ?? null,
     carriedSummary: t.carried_summary ?? null,
+    unread: Boolean(t.unread),
   };
+}
+
+/** The user opened the chat: a scheduled run's new result is read. */
+export async function markThreadSeen(id: string): Promise<void> {
+  await request(`/api/threads/${encodeURIComponent(id)}/seen`, { method: "POST" });
 }
 
 /** "Save summary": the chat summarised by the model (goal, key facts and decisions, open questions). */
@@ -524,9 +533,11 @@ export type Schedule = {
   last_run_at: string | null;
   last_job_id: string | null;
   last_error: string;
+  /** the last run: ok | quiet (nothing changed) | failed | "" (no run yet) */
+  last_status: "ok" | "quiet" | "failed" | "";
   created_at: string | null;
 };
-export type ScheduleInput = Pick<Schedule, "thread_id" | "prompt" | "every" | "at_minute" | "weekday" | "time_zone">;
+export type ScheduleInput = Pick<Schedule, "prompt" | "every" | "at_minute" | "weekday" | "time_zone">;
 
 export async function listSchedules(): Promise<Schedule[]> {
   return request("/api/schedules");
@@ -534,6 +545,18 @@ export async function listSchedules(): Promise<Schedule[]> {
 
 export async function createSchedule(input: ScheduleInput): Promise<Schedule> {
   return request("/api/schedules", { method: "POST", body: JSON.stringify(input) });
+}
+
+/** A scheduled chat with a result the user has not opened (src/jobs/schedules.py unread). */
+export type UnreadResult = { schedule_id: number; thread_id: string; title: string; status: string; job_id: string | null };
+
+export async function listUnreadResults(): Promise<UnreadResult[]> {
+  return request("/api/schedules/unread");
+}
+
+/** One run at once ("Run now"); the timetable stays as it is. */
+export async function runScheduleNow(id: number): Promise<Schedule> {
+  return request(`/api/schedules/${id}/run`, { method: "POST" });
 }
 
 export async function setScheduleEnabled(id: number, enabled: boolean): Promise<Schedule> {

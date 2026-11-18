@@ -71,6 +71,9 @@ class Tool:
     # False: the router may name it (so it does not name a near one) but never start it on its word; it changes a
     # server, so only the full tool choice, with every rule in view, picks it
     router_runs: bool = True
+    # its result changes over time (a scan, an audit, a ranking): under its answer the chat offers to repeat it on a
+    # timetable (ISSUES_LOG O99, step 5)
+    repeatable: bool = False
 
     @property
     def job(self) -> str:
@@ -130,7 +133,7 @@ TOOLS: tuple[Tool, ...] = (
          "an inventory, not a security check.",
          {"subnet": "e.g. 192.168.1.0/24; empty = this computer's network"}, (), lambda c: c.network_scan_enabled,
          run="src.servers.net_scan:run_network_scan",
-         acts_on_machines=True),
+         acts_on_machines=True, repeatable=True),
     Tool("ping_host",
          "Actually ping ONE device now and check it is up / running / online: replies and response time, "
          "its name, MAC address and manufacturer, open common ports. Use for 'ping 192.168.1.20', 'is the "
@@ -138,7 +141,7 @@ TOOLS: tuple[Tool, ...] = (
          {"host": "the device's IP address (exactly as the user wrote it) or name"}, ("host",),
          lambda c: c.network_scan_enabled,
          run="src.servers.host_check:run_host_check",
-         acts_on_machines=True),
+         acts_on_machines=True, repeatable=True),
     Tool("security_check",
          # the router reads only the first sentence (TOOL_LINE_CHARS): it alone must tell this from network_scan
          "Actually check the security of a device or a whole network now: open ports, software versions and their "
@@ -151,7 +154,7 @@ TOOLS: tuple[Tool, ...] = (
          {"target": "an IP (192.168.1.10), a network (192.168.1.0/24), 'this pc', or empty = the whole local network"},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.security_scan:run_security_check", admin_only=True,
-         acts_on_machines=True),
+         acts_on_machines=True, repeatable=True),
     Tool("image_scan",
          # the router reads only the first sentence (TOOL_LINE_CHARS)
          "Actually check the Docker images (containers) on this PC for known vulnerabilities in their packages. "
@@ -161,7 +164,7 @@ TOOLS: tuple[Tool, ...] = (
          {"image": "a part of one image's name (postgres, searxng); empty = every image on this PC"},
          (), lambda c: c.security_scan_enabled and image_scan.available(),
          run="src.servers.image_scan:run_image_scan", admin_only=True,
-         acts_on_machines=True),
+         acts_on_machines=True, repeatable=True),
     Tool("server_audit",
          # the router reads only the first sentence (TOOL_LINE_CHARS): "server" + "vulnerable packages" must be in it;
          # "security" keeps "list the projects on the uk server" out of it (ISSUES_LOG O93)
@@ -173,7 +176,7 @@ TOOLS: tuple[Tool, ...] = (
          {"server": SERVER_ARG},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.linux_audit:run_server_audit",
-         acts_on_machines=True, needs_server_login=True),
+         acts_on_machines=True, needs_server_login=True, repeatable=True),
     Tool("nvr_cameras",
          "Log in to a camera recorder (NVR/DVR, Hikvision or Dahua) added this session in Settings → Devices and "
          "list ALL its cameras as a table: channel, camera name, IP address, model, online/offline. Read-only. "
@@ -182,7 +185,7 @@ TOOLS: tuple[Tool, ...] = (
          {"nvr": "the recorder's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.nvr:run_nvr_cameras",
-         acts_on_machines=True),
+         acts_on_machines=True, repeatable=True),
     Tool("network_device",
          "Log in to a router or switch (MikroTik) added this session in Settings → Devices and read it, read-only: "
          "model, firmware, uptime, CPU and memory, every interface/port and whether it is up, the devices connected "
@@ -191,7 +194,7 @@ TOOLS: tuple[Tool, ...] = (
          {"device": "the router's or switch's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.netdev:run_network_device",
-         acts_on_machines=True),
+         acts_on_machines=True, repeatable=True),
     Tool("diagnose_server",
          # the router reads only the first sentence: looking and listing are in it, so "tell me all the projects on
          # the uk server" comes here, not to the security audit (ISSUES_LOG O93)
@@ -234,6 +237,19 @@ TOOLS: tuple[Tool, ...] = (
          (), lambda c: c.security_scan_enabled, waits_for_user=True,
          run="src.servers.deploy:run_deploy_project",
          acts_on_machines=True, needs_server_login=True),
+    Tool("schedule_task",
+         # the router reads only the first sentence (TOOL_LINE_CHARS): "every … at …" and "automatically" must be
+         # in it
+         "Set up a task that runs again automatically on a timetable — every hour, every day or every week at a time "
+         "— and tells the user only when something changed. The user sees it and clicks Save first. Use for 'check "
+         "the uk server every Monday at 9', 'every morning tell me if my site is down', 'send me AI news every "
+         "Friday', 'audit example.com weekly'. Not for doing the task once now (use the task's own tool).",
+         {"task": "what to do each time, in the user's words, without the timing (e.g. 'check the uk server')",
+          "every": "hour, day or week",
+          "time": "the time of day the user named (09:00, 9pm); for every hour the minutes past the hour; "
+                  "empty if none",
+          "weekday": "for every week: the day the user named (Monday …); empty otherwise"},
+         ("task", "every"), waits_for_user=True, run="src.tools.schedule_task:run_schedule_task"),
     Tool("generate_image", "Draw a picture: photo, illustration, artwork, thumbnail, wallpaper.",
          {"prompt": "what to draw"}, ("prompt",), lambda c: c.model_image_path is not None,
          intent="image_gen"),
@@ -250,7 +266,7 @@ TOOLS: tuple[Tool, ...] = (
          {"url": "the website address exactly as the user wrote it, e.g. example.com",
           "track": "only when the user asks to track / monitor the site: re-audit every N days (7 = weekly, "
                    "30 = monthly); empty otherwise"}, ("url",),
-         run="src.tools.site_audit:run_site_audit"),
+         run="src.tools.site_audit:run_site_audit", repeatable=True),
     Tool("seo_projects",
          "Show the websites the user has audited or tracks, with each one's SEO score trend over time and what "
          "changed (fixed and new issues); can stop tracking a site. Use for 'show my SEO projects', 'how is my "
@@ -265,7 +281,7 @@ TOOLS: tuple[Tool, ...] = (
          {"url": "the user's own website", "competitors": "comma-separated competitor websites; empty if none named",
           "keyword": "a keyword to find competitors by when none are named; empty otherwise",
           "market": MARKET_ARG}, ("url",),
-         run="src.tools.compare_sites:run_compare_sites"),
+         run="src.tools.compare_sites:run_compare_sites", repeatable=True),
     Tool("keyword_research",
          "Keyword research from live search results (approximate, no search volume): who ranks for a keyword, where "
          "a given website ranks for it, keyword ideas people search, an estimated difficulty and what the top pages "
@@ -275,7 +291,7 @@ TOOLS: tuple[Tool, ...] = (
           "domain": "the user's website if they named one, e.g. mysite.com; empty if none",
           "market": MARKET_ARG}, ("keywords",),
          lambda c: bool(c.web_search_url),
-         run="src.tools.keyword_research:run_keyword_research"),
+         run="src.tools.keyword_research:run_keyword_research", repeatable=True),
     Tool("write_content",
          "Write a full piece of marketing or web copy — blog post, article, landing page, product or service page, "
          "email, newsletter, ad or social post — in rounds: brief, draft, checks (keywords, length, readability, meta "

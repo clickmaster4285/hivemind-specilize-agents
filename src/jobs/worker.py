@@ -134,10 +134,22 @@ def process_job(job_id: str, config: Config | None = None) -> None:
     started = time.monotonic()
     with job_usage(job_id, user_id):          # every model call of this job is counted (BACKLOG L11)
         _run_job(job_id, config, mode=mode, query=query, user_id=user_id, payload=payload, model_plan=model_plan)
+        if payload.get("schedule_id"):
+            _after_scheduled_run(config, job_id)
     _log_timing(config, job_id, mode, time.monotonic() - started)
     # the exchange is embedded on the CPU for chat recall (O63) while the next job starts
     threading.Thread(target=_remember, args=(config, job_id), name="chat-recall", daemon=True).start()
     _fold_ahead(config, job_id, model_plan.get("worker") or None)
+
+
+def _after_scheduled_run(config: Config, job_id: str) -> None:
+    """Compare a scheduled run with the last one (src/jobs/schedules.py after_run). Never raises: the answer is saved."""
+    from src.jobs.schedules import after_run
+
+    try:
+        log.info("schedule: job %s — %s", job_id, after_run(config, job_id) or "no schedule")
+    except Exception as exc:  # noqa: BLE001 — the comparison is an extra on top of the saved answer
+        log.warning("schedule: job %s not compared: %s", job_id, exc)
 
 
 def _fold_ahead(config: Config, job_id: str, model: str | None) -> None:
@@ -321,6 +333,8 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
             tool_args = {k: v for k, v in tool_args.items() if k != "user_id"}     # never from the model
             _output, errors, _elapsed = runner(query, job_id=job_id, config=config, on_progress=on_progress,
                                                conversation=conversation, user_id=user_id, **tool_args)
+            if tool.repeatable and not errors and not payload.get("scheduled"):
+                on_progress({"type": "repeatable", "tool": tool.name})     # the chat offers to repeat it (O99)
             _finish(config, job_id, errors)
             return
 

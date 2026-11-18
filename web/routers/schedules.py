@@ -1,4 +1,4 @@
-"""Scheduled tasks (BACKLOG L26 H1): the caller's own schedules — list, add from a chat, pause / resume, delete.
+"""Scheduled tasks (BACKLOG L26 H1): the caller's own schedules — list, add, run now, pause / resume, delete.
 The scheduler thread that runs them is src/jobs/schedules.py."""
 
 from __future__ import annotations
@@ -34,6 +34,12 @@ def list_schedules(db: Session = Depends(get_db), user: User = Depends(get_curre
     return schedules.listing(db, user)
 
 
+@router.get("/unread")
+def unread_results(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
+    """Scheduled chats with a new result the user has not opened (the browser's notification check)."""
+    return schedules.unread(db, user)
+
+
 @router.post("")
 def create_schedule(payload: ScheduleCreatePayload, db: Session = Depends(get_db),
                     user: User = Depends(get_current_user)) -> dict[str, Any]:
@@ -49,6 +55,18 @@ def create_schedule(payload: ScheduleCreatePayload, db: Session = Depends(get_db
 def update_schedule(schedule_id: int, payload: ScheduleUpdatePayload, db: Session = Depends(get_db),
                     user: User = Depends(get_current_user)) -> dict[str, Any]:
     row = schedules.set_enabled(db, _own(db, user, schedule_id), payload.enabled)
+    db.commit()
+    return _out(db, row)
+
+
+@router.post("/{schedule_id}/run")
+def run_schedule_now(schedule_id: int, db: Session = Depends(get_db),
+                     user: User = Depends(get_current_user)) -> dict[str, Any]:
+    row = _own(db, user, schedule_id)
+    try:
+        schedules.run_now(db, row, Config.from_env())
+    except schedules.ScheduleError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     db.commit()
     return _out(db, row)
 

@@ -334,11 +334,14 @@ class ChatThreadRow(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary_through: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     continued_from: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    # a scheduled run wrote something new here that the user has not opened yet (ISSUES_LOG O99: results find you)
+    unread: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ScheduleRow(Base):
     """A question that asks itself again on a timetable (BACKLOG L26 H1, src/jobs/schedules.py): at its time a
-    normal job is started in the chat `thread_id`, so the answer lands there. `every` = hour | day | week;
+    normal job is started in the schedule's own chat `thread_id` (made with it), so its runs are that chat's
+    history. `last_status` = ok | quiet (nothing changed) | failed | "" (no run yet). `every` = hour | day | week;
     `at_minute` = minutes after the hour (hour) or after local midnight (day, week), in `time_zone`;
     `weekday` 0 = Monday (week only)."""
 
@@ -357,4 +360,5 @@ class ScheduleRow(Base):
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     last_error: Mapped[str] = mapped_column(Text, default="")
+    last_status: Mapped[str] = mapped_column(String(10), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

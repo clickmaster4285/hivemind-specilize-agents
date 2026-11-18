@@ -5,12 +5,16 @@ import { useEffect, useState } from "react";
 import { useApp } from "@/components/app/AppProvider";
 import PageHeader from "@/components/app/PageHeader";
 import { useOpenChat } from "@/hooks/useOpenChat";
-import { deleteSchedule, listSchedules, setScheduleEnabled, type Schedule } from "@/lib/api";
+import { deleteSchedule, listSchedules, runScheduleNow, setScheduleEnabled, type Schedule } from "@/lib/api";
 import { errorText } from "@/lib/chat";
 import { describeSchedule } from "@/lib/schedules";
 import { btn } from "@/lib/ui";
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
+/** How the last run went, in words (src/jobs/schedules.py last_status). */
+const LAST_RUN: Record<Schedule["last_status"], string> = {
+  ok: "something new", quiet: "nothing changed", failed: "failed", "": "",
+};
 
 /** /schedules (BACKLOG L26 H1): the questions the user set to repeat — how often, the next and last run, why one
  *  did not run — with Pause / Resume, Delete and a link to the chat the answers land in. New ones come from a
@@ -39,6 +43,16 @@ export default function SchedulesPage() {
     }
   }
 
+  async function runNow(s: Schedule) {
+    try {
+      const saved = await runScheduleNow(s.id);
+      setRows((all) => (all || []).map((r) => (r.id === s.id ? saved : r)));
+      setError(null);
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
   async function remove(s: Schedule) {
     if (!window.confirm(`Delete the schedule "${s.prompt}"? Answers already in the chat stay.`)) return;
     try {
@@ -54,13 +68,15 @@ export default function SchedulesPage() {
   return (
     <PageHeader
       title="Scheduled"
-      about="Questions asked again on a timetable. Each answer lands in its chat; scheduled runs only read and report."
+      about="Questions asked again on a timetable — a check or a digest that comes to you. Each schedule has its own chat (🔁); runs only read and report."
     >
       {error ? <p className="mt-6 text-[0.9rem] text-danger-text">{error}</p> : null}
       {rows === null && !error ? <p className="mt-6 text-[0.9rem] text-muted">Loading…</p> : null}
       {rows !== null && rows.length === 0 ? (
         <p className="mt-6 text-[0.9rem] text-muted">
-          Nothing scheduled yet. Open a chat&apos;s ⋮ menu in the sidebar and choose Repeat….
+          Nothing scheduled yet. Good uses: a weekly security re-check of a server, a daily look at whether your sites
+          are up, a Monday digest of news for your software. Open a chat&apos;s ⋮ menu in the sidebar and choose
+          Repeat….
         </p>
       ) : null}
       <ul className="m-0 mt-4 flex list-none flex-col gap-2 p-0">
@@ -73,7 +89,8 @@ export default function SchedulesPage() {
                   <p className="m-0 text-[0.92rem] text-text">{s.prompt}</p>
                   <p className="m-0 mt-1 text-[0.78rem] text-muted">
                     {describeSchedule(s)} ({s.time_zone}) · {s.enabled ? `next ${when(s.next_run_at)}` : "paused"}
-                    {s.last_run_at ? ` · last ${when(s.last_run_at)}` : ""}
+                    {s.last_run_at ? ` · last ${when(s.last_run_at)}` : " · not run yet"}
+                    {LAST_RUN[s.last_status] ? ` (${LAST_RUN[s.last_status]})` : ""}
                   </p>
                   {s.last_error ? <p className="m-0 mt-1 text-[0.78rem] text-danger-text">{s.last_error}</p> : null}
                 </div>
@@ -83,6 +100,7 @@ export default function SchedulesPage() {
                       Open “{s.chat_title || thread.title}”
                     </button>
                   ) : null}
+                  <button type="button" className={btn("sm")} onClick={() => runNow(s)}>Run now</button>
                   <button type="button" className={btn("sm")} onClick={() => toggle(s)}>
                     {s.enabled ? "Pause" : "Resume"}
                   </button>

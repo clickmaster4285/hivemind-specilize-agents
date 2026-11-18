@@ -16,6 +16,8 @@ export type ChatThread = {
   updatedAt: string;
   /** Set on a chat continued from another: the summary it started from (shown as the first card). */
   carriedSummary?: string | null;
+  /** a scheduled run wrote something new here, not opened yet (a dot in the sidebar) */
+  unread?: boolean;
 };
 
 const ACTIVE_KEY = "multeagent_active_thread";
@@ -68,6 +70,7 @@ export function buildThreads(jobs: Job[], metas: ThreadMeta[]): ChatThread[] {
         deletedAt: m?.deletedAt ?? null,
         updatedAt: m?.updatedAt || job.created_at || now,
         carriedSummary: m?.carriedSummary ?? null,
+        unread: m?.unread ?? false,
       };
       byId.set(tid, thread);
     }
@@ -84,6 +87,7 @@ export function buildThreads(jobs: Job[], metas: ThreadMeta[]): ChatThread[] {
       deletedAt: m.deletedAt,
       updatedAt: m.updatedAt || now,
       carriedSummary: m.carriedSummary ?? null,
+      unread: m.unread ?? false,
     });
   }
   return sortThreads([...byId.values()].filter((t) => !t.deletedAt));

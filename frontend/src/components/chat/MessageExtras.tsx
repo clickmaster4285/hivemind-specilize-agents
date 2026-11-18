@@ -10,6 +10,7 @@ import { fileSize, usageLine } from "@/lib/format";
 import type { AnswerOption, AnswerUsage, ChatImage, FeedItem } from "@/lib/types";
 import { msgAction } from "@/lib/ui";
 
+import { RepeatButton } from "./RepeatButton";
 import SaveAsSkill from "./SaveAsSkill";
 
 type ItemProps = { item: FeedItem; fallbackJobId: string | null };
@@ -295,12 +296,15 @@ function ActionIcon({
 export function AnswerActions({
   text,
   jobId,
+  question,
   usage,
   onRetry,
   onRegenerate,
 }: {
   text: string;
   jobId?: string | null;
+  /** the question that got this answer: what "Repeat…" asks again */
+  question?: string;
   usage?: AnswerUsage;
   onRetry?: () => void;
   onRegenerate?: (reason: string) => void;
@@ -394,6 +398,7 @@ export function AnswerActions({
         <ActionIcon title="Share" onClick={share}>{Icon.share}</ActionIcon>
         {jobId ? <DownloadMenu jobId={jobId} text={text} /> : null}
         {jobId ? <SaveAsSkill jobId={jobId} /> : null}
+        {question ? <RepeatButton prompt={question} /> : null}
         {onRetry ? <ActionIcon title="Try again" onClick={onRetry}>{Icon.retry}</ActionIcon> : null}
         {rating === "up" || sent ? (
           <span className="ml-[0.3rem] text-[0.72rem] text-muted">Thanks — noted.</span>
@@ -628,6 +633,36 @@ function ClaimList({ title, claims }: { title: string; claims: { text: string; c
 }
 
 /** The check after a knowledge-base answer: how many cited statements the sources confirm, and which not. */
+/** Under a scheduled run's answer (🔁 chats): what changed since the last run, or that nothing did. */
+export function ScheduleNote({ item }: { item: FeedItem }) {
+  const r = item.scheduleResult;
+  if (item.pending || !r) return null;
+  const box = "mt-[0.6rem] mb-[0.2rem] rounded-[8px] border px-[0.7rem] py-[0.45rem] text-[0.82rem]";
+  if (r.status === "failed") {
+    return (
+      <div className={`${box} border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-[color-mix(in_srgb,var(--danger)_7%,var(--panel-2))] text-text`}>
+        🔁 This run failed. The next one tries again on its time, or use Run now on the Scheduled page.
+      </div>
+    );
+  }
+  if (r.status === "quiet") {
+    return <div className={`${box} border-line text-muted`}>🔁 Nothing changed since the last run.</div>;
+  }
+  if (r.first || !r.changes) {
+    return (
+      <div className={`${box} border-line text-muted`}>
+        🔁 First run of this schedule. The next runs say only what changed since the one before.
+      </div>
+    );
+  }
+  return (
+    <div className={`${box} border-[color-mix(in_srgb,var(--copper)_45%,var(--line))] bg-[color-mix(in_srgb,var(--copper)_7%,var(--panel-2))] text-text`}>
+      <p className="m-0 mb-1 font-semibold">🔁 What changed since the last run</p>
+      <p className="m-0 whitespace-pre-wrap">{r.changes}</p>
+    </div>
+  );
+}
+
 export function VerificationNote({ item }: { item: FeedItem }) {
   const v = item.verification;
   if (item.pending || !v || !v.checked) return null;

@@ -8,6 +8,7 @@ import {
   fetchHistory,
   importHistory,
   listJobs,
+  markThreadSeen,
   putThread,
   softDeleteJobs,
   type ThreadMeta,
@@ -148,6 +149,13 @@ export function useHistory() {
     });
   }, []);
 
+  /** Opened: a scheduled result is read. Its place in the list stays (unlike patchMeta, which moves it up). */
+  const markSeen = useCallback((thread: ChatThread) => {
+    if (!thread.unread) return;
+    setThreadMeta((prev) => prev.map((m) => (m.id === thread.id ? { ...m, unread: false } : m)));
+    void markThreadSeen(thread.id).catch(() => undefined);
+  }, []);
+
   const togglePin = useCallback(
     (thread: ChatThread) => {
       const pinned = !thread.pinned;
@@ -246,6 +254,7 @@ export function useHistory() {
     loadHistory,
     noteThread,
     patchMeta,
+    markSeen,
     selectThread,
     selectProject,
     newProject,

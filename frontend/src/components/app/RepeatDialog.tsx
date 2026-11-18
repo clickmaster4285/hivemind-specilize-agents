@@ -1,39 +1,48 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { createSchedule, type ScheduleEvery } from "@/lib/api";
 import { errorText } from "@/lib/chat";
+import { SCHEDULES_PATH } from "@/lib/routes";
 import { browserTimeZone, clockMinutes, EVERY_LABELS, WEEKDAYS } from "@/lib/schedules";
-import type { ChatThread } from "@/lib/threads";
 import { btn, formField, formLabel, iconBtn } from "@/lib/ui";
 
 /** A new schedule starts at a morning time: a daily digest is the usual ask */
 const DEFAULT_AT = "08:00";
 const MINUTES_PER_HOUR = 60;
 
-/** "Repeat…" from a chat's menu (BACKLOG L26 H1): ask this chat a question again every hour, day or week, in the
- *  browser's time zone. The answer lands in the chat; the run is unattended, so it changes nothing on servers. */
+/** "Repeat…" (a chat's menu, an answer's 🔁, the hint under a check — BACKLOG L26 H1): ask a question again every hour,
+ *  day or week, in the browser's time zone. Each answer goes to the schedule's own chat; the run is unattended, so it
+ *  changes nothing on servers. */
 export default function RepeatDialog({
-  thread,
+  prompt: initialPrompt,
+  every: initialEvery = "day",
   onClose,
   onSaved,
 }: {
-  thread: ChatThread;
+  prompt: string;
+  every?: ScheduleEvery;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [prompt, setPrompt] = useState(thread.title);
-  const [every, setEvery] = useState<ScheduleEvery>("day");
+  const [prompt, setPrompt] = useState(initialPrompt);
+  const [every, setEvery] = useState<ScheduleEvery>(initialEvery);
   const [at, setAt] = useState(DEFAULT_AT);
   const [minute, setMinute] = useState(0);
   const [weekday, setWeekday] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const zone = browserTimeZone();
+  const router = useRouter();
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    // results come to the user (ISSUES_LOG O99): ask once, inside this click, as browsers require
+    if (typeof Notification !== "undefined" && Notification.permission === "default") {
+      void Notification.requestPermission();
+    }
     const atMinute = every === "hour" ? minute : clockMinutes(at);
     if (atMinute === null) {
       setError("Pick a time.");
@@ -43,10 +52,11 @@ export default function RepeatDialog({
     setError(null);
     try {
       await createSchedule({
-        thread_id: thread.id, prompt: prompt.trim(), every, at_minute: atMinute,
+        prompt: prompt.trim(), every, at_minute: atMinute,
         weekday: every === "week" ? weekday : null, time_zone: zone,
       });
       onSaved();
+      router.push(SCHEDULES_PATH);          // the new schedule is there, with its next run
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -62,7 +72,7 @@ export default function RepeatDialog({
         onSubmit={save}
       >
         <header className="flex items-center justify-between gap-3">
-          <h3 className="m-0 text-[1.15rem] [font-family:var(--font-display)]">Repeat in this chat</h3>
+          <h3 className="m-0 text-[1.15rem] [font-family:var(--font-display)]">Repeat this question</h3>
           <button type="button" className={iconBtn()} aria-label="Close" onClick={onClose}>✕</button>
         </header>
         <label className={formLabel}>
@@ -100,8 +110,9 @@ export default function RepeatDialog({
           )}
         </div>
         <p className="m-0 text-[0.78rem] text-muted">
-          Times are in {zone}. The answer appears in this chat. Nobody is there to confirm, so a scheduled run only
-          reads and reports: it never changes a server and never asks you questions.
+          Times are in {zone}. Each answer goes to its own chat, “🔁 {prompt.trim() || "…"}”, so you can see every
+          run together. Nobody is there to confirm, so a scheduled run only reads and reports: it never changes a
+          server and never asks you questions.
         </p>
         {error ? <p className="m-0 text-[0.85rem] text-danger-text">{error}</p> : null}
         <div className="flex justify-end gap-2">

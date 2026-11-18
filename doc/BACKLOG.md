@@ -708,7 +708,8 @@ Telegram / email gateway). Plan, not built:
 
 - [x] H3 search all chats — built 2026-11-17 (word search; the semantic match from chat_passages later)
 - [x] H1 scheduled tasks — built 2026-11-18: ⋮ → Repeat… on a chat (every hour / day / week, the browser's zone), /schedules page, unattended runs without operate_server or clarify ([schedules.py](../src/jobs/schedules.py))
-- [ ] H1 rebuild (user, 2026-11-18: after L27): the first version was not understood. Research of 8 products: a
+- [x] H1 rebuild — built 2026-11-18 (ISSUES_LOG O99): own 🔁 chat + Run now, only what changed, unread dot +
+      notification, made in words (`schedule_task`), offered after a run; how it works: [schedules.py](../src/jobs/schedules.py) Research of 8 products: a
       schedule is a check or digest that comes to you. Plan: create from chat in words + a confirm card; offer
       "re-check this every week?" after a run; an unread badge + browser notification; report only what changed
       since the last run (failures always); one chat per schedule, Run now, history

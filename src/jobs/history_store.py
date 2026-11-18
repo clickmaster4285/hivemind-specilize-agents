@@ -35,6 +35,7 @@ def _thread_dict(row: ChatThreadRow) -> dict[str, Any]:
         # a chat continued from another shows what it carried over (BACKLOG L12)
         "continued_from": row.continued_from,
         "carried_summary": row.summary if row.continued_from else None,
+        "unread": bool(row.unread),
     }
 
 

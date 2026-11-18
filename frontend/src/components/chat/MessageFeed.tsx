@@ -6,10 +6,11 @@ import LiveStatus from "@/components/chat/LiveStatus";
 import MarkdownBody from "@/components/answer/MarkdownBody";
 import MessageAvatar from "@/components/chat/MessageAvatar";
 import ChoiceCard from "@/components/chat/ChoiceCard";
+import { RepeatHint } from "@/components/chat/RepeatButton";
 import ConfirmCard from "@/components/chat/ConfirmCard";
 import { IconChevronDown } from "@/components/chat/Icons";
 import PromptRail, { promptAnchorId } from "@/components/chat/PromptRail";
-import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, SourceList, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
+import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, ScheduleNote, SourceList, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 import { composerColumn, msgAction } from "@/lib/ui";
 
@@ -91,6 +92,10 @@ function InlineEdit({ initial, onCancel, onSend }: { initial: string; onCancel: 
 function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onChoose, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
+  // for each item, the user's question it answers (the last user message before it): what "Repeat…" asks again
+  const questions = feed.reduce<string[]>(
+    (acc, item, i) => [...acc, item.kind === "user" ? item.body : (acc[i - 1] ?? "")], [],
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
 
   // Follow the newest message only while the reader is at the bottom (O80): scrolling up to read stops it; a new
@@ -176,6 +181,7 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
             onClarifySubmit={onClarifySubmit}
             onPickSuggestion={onPickSuggestion}
             isLastAgent={index === lastAgentIdx}
+            question={questions[index]}
           />
           </Fragment>
           );
@@ -385,6 +391,7 @@ function MessageRow({
   onClarifySubmit,
   onPickSuggestion,
   isLastAgent,
+  question,
 }: {
   item: FeedItem;
   isError: boolean;
@@ -402,6 +409,7 @@ function MessageRow({
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
   onPickSuggestion: (q: string) => void;
   isLastAgent: boolean;
+  question: string;
 }) {
   const { images: webImgs, loading: webImgsLoading } = useWebImages(item, fallbackJobId);
   const rowAlign = item.kind === "user" ? "justify-end" : item.kind === "system" ? "items-center justify-center" : "";
@@ -463,6 +471,8 @@ function MessageRow({
                 ) : null}
                 <OptionCards item={item} onPick={onPickOption} />
                 <ClarifyForm item={item} onSubmit={onClarifySubmit} />
+                <ScheduleNote item={item} />
+                {item.repeatable && !item.pending && question.trim() ? <RepeatHint prompt={question.trim()} /> : null}
                 <VerificationNote item={item} />
                 <SourceList item={item} />
                 {isLastAgent ? <QuizCard item={item} /> : null}
@@ -471,6 +481,7 @@ function MessageRow({
                   <AnswerActions
                     text={item.body}
                     jobId={item.jobId || fallbackJobId}
+                    question={question.trim() || undefined}
                     usage={item.usage}
                     onRetry={isLastAgent && !running ? onRetry : undefined}
                     onRegenerate={isLastAgent && !running ? onRegenerate : undefined}
