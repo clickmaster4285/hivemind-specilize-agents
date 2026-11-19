@@ -131,7 +131,7 @@ def test_the_tool_choice_decides_when_the_router_cannot_be_trusted():
     changes_a_server = Route(TOOL, tool="operate_server", args={"task": "create /srv/backups"})
     unknown = Route(TOOL, tool="format_disk", args={"disk": "c"})
     for route in (missing, changes_a_server, unknown):
-        assert pre_route(route, "q", FULL, None) is None, route
+        assert pre_route(route, "create /srv/backups on web01", FULL, None) is None, route
     marketing = SimpleNamespace(tools=["site_audit", "write_content"])
     assert pre_route(Route(TOOL, tool="ping_host", args={"host": "10.0.0.1"}), "q", FULL, marketing) is None
 

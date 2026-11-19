@@ -213,9 +213,18 @@ def config() -> Config:
     return cfg
 
 
+def _remove_test_sources(config) -> None:
+    """The test's own rows (slug PREFIX…): removed after the test, and before it too — a run killed mid-test
+    (exit 137) left its row behind and every later run failed on the unique slug."""
+    with psycopg.connect(brain_db.owner_url(config), autocommit=True) as conn:
+        conn.execute("DELETE FROM brain.ingest_runs WHERE source_id IN (SELECT id FROM brain.sources WHERE slug LIKE %s)", (PREFIX + "%",))
+        conn.execute("DELETE FROM brain.sources WHERE slug LIKE %s", (PREFIX + "%",))
+
+
 @pytest.fixture
 def web_source(site, config):
     slug = PREFIX + "docs"
+    _remove_test_sources(config)
     with brain_db.connect(config, system=True) as conn:
         cid = conn.execute("SELECT id FROM brain.collections WHERE slug = 'development'").fetchone()[0]
         conn.execute(
@@ -225,9 +234,7 @@ def web_source(site, config):
             (slug, site.base + "/docs/index.html", cid, site.base + "/docs/*.html", Jsonb({"crawl_depth": 1})),
         )
     yield slug
-    with psycopg.connect(brain_db.owner_url(config), autocommit=True) as conn:
-        conn.execute("DELETE FROM brain.ingest_runs WHERE source_id IN (SELECT id FROM brain.sources WHERE slug LIKE %s)", (PREFIX + "%",))
-        conn.execute("DELETE FROM brain.sources WHERE slug LIKE %s", (PREFIX + "%",))
+    _remove_test_sources(config)
 
 
 def _ingest(slug, config, client):

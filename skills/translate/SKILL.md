@@ -1,6 +1,7 @@
 ---
 name: translate
 description: Translate text into another language with the meaning and tone kept, not word for word. Use for "translate this to", "in Urdu / Arabic / English", "what does this say in".
+allowed-tools: none
 metadata:
   title: Translate
   category: Writing

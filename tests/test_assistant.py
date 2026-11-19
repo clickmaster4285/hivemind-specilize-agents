@@ -280,6 +280,14 @@ def test_checks_whose_result_changes_offer_a_schedule():
     ("was the site restarted?", "diagnose_server"),
     ("deploy the latest on uk", "deploy_project"),                  # a job, not a question
     ("did you know how to deploy", "deploy_project"),               # no question mark: left to the model's pick
+    ("uk server, Clickmastersoftware ,", "diagnose_server"),       # names a server and a project, asks nothing
+    ("go the uk server softwaredevelopemnen folder took the pull from latest branh , and delop", "deploy_project"),
+    ("yes go ahead", "deploy_project"),
+    ("rebuild the app on uk", "deploy_project"),                     # "re" verbs are changes (review 2026-11-19)
+    ("redeploy Clickmastersoftware", "deploy_project"),
+    ("reboot the uk server", "deploy_project"),
+    ("give www-data ownership of /srv/backups", "deploy_project"),
+    ("please look after the thing we talked about on the uk box today", "deploy_project"),   # long: the model read it
 ])
 def test_a_question_about_done_work_is_checked_not_done(query, tool):
     assert assistant.as_check("deploy_project", {"server": "uk server", "project": "x"}, query)[0] == tool

@@ -78,7 +78,7 @@ SUBCOMMANDS: dict[str, frozenset[str]] = {
     "podman": frozenset({"ps", "logs", "inspect", "images", "stats", "top", "port", "version", "info"}),
     "kubectl": frozenset({"get", "describe", "logs", "top", "version", "explain", "api-resources", "cluster-info"}),
     "git": frozenset({"status", "log", "diff", "show", "branch", "remote", "config", "rev-parse", "describe",
-                      "shortlog", "blame", "ls-files", "tag", "reflog"}),
+                      "shortlog", "blame", "ls-files", "tag", "reflog", "ls-remote"}),
     "crontab": frozenset({"-l"}),
     "apt": frozenset({"list", "show", "policy", "search"}),
     "apt-cache": frozenset({"policy", "show", "search", "showpkg", "depends", "madison"}),
@@ -488,7 +488,9 @@ Rules:
   read-only commands to run.
 - A question about earlier work in this chat (a deploy: "did we pull?", "why can't I see the update?") is about
   the project and branch named above: check its git state (`git -C <folder> log -1`, `git -C <folder> status`),
-  its build and the app that serves it (pm2 list, systemctl status), not git servers or other folders."""
+  its build and the app that serves it (pm2 list, systemctl status), not git servers or other folders.
+- `git status` compares with the last fetch only, not with the remote now. Before saying a branch is up to date,
+  compare `git -C <folder> rev-parse HEAD` with `git -C <folder> ls-remote origin <branch>` (read-only)."""
 
 DIAGNOSE_SYSTEM_WIN = """You are an IT engineer logged in to a Windows server over SSH (PowerShell). {access}
 Investigate the user's request by running READ-ONLY PowerShell commands with run_command, one at a time,

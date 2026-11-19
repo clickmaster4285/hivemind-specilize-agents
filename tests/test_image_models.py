@@ -156,7 +156,7 @@ def fake_run(monkeypatch, tmp_path):
 
 def test_run_uses_rewrite_preset_aspect_and_seed(monkeypatch, fake_run):
     monkeypatch.setattr(image_gen, "rewrite_prompt",
-                        lambda q, c: PromptRewrite("portrait photo of an old fisherman, golden hour", (2, 3)))
+                        lambda q, c, previous="": PromptRewrite("portrait photo of an old fisherman, golden hour", (2, 3)))
     output, saved, errors, _ = image_gen.run_image_gen("old fisherman --seed 5 --v 6", job_id="j1", config=fake_run)
     call = FakeClient.calls[-1]
     assert not errors and saved
@@ -170,7 +170,7 @@ def test_run_uses_rewrite_preset_aspect_and_seed(monkeypatch, fake_run):
 
 
 def test_user_aspect_wins_and_rewrite_failure_falls_back(monkeypatch, fake_run):
-    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c: None)
+    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c, previous="": None)
     image_gen.run_image_gen("a red fox in snow --ar 16:9", job_id="j2", config=fake_run)
     call = FakeClient.calls[-1]
     assert (call["width"], call["height"]) == (1344, 768)
@@ -179,7 +179,7 @@ def test_user_aspect_wins_and_rewrite_failure_falls_back(monkeypatch, fake_run):
 
 
 def test_fast_profile_uses_the_fast_checkpoint(monkeypatch, fake_run, tmp_path):
-    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c: None)
+    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c, previous="": None)
     monkeypatch.setattr(image_gen, "CHECKPOINT_DIR", tmp_path)
     (tmp_path / "RealVisXL_V5.0_Lightning_fp16.safetensors").write_bytes(b"x")
     cfg = dataclasses.replace(fake_run, image_fast_checkpoint="RealVisXL_V5.0_Lightning_fp16.safetensors")
@@ -206,7 +206,7 @@ def test_localhost_becomes_ipv4(url, expected):
 
 
 def test_profiles_choose_model_size_and_hires(monkeypatch, fake_run, tmp_path):
-    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c: None)
+    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c, previous="": None)
     monkeypatch.setattr(image_gen, "CHECKPOINT_DIR", tmp_path)
     (tmp_path / "RealVisXL_V5.0_Lightning_fp16.safetensors").write_bytes(b"x")
     cfg = dataclasses.replace(fake_run, image_fast_checkpoint="RealVisXL_V5.0_Lightning_fp16.safetensors")
@@ -242,6 +242,6 @@ def test_long_prompts_are_condensed_not_cut():
     ("a red sports car at night in the rain", False),
 ])
 def test_text_and_logo_requests_get_a_note(monkeypatch, fake_run, query, warned):
-    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c: None)
+    monkeypatch.setattr(image_gen, "rewrite_prompt", lambda q, c, previous="": None)
     output, *_ = image_gen.run_image_gen(query, job_id="t", config=fake_run)
     assert ("cannot write readable text" in output) is warned

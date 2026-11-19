@@ -95,6 +95,9 @@ Rewrite the user's request as ONE image prompt.
 
 Rules:
 - Keep every subject, detail and constraint the user asked for. Do not add new main subjects.
+- When the previous picture's prompt is given, the request CHANGES that picture: keep its subject, colours,
+  setting, weather and style (copy its phrases), apply the change, and put what is added or changed FIRST
+  ("a smiling man standing beside a black horse, snow falling, …") — the model draws the first phrases most surely.
 - A long request will not fit: keep the main subject and the most important visible elements first,
   drop minor ones, and drop words about text, logos, labels, dimensions and angles (the model cannot
   draw them; leave empty space instead if the user wants room for text).
@@ -174,13 +177,48 @@ def parse_rewrite(raw: str) -> PromptRewrite | None:
     return PromptRewrite(prompt=prompt[:800], aspect=aspect)  # type: ignore[arg-type]
 
 
-def rewrite_prompt(query: str, config: Config) -> PromptRewrite | None:
-    """Ask the chat model for a better SDXL prompt. None on any failure (caller falls back)."""
+# a message that changes the last picture: "add a person beside this horse", "now make it night", "same but red"
+_CHANGE_START_RE = re.compile(r"^\W*(now\s+|also\s+|please\s+|and\s+)*(add|remove|put|place|change|replace|swap|"
+                              r"make\s+(it|him|her|them|the)|turn\s+(it|the)|give\s+(it|him|her|them)|without)\b", re.I)
+_CHANGE_REF_RE = re.compile(r"\b(this|that|the\s+same|same)\s+(image|picture|photo|one|scene|[a-z]+)\b|"
+                            r"\b(in|to|from)\s+(it|the\s+(image|picture|photo))\b", re.I)
+_PROMPT_USED_RE = re.compile(r"Prompt used:\s*`([^`]+)`")
+HISTORY_TURNS = 6         # how far back the last picture is looked for
+
+
+def is_change(query: str) -> bool:
+    """Does the message change the chat's last picture rather than ask for a new one?"""
+    text = query or ""
+    return bool(_CHANGE_START_RE.search(text) or _CHANGE_REF_RE.search(text))
+
+
+def previous_prompt(conversation: list[dict[str, str]] | None) -> str:
+    """The prompt the chat's last picture was drawn from: its "Prompt used" line, else the request it answered
+    ("" when there is no picture in the last turns). ISSUES_LOG O111."""
+    turns = list(conversation or [])[-HISTORY_TURNS:]
+    for i in range(len(turns) - 1, -1, -1):
+        turn = turns[i]
+        content = str(turn.get("content") or "")
+        if turn.get("role") != "assistant" or "Generated with" not in content:
+            continue
+        used = _PROMPT_USED_RE.search(content)
+        if used:
+            return used.group(1).strip()
+        asked = next((str(t.get("content") or "") for t in reversed(turns[:i]) if t.get("role") == "user"), "")
+        return asked.strip()
+    return ""
+
+
+def rewrite_prompt(query: str, config: Config, previous: str = "") -> PromptRewrite | None:
+    """Ask the chat model for a better SDXL prompt. None on any failure (caller falls back).
+    previous: the last picture's prompt when the request changes it (O111)."""
     from src.llm.llm_client import LLMClient
 
     text = (query or "").strip()
     if not text:
         return None
+    if previous:
+        text = f"The previous picture's prompt: {previous}\nThe change the user asks for: {text}"
     try:
         raw = LLMClient(config).chat(
             system=REWRITE_SYSTEM, user=text[:1500], temperature=0.3, max_retries=0,

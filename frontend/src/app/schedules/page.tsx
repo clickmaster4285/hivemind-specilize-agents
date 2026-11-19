@@ -1,14 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useApp } from "@/components/app/AppProvider";
 import PageHeader from "@/components/app/PageHeader";
 import { useOpenChat } from "@/hooks/useOpenChat";
-import { deleteSchedule, listSchedules, runScheduleNow, setScheduleEnabled, type Schedule } from "@/lib/api";
+import { ApiError, deleteSchedule, listSchedules, runScheduleNow, setScheduleEnabled, type Schedule } from "@/lib/api";
 import { errorText } from "@/lib/chat";
 import { describeSchedule } from "@/lib/schedules";
 import { btn } from "@/lib/ui";
+
+/** Run now while another answer runs (one at a time per user): tried again every RETRY_MS, at most RETRY_TIMES
+ *  (10 minutes), while the page is open — instead of the API's "already has 1 active job(s)" (ISSUES_LOG O110). */
+const RETRY_MS = 10_000;
+const RETRY_TIMES = 60;
+const isBusy = (err: unknown) => err instanceof ApiError && err.status === 409 && /active job/i.test(err.message);
 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : "—");
 /** How the last run went, in words (src/jobs/schedules.py last_status). */
@@ -24,6 +30,13 @@ export default function SchedulesPage() {
   const { openChat } = useOpenChat();
   const [rows, setRows] = useState<Schedule[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState<Set<number>>(new Set());
+  const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+
+  useEffect(() => {
+    const pending = timers.current;
+    return () => pending.forEach((t) => clearTimeout(t));       // leaving the page stops the waiting
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,13 +56,26 @@ export default function SchedulesPage() {
     }
   }
 
-  async function runNow(s: Schedule) {
+  function stopWaiting(id: number) {
+    clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
+    setWaiting((w) => { const next = new Set(w); next.delete(id); return next; });
+  }
+
+  async function runNow(s: Schedule, tries = 0) {
     try {
       const saved = await runScheduleNow(s.id);
       setRows((all) => (all || []).map((r) => (r.id === s.id ? saved : r)));
       setError(null);
+      stopWaiting(s.id);
     } catch (err) {
-      setError(errorText(err));
+      if (isBusy(err) && tries < RETRY_TIMES) {
+        setWaiting((w) => new Set(w).add(s.id));
+        timers.current.set(s.id, setTimeout(() => void runNow(s, tries + 1), RETRY_MS));
+        return;
+      }
+      stopWaiting(s.id);
+      setError(isBusy(err) ? "Your other answer is still running after 10 minutes — try Run now again later." : errorText(err));
     }
   }
 
@@ -100,7 +126,14 @@ export default function SchedulesPage() {
                       Open “{s.chat_title || thread.title}”
                     </button>
                   ) : null}
-                  <button type="button" className={btn("sm")} onClick={() => runNow(s)}>Run now</button>
+                  {waiting.has(s.id) ? (
+                    <button type="button" className={btn("sm")} onClick={() => stopWaiting(s.id)}
+                      title="Another answer is running; this run starts when it ends. Click to stop waiting.">
+                      Waiting for your other answer… ✕
+                    </button>
+                  ) : (
+                    <button type="button" className={btn("sm")} onClick={() => runNow(s)}>Run now</button>
+                  )}
                   <button type="button" className={btn("sm")} onClick={() => toggle(s)}>
                     {s.enabled ? "Pause" : "Resume"}
                   </button>

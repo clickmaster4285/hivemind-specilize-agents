@@ -1,6 +1,7 @@
 ---
 name: job-description
 description: 'Write a clear, fair job description: the role, what the person will do, what they need, and what is offered. Use for "write a job ad", "job description for", "hiring post".'
+allowed-tools: none
 metadata:
   title: Job description
   category: Writing

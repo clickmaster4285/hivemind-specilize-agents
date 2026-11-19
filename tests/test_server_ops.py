@@ -510,3 +510,10 @@ def test_a_removed_server_closes_its_kept_login(pool):
     so.release_session(kept)
     so.forget({"1"})
     assert kept.client.closed and so._idle == {}
+
+
+def test_comparing_with_the_remote_is_read_only_fetching_is_not():
+    """O107: "up to date with origin" was said from `git status` alone; ls-remote reads the remote, changes nothing."""
+    assert so.classify_command("git -C /var/www/app ls-remote origin changes11/17") is None
+    assert so.classify_command("git -C /var/www/app fetch") is not None
+    assert "ls-remote origin <branch>" in so.DIAGNOSE_SYSTEM

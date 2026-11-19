@@ -244,7 +244,32 @@ function diagramTitles(content: string): Map<string, string> {
   return titles;
 }
 
-export default function MarkdownBody({ content, pending, sources }: Props) {
+// the "Commands run (n)" list a server tool puts under its report (server_ops._commands_block): 32 commands
+// pushed a deploy's answer off the screen, so it is folded (ISSUES_LOG O109)
+const COMMANDS_HEADING = /\n[ \t]*\*\*Commands run \((\d+)\)\*\*[ \t]*\n/;
+
+/** A finished answer with its commands folded under a "Commands run (n)" toggle; everything else as Markdown. */
+export default function MarkdownBody(props: Props) {
+  const found = props.pending ? null : COMMANDS_HEADING.exec(props.content);
+  if (!found) return <Body {...props} />;
+  const head = props.content.slice(0, found.index);
+  const lines = props.content.slice(found.index + found[0].length).replace(/^\s*\n/, "").split("\n");
+  const end = lines.findIndex((line) => line.trim() !== "" && !/^\s*([-*]\s|\s{2,}\S)/.test(line));
+  const list = (end < 0 ? lines : lines.slice(0, end)).join("\n");
+  const rest = end < 0 ? "" : lines.slice(end).join("\n");
+  return (
+    <>
+      {head.trim() && <Body {...props} content={head} />}
+      <details className="mt-2 rounded-[0.6rem] border border-line bg-panel-2 px-[0.7rem] py-[0.35rem] text-[0.82rem]">
+        <summary className="cursor-pointer font-semibold text-muted">Commands run ({found[1]})</summary>
+        <Body {...props} content={list} />
+      </details>
+      {rest.trim() && <Body {...props} content={rest} />}
+    </>
+  );
+}
+
+function Body({ content, pending, sources }: Props) {
   const titles = useMemo(() => diagramTitles(content), [content]);
   if (pending) {
     return (

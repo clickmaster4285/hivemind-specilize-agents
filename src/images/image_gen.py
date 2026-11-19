@@ -16,7 +16,8 @@ from src.tools.attachments import load_mask_image, load_pil_images, save_images
 from src.core.config import FAST_CHECKPOINT_PROFILES, Config
 from src.images.image_client import ImageCancelled, ImageServiceClient, ImageServiceError
 from src.images.image_models import CHECKPOINT_DIR, parse_image_flags, preset_for, size_for_aspect
-from src.images.image_prompt import TEXT_REQUEST_RE, needs_rewrite, polish_prompt, rewrite_prompt, should_polish
+from src.images.image_prompt import (TEXT_REQUEST_RE, is_change, needs_rewrite, polish_prompt, previous_prompt,
+                                     rewrite_prompt, should_polish)
 from src.llm.llm_lock import image_slot
 from src.llm.ollama_mgmt import unload_ollama_models
 
@@ -88,10 +89,12 @@ def run_image_gen(
     image_mode: str | None = None,
     should_continue: Callable[[], bool] | None = None,
     checkpoint: str | None = None,
+    conversation: list[dict[str, str]] | None = None,
 ) -> tuple[str, list[dict[str, str]], list[str], float]:
     """Return (message, saved attachment dicts, errors, seconds).
 
     `checkpoint` = a file name in models/checkpoints/ for this job (default: MODEL_IMAGE_PATH).
+    `conversation`: the chat so far — "add a person beside this horse" changes the last picture (O111).
     """
     config = config or Config.from_env()
     model_plan = model_plan or {}
@@ -146,9 +149,11 @@ def run_image_gen(
 
     aspect = flags.aspect
     rewritten = None
-    if not needs_edit_polish and config.image_prompt_rewrite and needs_rewrite(raw_query):
+    # a change to the chat's last picture keeps its subject: the rewrite starts from that picture's prompt
+    previous = previous_prompt(conversation) if not needs_edit_polish and is_change(raw_query) else ""
+    if not needs_edit_polish and config.image_prompt_rewrite and (previous or needs_rewrite(raw_query)):
         _emit(on_progress, {"type": "status", "message": "Writing a detailed image prompt…"})
-        rewritten = rewrite_prompt(raw_query, config)
+        rewritten = rewrite_prompt(raw_query, config, previous)
     if rewritten is not None:
         prompt = rewritten.prompt
         aspect = aspect or rewritten.aspect
@@ -300,7 +305,8 @@ def run_image_gen(
             "type": "agent_done",
             "agent_id": "assistant",
             "name": "Assistant",
-            "role": role if saved else "Direct reply",
+            # a failure is still the image job's answer (was "Direct reply", ISSUES_LOG O111)
+            "role": role if saved or not errors else f"{role} failed",
             "stage": "chat",
             "accent": "#c4a35a",
             "elapsed_seconds": elapsed,

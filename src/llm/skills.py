@@ -92,6 +92,12 @@ def instruction_budget(config: Config) -> int:
     return int(config.llm_num_ctx * SKILL_CONTEXT_SHARE)
 
 
+# `allowed-tools: none`: the skill's answer is the text itself (an email, a translation) — no tool is offered, so
+# /professional-email no longer hands a letter to the landlord to the marketing-copy writer (ISSUES_LOG O112).
+# No allowed-tools at all still means every tool of the specialist.
+NO_TOOLS = "none"
+
+
 def check(skill: Skill, *, budget: int) -> Skill:
     """Validate and tidy a skill: a usable name, a description, instructions within the budget; tools and a
     specialist MulteAgent does not have are dropped (a skill written for another assistant still loads)."""
@@ -110,8 +116,10 @@ def check(skill: Skill, *, budget: int) -> Skill:
     if estimate_tokens(skill.instructions) > budget:
         raise SkillError(f"the instructions are about {estimate_tokens(skill.instructions)} tokens; the model's "
                          f"context leaves room for {budget} — shorten them")
-    known = set(tool_names())
+    known = set(tool_names()) | {NO_TOOLS}
     skill.tools = [t for t in dict.fromkeys(skill.tools) if t in known]
+    if NO_TOOLS in skill.tools:
+        skill.tools = [NO_TOOLS]
     skill.specialist = skill.specialist if skill.specialist in {s.id for s in SpecialistStore().load_all()} else ""
     skill.title, skill.category = skill.title.strip()[:120], skill.category.strip()[:60]
     return skill
@@ -284,5 +292,5 @@ def apply(skill: Skill, specialist: Specialist | None) -> Specialist:
     """The specialist that answers with the skill: its instructions plus the skill's, and the skill's tools (only
     those the specialist may use — the IT-only tools stay IT-only). No specialist → the plain assistant with it."""
     base = specialist or Specialist(id=GENERAL, name="Assistant", covers="", instructions="", tools=tool_names())
-    tools = [t for t in skill.tools if t in base.tools] or base.tools
+    tools = [] if skill.tools == [NO_TOOLS] else [t for t in skill.tools if t in base.tools] or base.tools
     return replace(base, instructions=f"{base.instructions}\n\n{prompt_block(skill)}".strip(), tools=tools)

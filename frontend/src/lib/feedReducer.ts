@@ -214,6 +214,14 @@ function choiceOptions(raw: unknown): ChoiceOption[] {
 
 const CONFIRM_ANSWERS: readonly ConfirmAnswer[] = ["run", "cancel", "timeout"];
 
+/** A card (confirm / choice) goes before the job's open answer bubble: the tool's bubble opens when it starts and
+ *  is filled when it ends, so a card added after it showed under the finished answer (ISSUES_LOG O108). */
+function withCard(prev: FeedItem[], card: FeedItem): FeedItem[] {
+  const items = prev.filter((item) => item.id !== STATUS_ID);
+  const open = items.map((item) => item.kind === "agent" && Boolean(item.pending)).lastIndexOf(true);
+  return open < 0 ? [...items, card] : [...items.slice(0, open), card, ...items.slice(open)];
+}
+
 /** Pure reducer: apply one backend event onto a feed snapshot. */
 export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
   const type = String(event.type || "");
@@ -255,9 +263,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
   }
   if (type === "confirm_command") {
     // operate_server is waiting for the user to approve this command
-    return [
-      ...prev.filter((item) => item.id !== STATUS_ID),
-      {
+    return withCard(prev, {
         id: uid(),
         kind: "system",
         title: "Approve command",
@@ -267,8 +273,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           command: String(event.command || ""),
           server: String(event.server || ""),
         },
-      },
-    ];
+      });
   }
   if (type === "repeatable") {
     // the worker's note after a check worth repeating: the answer offers a schedule (ISSUES_LOG O99, step 5)
@@ -284,9 +289,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
   }
   if (type === "choice_ask") {
     // deploy_project is waiting for the user to pick (which folder, branch, what to install / build / restart)
-    return [
-      ...prev.filter((item) => item.id !== STATUS_ID),
-      {
+    return withCard(prev, {
         id: uid(),
         kind: "system",
         title: "Choose",
@@ -298,8 +301,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           multi: Boolean(event.multi),
           server: String(event.server || ""),
         },
-      },
-    ];
+      });
   }
   if (type === "choice_resolved") {
     const picked = Array.isArray(event.picked) ? event.picked.map(String) : [];

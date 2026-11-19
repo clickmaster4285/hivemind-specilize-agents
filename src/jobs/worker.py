@@ -443,6 +443,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                 image_mode=(route or {}).get("image_mode"),
                 should_continue=_still_running,
                 checkpoint=str(payload.get("image_checkpoint") or "") or None,
+                conversation=conversation,
             )
             with session_scope(config) as session:
                 current = get_job(session, job_id)

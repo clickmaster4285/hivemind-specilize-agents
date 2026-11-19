@@ -1,6 +1,7 @@
 ---
 name: professional-email
 description: 'Write or improve a professional email: clear purpose, the right tone, and a specific ask. Use for "write an email to", "reply to this email", "make this email better".'
+allowed-tools: none
 metadata:
   title: Professional email
   category: Writing
