@@ -1,5 +1,6 @@
-"""The date goes last in the long system prompts (ISSUES_LOG O52): Ollama reuses the cached start of a prompt, and
-a time that changes every minute near the top made it read the whole tool-choice prompt again (17 s, not 1.6 s)."""
+"""What changes every message goes last in the tool-choice prompt (ISSUES_LOG O52): Ollama reuses the prompt it read
+before up to the first changed token, and this model's template puts the tools and the whole chat after the first
+system message — a minute in the date there made it read 8,800 tokens again (23 s, not 1.7 s; measured 2026-11-19)."""
 
 from __future__ import annotations
 
@@ -15,18 +16,17 @@ CFG = Config.from_env()
 DATE_LABEL = "Current date and time:"
 
 
-def _date_only_at_the_end(system: str) -> None:
-    head, _, tail = system.rpartition("\n\n")
-    assert DATE_LABEL not in head
-    assert tail.startswith(DATE_LABEL)
-
-
 def test_the_date_line_names_the_time():
     assert date_line("Saturday, 14 November 2026, 10:01 AM") == f"{DATE_LABEL} Saturday, 14 November 2026, 10:01 AM."
 
 
-def test_the_tool_choice_prompt_ends_with_the_date():
-    _date_only_at_the_end(messages_for("hi", CFG, None, CFG.llm_model)[0]["content"])
+def test_the_tool_choice_prompt_puts_the_date_and_the_chats_work_just_before_the_question():
+    turns = [{"role": "user", "content": "deploy it"}, {"role": "assistant", "content": "Deployed."}]
+    msgs = messages_for("did it work?", CFG, turns, CFG.llm_model, chat_work="This chat is working on uk server.")
+    assert DATE_LABEL not in msgs[0]["content"] and "working on" not in msgs[0]["content"]   # the cached start
+    assert [m["role"] for m in msgs[-4:]] == ["user", "assistant", "system", "user"]
+    assert DATE_LABEL in msgs[-2]["content"] and "This chat is working on uk server." in msgs[-2]["content"]
+    assert msgs[-1] == {"role": "user", "content": "did it work?"}
 
 
 def test_the_router_prompt_has_the_date_alone_at_the_top():

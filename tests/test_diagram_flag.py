@@ -19,12 +19,15 @@ def test_the_router_flag_defaults_on():
     assert Route().diagram is True                                        # a failed router keeps them too
 
 
-def test_the_answer_prompt_carries_the_rules_only_when_on():
-    on = assistant.messages_for("how does DNS work", CFG, None, CFG.llm_model, diagrams=True)[0]["content"]
-    off = assistant.messages_for("what is 15% of 2400", CFG, None, CFG.llm_model, diagrams=False)[0]["content"]
+def test_the_answer_prompt_carries_the_rules_only_when_on_and_late():
+    """In the late system message, just before the question: switching them must not change the prompt's start,
+    which Ollama reads again from the first changed token (O52, measured 2026-11-19)."""
+    on_msgs = assistant.messages_for("how does DNS work", CFG, None, CFG.llm_model, diagrams=True)
+    off_msgs = assistant.messages_for("what is 15% of 2400", CFG, None, CFG.llm_model, diagrams=False)
+    assert on_msgs[0] == off_msgs[0]                                      # the cached start is the same
+    on, off = on_msgs[-2]["content"], off_msgs[-2]["content"]
     assert DIAGRAM_RULES in on and NETDIAGRAM_RULES in on and NO_DIAGRAM_RULE not in on
     assert DIAGRAM_RULES not in off and NETDIAGRAM_RULES not in off and NO_DIAGRAM_RULE in off
-    assert len(off) < len(on) - len(DIAGRAM_RULES)
 
 
 def test_a_routed_web_search_passes_the_flag_and_the_tool_choice_keeps_the_default():

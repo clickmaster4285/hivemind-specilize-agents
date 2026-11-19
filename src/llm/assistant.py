@@ -431,20 +431,25 @@ def messages_for(
         # them made it answer from memory instead of searching or drawing — eval 25/27 → see BACKLOG)
         identity += (f"\n\n{specialist.prompt_block()}\nThe tool rules below always apply to you too: when a "
                      "tool can do the thing or look it up, call the tool instead of explaining how to do it.")
-    # the diagram rules carry JSON braces, so they are appended AFTER .format (never inside a .format template);
-    # the date last, so the long fixed part stays a cached prefix (O52)
-    system = SYSTEM.format(identity=identity) + diagram_block(diagrams) + f"\n\n{date_line()}"
+    system = SYSTEM.format(identity=identity)
     if servers:      # the IT specialist said "add the server first" although three were added (ISSUES_LOG O83)
         system += (f"\nServers the user already added in Settings → Devices: {servers}. For work on them, call the "
                    "server tools; never say a server must be added first.")
-    if chat_work:    # follow-ups name no server or folder: the chat's own (ISSUES_LOG O103)
-        system += f"\n{chat_work} A message that names no other server or project means these."
     msgs = [{"role": "system", "content": system}]
     summary, turns = split_summary(conversation or [])
     if summary:          # a long chat's earlier part, folded into a summary (BACKLOG L12) — always kept
         msgs.append({"role": "system", "content": f"Summary of the earlier part of this chat:\n{summary['content']}"})
     for turn in turns[-8:]:
         msgs.append({"role": turn["role"], "content": turn["content"][:4000]})
+    # What changes from one message to the next goes LAST, just before the question (ISSUES_LOG O52): Ollama reuses
+    # the prompt it read before up to the first changed token, and this model's template puts the tool list and the
+    # whole chat AFTER the first system message — a minute in the date there made it read 8,800 tokens again (23 s;
+    # here: 1.7 s). Measured 2026-11-19. The diagram rules too: the router turns them on for ~7% of messages, and at
+    # the top each switch on and off made the whole prompt be read again. (They carry JSON braces: never .format.)
+    late = diagram_block(diagrams).strip() + "\n\n" + date_line()
+    if chat_work:    # follow-ups name no server or folder: the chat's own (ISSUES_LOG O103)
+        late += f"\n{chat_work} A message that names no other server or project means these."
+    msgs.append({"role": "system", "content": late})
     # a "Try again, better" regenerate carries the user's reason as a hidden instruction on the question
     content = f"{query}\n\n{refine_note}" if refine_note else query
     msgs.append({"role": "user", "content": content})
