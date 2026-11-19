@@ -163,6 +163,36 @@ Every message is checked once, when you send it, before any model sees it.
   tries to make the assistant ignore or reveal its instructions. There is no list of "attack phrases": such a
   list refuses normal requests ("you are now my tutor") and questions about prompt injection itself.
 
+### 1.9 The security log (S6)
+
+What happened around sign-ins and uploads is kept where an admin can read it: **Settings → Users → Security log**
+(folded at the bottom; filter by kind). Before, it went only to `logs/api.log`, which rolls over and needs a shell.
+
+- **Wrong password** — every failed sign-in: the account (or the name typed when no account has it) and the
+  computer's address.
+- **Account locked / Computer blocked** — when the failures reach the lock (1.3); shown in red.
+- **Sign-in token reused** — a sign-in token that was already spent came back (a copied cookie, 1.2): that whole
+  session was ended. Shown in red, with the address it came from.
+- **Upload refused** — a picture that was not one, or too big (1.10), with the reason.
+- **Unlocked by an admin** — who unlocked what (1.5).
+
+Events are kept **90 days**. Writing one never fails the request it belongs to.
+
+### 1.10 What an upload may be (S3)
+
+A picture attached to a message is trusted for nothing it says about itself:
+
+- **Its type comes from its own bytes**, not from its name or what the browser says. A PNG called `.jpg` is
+  stored as the PNG it is; a PDF or a script called `photo.png` is refused.
+- **It must be a picture that can be decoded**, of at most **40 million pixels** — checked from the header first,
+  so a small file that unpacks to gigabytes (a "decompression bomb") is refused before it is unpacked.
+- **What is stored is a fresh copy of the pixels.** Anything else the file carried — text hidden after the image,
+  EXIF with the phone's GPS position — is gone. A GIF keeps its first frame (as a PNG).
+- **All pictures of a message are checked before any is saved**: one bad file saves none.
+- **A skill file (SKILL.md) may be at most 100,000 characters.**
+
+Not done: a virus scan (ClamAV) — it needs the `clamav` package installed on this PC (your decision). For
+pictures, the re-encoding already removes what a scanner would look for in them.
 
 ## Part 2 — Technical reference
 
@@ -314,7 +344,9 @@ The per-request cost is in `logs/ui.log` (`proxy.ts: 4ms` on each page).
 | Sign-up, invites | `src/core/signup.py`, `src/core/accounts.py`, `frontend/src/components/auth/AuthScreen.tsx`, `InvitesPanel.tsx` |
 | Admin pages | `web/routers/users.py`, `UsersSection.tsx`, `UserForm.tsx`, `BlockedComputers.tsx` |
 | Message filter | `src/llm/prompt_filter.py`, called in `create_job` (`src/jobs/jobs.py`) |
-| Tests | `tests/test_prompt_filter.py`, `tests/test_sessions.py`, `tests/test_abuse_limits.py`, `tests/test_captcha.py`, `tests/test_signup.py`, `tests/test_security_headers.py` |
+| Security log | `src/core/security_log.py` (table `security_events`), written in `abuse.py`, `auth.refresh_session`, `create_job`; read at `GET /api/auth/users/security-events`, `SecurityLogPanel.tsx` |
+| Uploads | `src/tools/attachments.py` (`clean_image`, `UploadRefused`); skill file cap `SKILL_FILE_CHARS` in `web/schemas.py` |
+| Tests | `tests/test_prompt_filter.py`, `tests/test_sessions.py`, `tests/test_abuse_limits.py`, `tests/test_captcha.py`, `tests/test_signup.py`, `tests/test_security_headers.py`, `tests/test_security_log.py` |
 
 ---
 
@@ -343,6 +375,9 @@ Every number is a named constant; changing one is a one-line edit plus an API re
 | open sign-up on by default | `OPEN_SIGNUP_DEFAULT` | 〃 |
 | message filter on, model check off, 100,000 characters | `PROMPT_FILTER_ENABLED`, `PROMPT_FILTER_LLM`, `PROMPT_FILTER_MAX_CHARS` (`.env`) | `src/core/config.py` |
 | model check from 2,000 characters, reads 6,000 | `LLM_CHECK_MIN_CHARS`, `LLM_CHECK_CHARS` | `src/llm/prompt_filter.py` |
+| security log kept 90 days, 500 shown | `SECURITY_LOG_DAYS`, `LIST_LIMIT` | `src/core/security_log.py` |
+| picture: 5 MB, 4 per message, 40 million pixels, JPEG/WebP quality 92 | `MAX_BYTES`, `MAX_IMAGES`, `MAX_PIXELS`, `JPEG_QUALITY` | `src/tools/attachments.py` |
+| skill file 100,000 characters | `SKILL_FILE_CHARS` | `web/schemas.py` |
 
 ---
 

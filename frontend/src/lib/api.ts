@@ -9,6 +9,7 @@ import type {
   Invite,
   Job,
   Locks,
+  SecurityLog,
   ManagedUser,
   ModuleInfo,
   ModelInfo,
@@ -202,6 +203,11 @@ export async function revokeInvite(id: number): Promise<void> {
 /** Accounts and computers that must wait before their next sign-in (failed passwords). */
 export async function listLocks(): Promise<Locks> {
   return request("/api/auth/users/locks");
+}
+
+/** The security log: failed sign-ins, locks, reused sign-in tokens, refused uploads, unlocks (admins). */
+export async function listSecurityEvents(kind?: string): Promise<SecurityLog> {
+  return request(`/api/auth/users/security-events${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`);
 }
 
 export async function unlockUser(id: number): Promise<{ unlocked: boolean }> {

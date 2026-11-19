@@ -25,6 +25,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from src.core import security_log
 from src.core.models_db import LoginFailure, as_utc, utcnow
 
 log = logging.getLogger(__name__)
@@ -145,6 +146,8 @@ def record_failure(db: Session, account: str, address: str, now: datetime | None
     now = now or utcnow()
     db.execute(delete(LoginFailure).where(LoginFailure.failed_at <= now - LOGIN_WINDOW))
     db.add_all([LoginFailure(key=account, failed_at=now), LoginFailure(key=address, failed_at=now)])
+    user_id = _user_of(account)
+    security_log.record(db, security_log.LOGIN_FAILED, user_id=user_id, account=account, address=address, now=now)
     db.commit()
     account_failures, _ = _recent(db, account, now)
     address_failures, _ = _recent(db, address, now)
@@ -152,8 +155,19 @@ def record_failure(db: Session, account: str, address: str, now: datetime | None
     if account_failures == ACCOUNT_LOCK_FAILURES:
         log.warning("sign-in locked for %s: %s after %d failures (from %s)", LOGIN_LOCK, account,
                     account_failures, address)
+        security_log.record(db, security_log.ACCOUNT_LOCKED, user_id=user_id, account=account, address=address,
+                            detail=f"{account_failures} failures in {LOGIN_WINDOW}; locked for {LOGIN_LOCK}", now=now)
     if address_failures == ADDRESS_BLOCK_FAILURES:
         log.warning("sign-in blocked for %s: address %s after %d failures", LOGIN_LOCK, address, address_failures)
+        security_log.record(db, security_log.ADDRESS_BLOCKED, account=account, address=address,
+                            detail=f"{address_failures} failures in {LOGIN_WINDOW}; blocked for {LOGIN_LOCK}", now=now)
+    db.commit()
+
+
+def _user_of(account: str) -> int | None:
+    """`user:<id>` → the id; `name:<typed>` (no such account) → None."""
+    kind, _, value = account.partition(":")
+    return int(value) if kind == "user" and value.isdigit() else None
 
 
 def needs_captcha(db: Session, account: str, address: str, now: datetime | None = None) -> bool:
@@ -187,6 +201,9 @@ def locks(db: Session, now: datetime | None = None) -> list[Lock]:
 def unlock(db: Session, key: str, by: str) -> bool:
     """An admin ends a lock at once: the key's failures are forgotten. False when there were none."""
     removed = db.execute(delete(LoginFailure).where(LoginFailure.key == key)).rowcount
+    if removed:
+        security_log.record(db, security_log.UNLOCKED, user_id=_user_of(key), account=key,
+                            detail=f"by {by}; {removed} failures forgotten")
     db.commit()
     if removed:
         log.warning("sign-in unlocked by %s: %s (%d failures forgotten)", by, key, removed)

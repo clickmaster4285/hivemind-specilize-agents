@@ -184,6 +184,19 @@ export type CaptchaChallenge = { id: string; image: string };
 export type CaptchaAnswer = { captcha_id: string; captcha_answer: string };
 
 /** Who must wait before the next sign-in (Settings → Users). */
+/** The security log (BACKLOG L16 S6): newest first; `kept_days` is how long an event stays. */
+export type SecurityEvent = {
+  id: number;
+  at: string;
+  kind: string;
+  user_id: number | null;
+  username: string | null;
+  account: string;
+  address: string;
+  detail: string;
+};
+export type SecurityLog = { events: SecurityEvent[]; kinds: string[]; kept_days: number };
+
 export type Locks = {
   accounts: { user_id: number; username: string | null; failures: number; until: string }[];
   addresses: { address: string; failures: number; until: string }[];

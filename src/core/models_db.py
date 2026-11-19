@@ -128,6 +128,21 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text)
 
 
+class SecurityEvent(Base):
+    """Something an admin should be able to see later (BACKLOG L16 S6, src/core/security_log.py): a failed sign-in,
+    a lock, a reused sign-in token, a refused upload, an admin's unlock. Kept SECURITY_LOG_DAYS days."""
+
+    __tablename__ = "security_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)   # no FK: kept after a delete
+    account: Mapped[str] = mapped_column(String(LOGIN_KEY_CHARS), default="")        # the abuse key, or a username
+    address: Mapped[str] = mapped_column(String(LOGIN_KEY_CHARS), default="")        # the caller's address
+    detail: Mapped[str] = mapped_column(String(500), default="")
+
+
 class LoginFailure(Base):
     """One failed sign-in, counted against a key (BACKLOG L16 S2, src/core/abuse.py): the account
     (`user:<id>`, or `name:<what was typed>` when no account matched) and the caller's address

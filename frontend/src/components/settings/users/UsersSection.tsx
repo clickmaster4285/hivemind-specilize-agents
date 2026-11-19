@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import BlockedComputers from "@/components/settings/users/BlockedComputers";
 import InvitesPanel from "@/components/settings/users/InvitesPanel";
+import SecurityLogPanel from "@/components/settings/users/SecurityLogPanel";
 import UserForm from "@/components/settings/users/UserForm";
 import type { UsersApi } from "@/hooks/useUsers";
 import type { ManagedUser } from "@/lib/types";
@@ -114,6 +115,8 @@ export default function UsersSection({ users }: { users: UsersApi }) {
       ) : (
         <p className="text-xs text-muted">No accounts yet.</p>
       )}
+
+      <SecurityLogPanel />
     </>
   );
 }

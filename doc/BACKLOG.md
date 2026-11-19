@@ -406,14 +406,17 @@ How the finished parts work: **[SECURITY.md](SECURITY.md)**.
       sign-in from the 3rd failure; a try without it is not counted, so nobody locks an account without a
       person); admin **Unlock now** and **Blocked computers** → [SECURITY.md §1.4–1.5, §2.4–2.5](SECURITY.md#14-the-captcha-s2b).
       **Left (user):** live check — picture readable, shown at the right time; tune ([SECURITY.md Part 3](SECURITY.md#part-3--the-numbers-and-where-to-change-them))
-- [ ] **S3 uploads:** type from the file's own bytes (not the declared MIME), decoded and re-encoded with
-      Pillow (drops hidden payloads and metadata, pixel limit against decompression bombs), virus scan (ClamAV)
-      on uploaded files; skill uploads size-capped
+- [x] **S3 uploads — done 2026-11-19:** type from the file's own bytes, decoded and re-encoded with Pillow (hidden
+      payloads and EXIF dropped), 40 million pixel limit checked before decoding, all pictures checked before any
+      is saved, refusals in the security log; SKILL.md capped at 100,000 characters → [SECURITY.md 1.10](SECURITY.md#110-what-an-upload-may-be-s3).
+      **Left (user's decision):** ClamAV virus scan (needs the `clamav` package)
 - [x] **S4 headers + XSS — done 2026-11-11:** CSP with a nonce per page, `nosniff`, no framing, no referrer;
       the API's own locked-down policy; answer links http(s)/mailto only. How: [SECURITY.md 1.7](SECURITY.md#17-what-the-browser-is-told-s4).
       HSTS comes with HTTPS
 - [ ] **S5 encryption at rest (AES-256-GCM):** for secrets the app stores — decided per item (see questions)
-- [ ] **S6 security log:** failed logins, locks, refresh-token reuse, rejected uploads — visible to admins
+- [x] **S6 security log — done 2026-11-19:** failed sign-ins, account locks, blocked computers, reused sign-in
+      tokens, refused uploads, admin unlocks in `security_events` (90 days); Settings → Users → Security log for
+      admins → [SECURITY.md 1.9](SECURITY.md#19-the-security-log-s6)
 - [ ] **S9 public user ids (user, 2026-11-16):** user ids are 1, 2, 3 (`users.id`, a serial). Keep the number inside
       the database (about 9 tables reference it, plus row-level security), add a random `public_id` (UUID) and use it
       wherever an id leaves the server: the login token's `sub`, `/api/auth/users/{id}/…`, the admin user list.

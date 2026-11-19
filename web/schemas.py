@@ -112,8 +112,13 @@ class SkillDraftPayload(BaseModel):
     job_id: str                    # the finished task to learn a skill from (H2)
 
 
+# a SKILL.md is a page of instructions: the model's context caps what is kept anyway, so a bigger "skill" is refused
+# before it is parsed (BACKLOG L16 S3)
+SKILL_FILE_CHARS = 100_000
+
+
 class SkillUploadPayload(BaseModel):
-    text: str                      # a SKILL.md file's content
+    text: str = Field(max_length=SKILL_FILE_CHARS)     # a SKILL.md file's content
     team: bool = False
 
 

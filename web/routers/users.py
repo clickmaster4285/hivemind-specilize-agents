@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.core import abuse, modules, signup
+from src.core import abuse, modules, security_log, signup
 from src.core.abuse import ADDRESS_KEY, Lock, account_key
 from src.core.accounts import AccountError, check_password, clean_email, clean_text, clean_username
 from src.core.auth import get_db, hash_password, may_use, require_admin, user_modules
@@ -258,6 +258,20 @@ def unlock_user(user_id: int, admin: User = Depends(require_admin), db: Session 
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return {"unlocked": abuse.unlock(db, account_key(user.id, user.username), by=admin.username)}
+
+
+@router.get("/security-events")
+def security_events(kind: str | None = None, limit: int = security_log.LIST_LIMIT,
+                    _admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """The security log, newest first (BACKLOG L16 S6): failed sign-ins, locks, reused sign-in tokens, refused
+    uploads, unlocks. `kind` narrows it to one of security_log.KINDS."""
+    if kind and kind not in security_log.KINDS:
+        raise HTTPException(status_code=400, detail=f"kind must be one of {', '.join(security_log.KINDS)}")
+    events = security_log.recent(db, kind=kind, limit=limit)
+    ids = {e["user_id"] for e in events if e["user_id"] is not None}
+    names = dict(db.execute(select(User.id, User.username).where(User.id.in_(ids))).all()) if ids else {}
+    return {"events": [{**e, "username": names.get(e["user_id"])} for e in events], "kinds": list(security_log.KINDS),
+            "kept_days": security_log.SECURITY_LOG_DAYS}
 
 
 @router.delete("/locks/address/{address}")

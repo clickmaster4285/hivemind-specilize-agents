@@ -123,7 +123,8 @@ def start_session(db: Session, user: User, config: Config | None = None) -> tupl
     return create_access_token(user, family, config), refresh
 
 
-def refresh_session(db: Session, token: str, config: Config | None = None) -> tuple[User, str, str | None]:
+def refresh_session(db: Session, token: str, config: Config | None = None,
+                    address: str = "") -> tuple[User, str, str | None]:
     """Spend a refresh token: (user, new access token, new refresh token — None when the same token came
     back within REFRESH_REUSE_GRACE, whose successor the browser already holds)."""
     config = config or Config.from_env()
@@ -135,6 +136,11 @@ def refresh_session(db: Session, token: str, config: Config | None = None) -> tu
     reused = row.used_at is not None and now - as_utc(row.used_at) > REFRESH_REUSE_GRACE
     if user is None or user.status != USER_ACTIVE or reused:
         _revoke_family(db, row.family)
+        if reused:      # a copied cookie, or a browser bug: the whole session ends — an admin should see it (S6)
+            from src.core import security_log
+            security_log.record(db, security_log.TOKEN_REUSED, user_id=row.user_id,
+                                account=user.username if user else "", address=address,
+                                detail="a used sign-in token came back; the session was ended")
         db.commit()
         raise _unauthorized("Session ended — sign in again")
     if row.used_at is not None:

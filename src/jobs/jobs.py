@@ -11,7 +11,8 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from src.tools.attachments import save_images
+from src.core import security_log
+from src.tools.attachments import UploadRefused, save_images
 from src.core.config import Config
 from src.core.conversation import normalize_conversation
 from src.jobs.history_store import touch_thread
@@ -218,7 +219,13 @@ def create_job(
     if thread_id:
         touch_thread(session, user.id, thread_id, title=query_text)
     if incoming_images:
-        saved = save_images(config, job.id, incoming_images)
+        try:
+            saved = save_images(config, job.id, incoming_images)
+        except UploadRefused as exc:
+            # this request's transaction is rolled back: the event goes in a session of its own (S6)
+            security_log.record_now(security_log.UPLOAD_REFUSED, user_id=user.id, account=user.username,
+                                    detail=f"chat picture: {exc}")
+            raise
         enriched_payload["attachments"] = saved
         job.payload_json = json.dumps(enriched_payload)
         session.flush()

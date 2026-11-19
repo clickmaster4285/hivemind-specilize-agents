@@ -127,7 +127,7 @@ def refresh(request: Request, response: Response, db: Session = Depends(get_db))
     token = request.cookies.get(REFRESH_COOKIE)
     if not token:
         raise HTTPException(status_code=401, detail="Not signed in")
-    user, access, new_refresh = refresh_session(db, token)
+    user, access, new_refresh = refresh_session(db, token, address=client_address(request.scope))
     set_session_cookies(response, request, access, new_refresh)
     return {"user": _user_view(user)}
 
