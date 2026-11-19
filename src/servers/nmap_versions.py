@@ -35,6 +35,8 @@ class Detected:
     version: str = ""          # "8.9p1 Ubuntu 3ubuntu0.10" — as the service announces it
     extrainfo: str = ""        # "Ubuntu Linux; protocol 2.0"
     cpes: list[str] = field(default_factory=list)   # software CPEs only, e.g. "cpe:/a:openbsd:openssh:8.9p1"
+    hostname: str = ""         # the name the service announced (SMB, SMTP, HTTP…), if any
+    devicetype: str = ""       # nmap's device class for the product: "printer", "webcam", "router", "storage-misc"…
 
     @property
     def label(self) -> str:
@@ -68,7 +70,8 @@ def parse_xml(xml_text: str) -> dict[int, Detected]:
         cpes = [c.text.strip() for c in service.findall("cpe") if c.text and c.text.startswith(SOFTWARE_CPE)]
         out[int(port.get("portid", "0"))] = Detected(
             product=service.get("product", ""), version=service.get("version", ""),
-            extrainfo=service.get("extrainfo", ""), cpes=cpes)
+            extrainfo=service.get("extrainfo", ""), cpes=cpes, hostname=service.get("hostname", ""),
+            devicetype=service.get("devicetype", ""))
     return out
 
 

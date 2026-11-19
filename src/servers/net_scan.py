@@ -5,6 +5,7 @@ prompt injection), this module can only do a small, read-only sweep of a PRIVATE
   - private ranges only (10/8, 172.16/12, 192.168/16) — public addresses are refused
   - at most NETWORK_SCAN_MAX_HOSTS addresses (default 1024, a /22) and a hard time limit
   - `ping` / `arp` run as fixed argument lists (never through a shell); a fixed list of TCP ports
+  - nmap -sV (when installed) only on ports the sweep already found open, as the normal user, no NSE scripts
   - Stop is honoured; NETWORK_SCAN_ENABLED=false switches the tool off
 The scan runs where the server runs: it sees the server's network.
 """
@@ -23,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
 from src.core.config import Config
+from src.servers import nmap_versions
 from src.tools.tool_run import ToolRun
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,7 @@ class Device:
     model: str = ""       # model from SADP / ONVIF / SSDP / SNMP / web page; often empty
     serial: str = ""      # serial number — from SADP (Hikvision) or SNMP; most devices need credentials
     hint: str = ""        # device class a discovery protocol reported (ONVIF recorder/camera, UPnP router…)
+    services: dict[int, str] = field(default_factory=dict)   # port → software nmap named ("OpenSSH 8.9p1")
 
 
 @dataclass
@@ -923,6 +926,51 @@ def identify(devices: list[Device], *, deadline: float, workers: int = MAX_WORKE
             for d, model in zip(web_targets, pool.map(lambda dev: http_model(dev.ip, dev.ports), web_targets)):
                 if model:
                     d.model = model
+    # nmap last: it fills only what the device's own answers left empty, and names the software on every port
+    nmap_identify(devices, deadline=deadline, workers=workers)
+
+
+# nmap's device classes (service devicetype) → the kinds classify() uses; others ("general purpose",
+# "specialized") say nothing about the device
+NMAP_DEVICE_TYPES = {"printer": "printer", "webcam": "ip camera", "router": "router", "broadband router": "router",
+                     "switch": "switch", "firewall": "firewall", "storage-misc": "nas", "wap": "access point",
+                     "phone": "ip phone", "voip phone": "ip phone", "media device": "media player",
+                     "power-device": "ups"}
+NMAP_HOST_TIMEOUT = 15        # seconds nmap may spend on one device
+NMAP_MIN_SECONDS = 4          # less left in the scan's budget: nmap is skipped
+NMAP_PARALLEL = 16            # nmap processes at once (each one is a real process)
+
+
+def apply_nmap(device: Device, found: dict[int, nmap_versions.Detected]) -> None:
+    """What nmap named on a device's ports → its services, and a name / class / model where none is known yet."""
+    for port, det in sorted(found.items()):
+        if det.label:
+            device.services[port] = det.label
+        device.name = device.name or det.hostname
+        kind = NMAP_DEVICE_TYPES.get(det.devicetype.lower(), "")
+        if kind:
+            device.hint = device.hint or kind
+            device.model = device.model or det.product     # a product with a device class is the device itself
+
+
+def nmap_identify(devices: list[Device], *, deadline: float, workers: int = NMAP_PARALLEL) -> None:
+    """nmap -sV on each device's open ports, within what is left of the scan's time budget. Best-effort: nmap
+    missing, a slow device or no time left leaves the table as the other probes made it."""
+    # devices nothing else named or typed go first: if time runs short, they are the ones that gain most
+    targets = sorted((d for d in devices if d.ports), key=lambda d: bool(d.model and d.name))
+    left = deadline - time.monotonic() - 2          # 2 s for the table after
+    parallel = max(1, min(workers, NMAP_PARALLEL))
+    if not targets or left < NMAP_MIN_SECONDS or not nmap_versions.available():
+        return
+    rounds = -(-len(targets) // parallel)
+    timeout = int(min(NMAP_HOST_TIMEOUT, left / rounds))
+    if timeout < NMAP_MIN_SECONDS:                  # not all fit: as many rounds as the budget allows
+        timeout = NMAP_MIN_SECONDS
+        targets = targets[:int(left // NMAP_MIN_SECONDS) * parallel]
+    with ThreadPoolExecutor(max_workers=min(parallel, len(targets))) as pool:
+        for d, found in zip(targets, pool.map(lambda dev: nmap_versions.detect(dev.ip, dev.ports, timeout),
+                                              targets)):
+            apply_nmap(d, found)
 
 
 # ── adaptive tuning: budget, concurrency and probe timeouts scale to the job ──
@@ -1029,9 +1077,15 @@ def rows(result: ScanResult) -> list[list[str]]:
     header = ["IP address", "Type", "Name", "Model", "Serial", "Manufacturer", "MAC address",
               "Open ports", "Found by"]
     body = [[d.ip, d.type or "—", d.name or "—", d.model or "—", d.serial or "—", d.vendor or "—", d.mac or "—",
-             ", ".join(f"{p} {PORT_NAMES.get(p, '')}".strip() for p in d.ports) or "—", d.found_by]
+             ", ".join(_port_cell(p, d.services.get(p, "")) for p in d.ports) or "—", d.found_by]
             for d in result.devices]
     return [header, *body]
+
+
+def _port_cell(port: int, software: str) -> str:
+    """"22 SSH (OpenSSH 8.9p1)" — the port, what it usually is, and what nmap found running on it."""
+    text = f"{port} {PORT_NAMES.get(port, '')}".strip()
+    return f"{text} ({software})" if software else text
 
 
 def markdown_table(result: ScanResult) -> str:
@@ -1056,9 +1110,10 @@ NOTES = ("Found by: ping, an open port (tcp), or only the network's address tabl
          "the manufacturer comes from the MAC address (IEEE list). Model, serial and device class come from the "
          "devices' own discovery answers where they give them: Hikvision SADP (model + serial), ONVIF (most other "
          "camera/NVR brands), SSDP/UPnP and mDNS, SNMP (community 'public') on managed switches and printers, and "
-         "the device's web page title. Other serials need credentials, so they stay blank. Unmanaged switches have "
-         "no IP address and cannot be seen by any network scan. Type is a best-effort guess from the name, "
-         "model, open ports, manufacturer and whether the device is the gateway — treat it as a hint, not a certainty.")
+         "the device's web page title; the software on each open port (in brackets) and a name or class nothing "
+         "else gave come from nmap's service detection. Other serials need credentials, so they stay blank. "
+         "Unmanaged switches have no IP address and cannot be seen by any network scan. Type is a best-effort guess "
+         "from the name, model, open ports, manufacturer and whether the device is the gateway — treat it as a hint, not a certainty.")
 
 
 def xlsx_bytes(result: ScanResult) -> bytes:

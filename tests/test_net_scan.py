@@ -365,3 +365,52 @@ def test_arp_table_on_windows_linux_and_proc():
             "192.168.88.9     0x1         0x0         00:00:00:00:00:00     *        eno1\n")
     assert parse_arp(text) == {"192.168.88.1": "d4:01:c3:aa:bb:cc", "192.168.88.66": "50:9a:4c:55:d0:0f",
                                "192.168.88.41": "c8:d9:d2:1f:5b:da"}
+
+
+def test_nmap_names_fill_only_what_is_missing():
+    from src.servers.nmap_versions import Detected
+    printer = Device("192.168.1.20", ports=[80, 9100])
+    net_scan.apply_nmap(printer, {80: Detected("HP LaserJet P2055 printer http config", hostname="NPI1A2B3C",
+                                               devicetype="printer"),
+                                  9100: Detected("HP LaserJet P2055 printer jetdirect", devicetype="printer")})
+    assert printer.name == "NPI1A2B3C" and printer.hint == "printer"
+    assert printer.model == "HP LaserJet P2055 printer http config"
+    named = Device("192.168.1.21", name="nas-01", model="DS224+", hint="nas", ports=[22, 445])
+    net_scan.apply_nmap(named, {22: Detected("OpenSSH", "8.9p1"), 445: Detected("Samba smbd", "4.6.2",
+                                                                                 devicetype="storage-misc")})
+    assert (named.name, named.model, named.hint) == ("nas-01", "DS224+", "nas")     # the device's own answers win
+    assert named.services == {22: "OpenSSH 8.9p1", 445: "Samba smbd 4.6.2"}
+    assert net_scan._port_cell(22, named.services[22]) == "22 SSH (OpenSSH 8.9p1)"
+    assert net_scan._port_cell(9100, "") == "9100 printer"
+
+
+def test_nmap_pass_skipped_without_nmap_or_time(monkeypatch):
+    calls = []
+    monkeypatch.setattr(net_scan.nmap_versions, "detect", lambda *a: calls.append(a) or {})
+    devices = [Device("192.168.1.5", ports=[22])]
+    monkeypatch.setattr(net_scan.nmap_versions, "available", lambda: False)
+    net_scan.nmap_identify(devices, deadline=time.monotonic() + 60)
+    monkeypatch.setattr(net_scan.nmap_versions, "available", lambda: True)
+    net_scan.nmap_identify(devices, deadline=time.monotonic() + 1)               # too little time left
+    assert calls == []
+    net_scan.nmap_identify(devices, deadline=time.monotonic() + 60)
+    assert calls == [("192.168.1.5", [22], net_scan.NMAP_HOST_TIMEOUT)]
+
+
+def test_nmap_xml_keeps_hostname_and_device_type():
+    from src.servers import nmap_versions
+    xml = ('<nmaprun><host><ports><port protocol="tcp" portid="80"><state state="open"/>'
+           '<service name="http" product="HP LaserJet P2055 printer http config" hostname="NPI1A2B3C" '
+           'devicetype="printer"/></port></ports></host></nmaprun>')
+    found = nmap_versions.parse_xml(xml)[80]
+    assert (found.hostname, found.devicetype) == ("NPI1A2B3C", "printer")
+
+
+def test_nmap_pass_fits_the_time_left(monkeypatch):
+    calls = []
+    monkeypatch.setattr(net_scan.nmap_versions, "available", lambda: True)
+    monkeypatch.setattr(net_scan.nmap_versions, "detect", lambda ip, ports, timeout: calls.append((ip, timeout)) or {})
+    devices = [Device(f"10.0.0.{i}", ports=[80], model="x" if i % 2 else "", name="n") for i in range(40)]
+    net_scan.nmap_identify(devices, deadline=time.monotonic() + 12, workers=16)   # 10 s usable, 3 rounds needed
+    assert len(calls) == 32 and {t for _, t in calls} == {net_scan.NMAP_MIN_SECONDS}
+    assert {ip for ip, _ in calls} >= {f"10.0.0.{i}" for i in range(0, 40, 2)}      # the unnamed ones all got nmap

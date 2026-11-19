@@ -689,7 +689,7 @@ all four proposed sets plus ideas from skills.sh, Anthropic's skills / knowledge
 The user's ask: understand each tool first, then a plan, then decide, then build one by one. What each does, its
 limits, needs and the proposed order: [SECURITY_TOOLS_DECISION.md §10](SECURITY_TOOLS_DECISION.md).
 
-- [x] V1 nmap -sV + offline NVD CVE list in `security_check` — built 2026-11-17 ([§11](SECURITY_TOOLS_DECISION.md)); next: nmap names in `network_scan`
+- [x] V1 nmap -sV + offline NVD CVE list in `security_check` — built 2026-11-17 ([§11](SECURITY_TOOLS_DECISION.md)); nmap names in `network_scan` built 2026-11-19
 - [x] V3 Trivy for Docker images on this PC — built 2026-11-17 (`image_scan`, [§12](SECURITY_TOOLS_DECISION.md)); the user installs a verified Trivy
 - [x] V3b Trivy for Linux servers via an SBOM read over SSH — built 2026-11-17 in `server_audit` (`package_scan.py`, [§13](SECURITY_TOOLS_DECISION.md)); measured identical to Trivy's own scans on 4 distributions
 - [x] V2 Nuclei with a reviewed read-only template allow-list — built 2026-11-17 in `security_check` for one device ([§14](SECURITY_TOOLS_DECISION.md)); the user installs Nuclei 3.11.1 + templates, builds and reads the allow-list; first run to measure
@@ -734,6 +734,11 @@ every message logged in again. How it works: [SERVER_ACCESS_DECISION.md §9](SER
 - [x] O93 look-questions → `diagnose_server`; follow-ups keep the chat's server; an audit survives a silent command
 - [x] O94 + O95 `deploy_project`: folder from a misspelt name, branch choice, install / build / restart on choice cards
 - [x] O96 SSH logins kept open 10 minutes and reused
-- [ ] Live check on the uk server (the user); later: remember the chat's project folder
+- [x] Live check on the uk server (the user, 2026-11-19): deploy ran end to end but the app was not restarted → O100–O112
+- [ ] O100 deploy reads "(no output)" as data; O101 pm2 not found, "Done." without an app restart; O102 build output as dependency folders
+- [ ] O103 + O107 the chat's working context (server, project folder, branch) remembered from each server job — replaces "remember the project folder"
+- [ ] O104 "Which server?" as a pending question answered by the next reply; labels matched by word ("uk")
+- [ ] O105 questions about done work never start a changing tool; O106 diagnose: chat context, no repeated command
+- [ ] O108 cards above the answer; O109 commands folded; O110 Run now while busy; O111 image edits keep the subject; O112 eval
 - [x] H2 skills from tasks — built 2026-11-17: "Save as skill" (✦) under every answer → `POST /api/skills/draft` (src/llm/skill_draft.py) → the skill editor opens filled in; saved only by the user
 
