@@ -170,6 +170,17 @@ def _finish(config: Config, job_id: str, errors: list[str], *, failed: bool | No
         set_job_status(session, job_id, "failed" if bad else "succeeded", error="; ".join(errors) if errors else None)
 
 
+def _rewarm_after_image(config: Config, waiting: int) -> None:
+    """The image job unloaded the chat model (IMAGE_UNLOAD_OLLAMA): load it back now, while the user looks at the
+    picture, instead of on their next message (~9 s, ISSUES_LOG O52). Not when a job already waits: it loads the
+    model itself, or unloads it again for another picture."""
+    if not config.image_unload_ollama or waiting:
+        return
+    from src.llm.ollama_mgmt import warm_model
+
+    threading.Thread(target=warm_model, args=(config,), name="chat-model-rewarm", daemon=True).start()
+
+
 def _is_cancelled(job_id: str) -> bool:
     with session_scope() as session:
         job = get_job(session, job_id)
@@ -463,6 +474,8 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                     status,
                     error="; ".join(errors) if errors else None,
                 )
+                waiting = queue_depth(session)
+            _rewarm_after_image(config, waiting)
             return
 
         if mode == "chat":

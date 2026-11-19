@@ -174,6 +174,28 @@ def test_the_chats_folder_reaches_the_agent(monkeypatch):
                         "Request: did we pull?")
 
 
+def test_every_round_only_adds_to_what_the_model_read_before(monkeypatch):
+    """O52: Ollama reuses the prompt up to its first changed token — so no round may change an earlier message,
+    the closing report included (it hit the 12-round limit in every slow job)."""
+    big = "line\n" * 2000
+    shell = FakeShell({"cmd": (0, big, "")})
+    _patch_session(monkeypatch, shell)
+    sent = []
+    FakeLLM.script = [("", f"cmd{n}") for n in range(so.MAX_ROUNDS)] + [("Findings.", None)]
+
+    class Watching(FakeLLM):
+        def chat_tools(self, *, messages, **kw):
+            sent.append([dict(m) for m in messages])
+            return super().chat_tools(messages=messages, **kw)
+
+    monkeypatch.setattr(so, "LLMClient", Watching)
+    login = so.ServerLogin(id="4", label="web01", host="10.0.0.4", port=22, username="u", password="p")
+    result = so.diagnose(login, "why is it slow", config=Config.from_env())
+    assert result.report == "Findings." and len(sent) == so.MAX_ROUNDS + 1      # the limit, then the report
+    for before, after in zip(sent, sent[1:]):
+        assert after[:len(before)] == before                                    # appended to, never rewritten
+
+
 # ── wiring ─────────────────────────────────────────────────────────────────
 def test_wired_for_the_it_specialist_credential_gated_not_admin_only():
     from src.llm.assistant import BY_NAME
@@ -412,16 +434,13 @@ def test_both_operate_prompts_run_what_the_user_asks_and_report_only_what_they_s
         assert so.OPERATE_RULES in text and "Never skip it" in text and "Report only what the command output" in text
 
 
-def test_older_outputs_are_shortened_for_the_next_round():
-    """O52: each round re-sent every earlier output in full."""
-    long = "x" * (so.OLD_OUTPUT_CHARS * 3)
-    messages = [{"role": "system", "content": "s"}, {"role": "user", "content": "task"}]
-    for n in range(so.KEEP_FULL_OUTPUTS + 2):
-        messages += [so._assistant_call("", f"cmd{n}"), {"role": "tool", "content": long}]
-    compact = so._compact(messages)
-    outputs = [m["content"] for m in compact if m["role"] == "tool"]
-    assert all(len(o) < len(long) for o in outputs[:2]) and outputs[-so.KEEP_FULL_OUTPUTS:] == [long] * so.KEEP_FULL_OUTPUTS
-    assert all(m["content"] == long for m in messages if m["role"] == "tool")     # the stored conversation stays whole
+def test_an_output_is_cut_once_and_never_changed_after():
+    """O52: shortening older outputs each round broke Ollama's prompt cache (re-read up to ~4,000 tokens a round)."""
+    long = "start " + "x" * 5000 + " exit 1: permission denied"
+    seen = so._as_seen(long)
+    assert len(seen) < so.OUTPUT_KEEP_CHARS + 60 and seen.startswith("start ") and seen.endswith("permission denied")
+    assert so._as_seen("exit 0\nok") == "exit 0\nok"
+    assert so._as_seen(seen) == seen or len(so._as_seen(seen)) <= len(seen)
 
 
 # ── O82: the chat names servers, never their addresses ───
@@ -517,3 +536,14 @@ def test_comparing_with_the_remote_is_read_only_fetching_is_not():
     assert so.classify_command("git -C /var/www/app ls-remote origin changes11/17") is None
     assert so.classify_command("git -C /var/www/app fetch") is not None
     assert "ls-remote origin <branch>" in so.DIAGNOSE_SYSTEM
+
+
+@pytest.mark.parametrize("command, read_only", [
+    ("pm2 status 2>&1 | head -10", True), ("pm2 list", True), ("pm2 jlist", True), ("pm2 describe zamrengineering", True),
+    ("pm2 restart all", False), ("pm2 restart status", False),      # an app called "status" is still a restart
+    ("pm2 delete all -v", False), ("pm2 logs zamr", False),          # logs follow forever
+    ("pm2 env 0", False), ("pm2", False),
+])
+def test_pm2_reading_is_read_only_its_actions_are_not(command, read_only):
+    """2026-11-19, zamr server: `pm2 status` asked for approval twice; diagnose could not use pm2 at all."""
+    assert (so.classify_command(command) is None) is read_only

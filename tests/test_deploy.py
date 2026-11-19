@@ -99,6 +99,7 @@ PM2 = json.dumps([{"name": "web", "pm2_env": {"pm_cwd": f"{PROJECT}/frontend", "
 def _server(**overrides) -> FakeServer:
     rules = {
         "-name .git -prune -print": (0, f"{PROJECT}/.git\n{PROJECT}/\n/var/www/html/\n"),
+        f"test -d {PROJECT}/.git": (0, "git"),                    # the project is a git repository
         "fetch --all": (0, "Fetching origin"),
         "rev-parse --abbrev-ref HEAD": (0, "master"),
         "for-each-ref": (0, "origin/HEAD\t1\tlong ago\t\norigin/master\t1700000000\t3 days ago\told\n"
@@ -245,3 +246,49 @@ def test_the_deploy_leaves_its_branch_and_a_summary_for_the_chat():
     assert deploy.project == PROJECT and deploy.branch == "main"
     assert "Pulled origin/main: 3 new commit(s)" in deploy.summary and deploy.summary.endswith(
         "NOT live: the app was not restarted")
+
+
+# ── live run on the zamr server, 2026-11-19 ────────────────────────────
+
+ZAMR = "/root/var/www/zamr-engineering"
+ZAMR_PM2 = json.dumps([{"name": "zamrengineering", "pm2_env": {"pm_cwd": ZAMR, "status": "online"}}])
+
+
+def _zamr(**overrides) -> FakeServer:
+    """/var/www holds only html (no repository); the app pm2 runs is 4 folders deep in /root, past the search."""
+    return _server(**{"-name .git -prune -print": (0, "/var/www/html/\n"), "pm2 jlist": (0, ZAMR_PM2),
+                      f"test -d {ZAMR}/.git": (0, "git"), "test -d /var/www/html/.git": (1, ""),
+                      f"cd {ZAMR} 2>/dev/null && test -d .git && pwd": (0, ZAMR), **overrides})
+
+
+def test_a_folder_named_in_full_is_used_as_it_is():
+    deploy = dp.Deploy(_zamr(), FakeLogin(), ask=lambda *a: [])
+    assert deploy.find_project(ZAMR) == ZAMR
+
+
+def test_the_folder_pm2_runs_is_found_however_deep():
+    """"zamr" is part of zamr-engineering, the folder pm2 runs: picked without a card."""
+    deploy = dp.Deploy(_zamr(), FakeLogin(), ask=lambda *a: [])
+    assert deploy.find_project("zamr") == ZAMR
+
+
+def test_an_unrelated_single_folder_is_not_taken_without_asking():
+    ask, asked = _clicks(lambda options: [dp.STOP])
+    deploy = dp.Deploy(_zamr(**{"pm2 jlist": (0, "[]")}), FakeLogin(), ask=ask)
+    with pytest.raises(dp.Stopped):
+        deploy.find_project("zamr")                       # only /var/www/html exists: asked, not taken
+    assert asked[0][0] == "No project is called “zamr”. Which one is it?"
+
+
+def test_a_folder_that_is_no_repository_is_said_plainly_and_not_remembered():
+    server = _zamr()
+    deploy = dp.Deploy(server, FakeLogin(), ask=lambda *a: [])
+    report = deploy.run("html")
+    assert "`/var/www/html` is not a git repository, so there is nothing to pull" in report
+    assert not any("fetch" in c for c in server.ran) and deploy.branch == ""          # no branch: not remembered
+
+
+def test_a_stop_message_ending_in_code_gets_no_stray_dot():
+    server = _server(**{"fetch --all": (1, "fatal: not a git repository")})
+    report = dp.Deploy(server, FakeLogin(), ask=lambda *a: []).run("Clickmastersoftware")
+    assert report.rstrip().endswith("```") and "```." not in report

@@ -32,17 +32,20 @@ def unload_ollama_models(config: Config | None = None) -> list[str]:
 
     # Prefer unloading whatever is currently resident if /api/ps exists.
     names: list[str] = []
+    asked = False
     try:
         ps = requests.get(f"{base}/api/ps", timeout=3)
         if ps.ok:
+            asked = True
+            # only what holds GPU memory: the embedding model runs on the CPU (size_vram 0) and frees nothing
             names = [
                 m.get("name") or m.get("model")
                 for m in (ps.json().get("models") or [])
-                if (m.get("name") or m.get("model"))
+                if (m.get("name") or m.get("model")) and m.get("size_vram", 1)
             ]
     except Exception:  # noqa: BLE001
         names = []
-    if not names:
+    if not names and not asked:
         # Fall back: unload configured heavy roles (vision/strong) if present locally.
         prefer = {
             (config.model_vision or "").strip(),
@@ -77,9 +80,12 @@ def warm_model(config: Config | None = None, model: str | None = None) -> bool:
     if not base or not name:
         return False
     try:
+        # the context size of the real calls (llm_client): loaded with Ollama's default 4096 instead, the first real
+        # message loaded the model a second time, ~4 s (ISSUES_LOG O52, 2026-11-19)
         requests.post(
             f"{base}/api/generate",
-            json={"model": name, "prompt": "", "keep_alive": config.llm_keep_alive or "30m"},
+            json={"model": name, "prompt": "", "keep_alive": config.llm_keep_alive or "30m",
+                  "options": {"num_ctx": config.llm_num_ctx}},
             timeout=60,
         )
         logger.info("Warmed Ollama chat model into memory: %s", name)

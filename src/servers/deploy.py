@@ -299,16 +299,26 @@ class Deploy:
     # steps ---------------------------------------------------------------
     def find_project(self, typed: str) -> str:
         self.status("Looking for the projects on the server…")
+        typed = typed.strip()
+        if typed.startswith(("/", "~/")):            # a folder the user named in full: that one, if it is a repository
+            q = shlex.quote(typed) if typed.startswith("/") else "$HOME/" + shlex.quote(typed[2:])
+            found = self.read(f"cd {q} 2>/dev/null && test -d .git && pwd").output.strip()
+            if found.startswith("/"):
+                return found
         roots = " ".join(PROJECT_ROOTS)
         listing = self.read(f"find {roots} -maxdepth {PROJECT_DEPTH} -type d -name .git -prune -print 2>/dev/null; "
                             "ls -1d /var/www/*/ 2>/dev/null").output
-        projects = parse_projects(listing)
+        # the folders pm2 runs apps from are projects too, however deep (/root/var/www/zamr-engineering, 2026-11-19)
+        found = parse_projects(listing)
+        running = [p["cwd"] for p in parse_pm2(self.read(self.node("pm2 jlist 2>/dev/null")).output)
+                   if p["cwd"] and not any(_inside(p["cwd"], f) for f in found)]   # not a subfolder of one we know
+        projects = parse_projects("\n".join([*found, *running]))
         if not projects:
             raise Stopped(f"no projects were found in {', '.join(PROJECT_ROOTS)} (no git repository, nothing in "
                           "/var/www). Say where the project is, or ask me to clone it")
-        if len(projects) == 1:
-            return projects[0]
         ranked = rank_projects(typed, projects)
+        if len(projects) == 1 and (not typed or ranked[0][0] >= CLOSE_MATCH):
+            return projects[0]                       # the only one, and nothing named that it does not match
         close = [p for s, p in ranked if s >= CLOSE_MATCH]
         if ranked[0][0] == 1.0 or len(close) == 1:
             return close[0]
@@ -326,6 +336,9 @@ class Deploy:
 
     def pull(self, hint: str) -> tuple[str, str]:
         """Fetch, ask which branch, pull it. → (HEAD before, HEAD after); equal when nothing was pulled."""
+        if self.read(f"test -d {shlex.quote(self.project)}/.git && echo git").output.strip() != "git":
+            raise Stopped(f"`{self.project}` is not a git repository, so there is nothing to pull. Name the project's "
+                          "folder in full (for example the one pm2 runs the app from)")
         self.status("Fetching every branch…")
         fetched = self.read(self.git("fetch --all --prune 2>&1"), silence=FETCH_SILENCE)
         if fetched.timed_out or fetched.code:
@@ -538,7 +551,7 @@ class Deploy:
             "; NOT live: the app was not restarted" if self.apps_found and not self.app_restarted else ""))[:600]
         title = f"Deploy of **{posixpath.basename(self.project) or project or 'the project'}** on **{self.login.shown}**"
         body = "\n".join(f"- {line}" for line in self.lines)
-        end = (f"\n\n**Stopped:** {stopped}." if stopped else
+        end = (f"\n\n**Stopped:** {stopped}" + ("" if stopped.endswith("```") else ".") if stopped else
                "\n\n**Not live yet:** the app that runs this project (pm2 / service) was not restarted, so the site "
                "still serves the old code. Restart it to go live." if self.apps_found and not self.app_restarted
                else "\n\nDone.")
@@ -589,7 +602,9 @@ def run_deploy_project(
                 deploy = Deploy(session, login, ask=ask, status=status, log=log,
                                 should_continue=lambda: not live.is_stopped(job_id))
                 output = deploy.run(project or "", branch or "") + _commands_block(session.runs)
-                if deploy.project:          # the next message about this project needs no search (O103, O107)
+                # the next message about this project needs no search (O103, O107) — only a repository the deploy
+                # reached: a wrong folder remembered led the next job to suggest `git init` there (2026-11-19)
+                if deploy.project and deploy.branch:
                     chat_work.remember(config, job_id, server=login.id, project=deploy.project,
                                        branch=deploy.branch or None, deploy=deploy.summary)
             finally:

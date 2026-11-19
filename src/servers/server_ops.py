@@ -64,8 +64,11 @@ READ_ONLY: frozenset[str] = frozenset({
     "ip", "ifconfig", "ss", "netstat", "route", "arp", "ping", "ping6", "traceroute", "tracepath",
     "mtr", "dig", "host", "nslookup", "ssh-keygen", "ufw", "iptables", "nft", "firewall-cmd", "fail2ban-client",
     # containers / web / db (subcommands checked below)
-    "docker", "podman", "kubectl", "git", "crontab", "nginx", "apache2ctl", "apachectl", "httpd",
+    "docker", "podman", "kubectl", "git", "crontab", "nginx", "apache2ctl", "apachectl", "httpd", "pm2",
 })
+
+# programs whose action is always their first word, checked strictly (`pm2 restart status` must not pass as "status")
+FIRST_ARG_ONLY = frozenset({"pm2"})
 
 # For programs that can also write, the only sub-actions allowed (first meaningful argument).
 SUBCOMMANDS: dict[str, frozenset[str]] = {
@@ -79,6 +82,9 @@ SUBCOMMANDS: dict[str, frozenset[str]] = {
     "kubectl": frozenset({"get", "describe", "logs", "top", "version", "explain", "api-resources", "cluster-info"}),
     "git": frozenset({"status", "log", "diff", "show", "branch", "remote", "config", "rev-parse", "describe",
                       "shortlog", "blame", "ls-files", "tag", "reflog", "ls-remote"}),
+    # pm2: what runs and how (2026-11-19: `pm2 status` asked for approval twice, and diagnose could not use pm2 at
+    # all). Not `logs` (it follows forever without --nostream: tail ~/.pm2/logs/ instead), not `env` (secrets)
+    "pm2": frozenset({"status", "list", "ls", "jlist", "prettylist", "describe", "show"}),
     "crontab": frozenset({"-l"}),
     "apt": frozenset({"list", "show", "policy", "search"}),
     "apt-cache": frozenset({"policy", "show", "search", "showpkg", "depends", "madison"}),
@@ -165,6 +171,10 @@ def _check_simple(tokens: list[str]) -> str | None:
     if bad and any(a in bad for a in args):
         return f"'{program}' here would change the server"
     allowed = SUBCOMMANDS.get(program)
+    if program in FIRST_ARG_ONLY and allowed is not None:
+        # the action must be the FIRST word: `pm2 restart status` (an app called "status") is a restart
+        first = next((a for a in args if not a.startswith("-")), "")
+        return None if first in allowed else f"'{f'{program} {first}'.strip()}' is not a read-only action"
     if allowed is not None and not any(a in allowed for a in args):
         first = next((a for a in args if not a.startswith("-")), args[0] if args else "")
         return f"'{program} {first}'.strip() is not a read-only action".replace("'.strip()", "'")
@@ -489,6 +499,9 @@ Rules:
 - A question about earlier work in this chat (a deploy: "did we pull?", "why can't I see the update?") is about
   the project and branch named above: check its git state (`git -C <folder> log -1`, `git -C <folder> status`),
   its build and the app that serves it (pm2 list, systemctl status), not git servers or other folders.
+- pm2 apps: `pm2 list` and `pm2 describe <app>` (its folder, its log files); read a log with `tail -n 50 <file>`.
+- `~` is the login user's home folder (root: /root), not `/`: `~/var/www` is `/root/var/www`, not `/var/www`.
+- To find a folder by part of its name, search with wildcards: `find / -maxdepth 5 -iname '*zamr*' -not -path '/proc/*'`.
 - `git status` compares with the last fetch only, not with the remote now. Before saying a branch is up to date,
   compare `git -C <folder> rev-parse HEAD` with `git -C <folder> ls-remote origin <branch>` (read-only)."""
 
@@ -517,18 +530,21 @@ class DiagnoseResult:
 
 
 # Each round sent every earlier output again: 12 commands → ~46k tokens in for one answer (ISSUES_LOG O52, O70).
-KEEP_FULL_OUTPUTS = 3      # the latest outputs the model sees whole; it already read the older ones in their round
-OLD_OUTPUT_CHARS = 800     # of an older output kept: its start (exit code, first lines), enough to recall what it showed
+# Each command output is cut ONCE, when it joins the conversation, and never changed after (ISSUES_LOG O52): Ollama
+# reuses a prompt only up to its first changed token, and shortening an older output each round (the old _compact)
+# made every round from the 5th re-read up to ~4,000 tokens (~10 s), and the closing report — sent unshortened —
+# re-read the whole history (8–14 s). Measured 2026-11-19. The start and the end are kept: what ran, and how it ended.
+OUTPUT_KEEP_CHARS = 2000
+OUTPUT_HEAD_CHARS = 1200
 
 
-def _compact(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The conversation for the next round, with all but the last KEEP_FULL_OUTPUTS command outputs cut to their
-    start. The stored conversation stays whole (the forced final report reads it all)."""
-    outputs = [i for i, m in enumerate(messages) if m["role"] == "tool"]
-    old = set(outputs[:-KEEP_FULL_OUTPUTS])
-    return [{**m, "content": m["content"][:OLD_OUTPUT_CHARS] + "\n… (earlier output, shortened)"}
-            if i in old and len(m["content"]) > OLD_OUTPUT_CHARS else m
-            for i, m in enumerate(messages)]
+def _as_seen(observation: str) -> str:
+    """A command's output as the model keeps it for the rest of the job."""
+    if len(observation) <= OUTPUT_KEEP_CHARS:
+        return observation
+    tail = OUTPUT_KEEP_CHARS - OUTPUT_HEAD_CHARS
+    cut = len(observation) - OUTPUT_KEEP_CHARS
+    return f"{observation[:OUTPUT_HEAD_CHARS]}\n… ({cut} characters cut) …\n{observation[-tail:]}"
 
 
 def _assistant_call(text: str, command: str | None) -> dict[str, Any]:
@@ -604,7 +620,7 @@ def diagnose(
             if not should_continue():
                 result.stopped = True
                 break
-            text, calls = client.chat_tools(messages=_compact(messages), tools=[run_tool], model=model,
+            text, calls = client.chat_tools(messages=messages, tools=[run_tool], model=model,
                                             temperature=0.1)
             if not calls:
                 result.report = text
@@ -629,7 +645,7 @@ def diagnose(
                            "Use another read-only command, or write your findings." if run.refused
                            else run.observation)
             messages.append(_assistant_call(text, command))
-            messages.append({"role": "tool", "content": observation})
+            messages.append({"role": "tool", "content": _as_seen(observation)})
         else:
             result.report = _write_findings(client, messages, run_tool, model)
     finally:
@@ -790,7 +806,7 @@ def operate(
             if not should_continue():
                 result.stopped = True
                 break
-            text, calls = client.chat_tools(messages=_compact(messages), tools=[run_tool], model=model,
+            text, calls = client.chat_tools(messages=messages, tools=[run_tool], model=model,
                                             temperature=0.1)
             if not calls:
                 result.report = text
@@ -815,7 +831,7 @@ def operate(
             on_command(run_for_ui)
             result.runs.append(run_for_ui)
             messages.append(_assistant_call(text, command))
-            messages.append({"role": "tool", "content": observation})
+            messages.append({"role": "tool", "content": _as_seen(observation)})
         else:
             text, _ = client.chat_tools(
                 messages=[*messages, {"role": "user", "content": "Stop now. Write what you did, what changed, "
