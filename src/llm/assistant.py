@@ -538,16 +538,32 @@ def hand_over(tool_name: str, specialist: Specialist | None,
 # a yes/no question about something done: "did we pull the latest and build it?", "di we …?" (typed fast), "was the
 # deploy live?" — the auxiliary first, a question mark later (ISSUES_LOG O105)
 STATUS_QUESTION = re.compile(r"^\W*(did|di|was|were|has|have|had|is|are)\b[^?]*\?", re.I)
+# a short reply that asks for no change: "uk server, Clickmastersoftware ," (naming a server and a project) went
+# to deploy_project (eval 2026-11-19). Only short messages are judged this way — a longer one carries a task the
+# model read — and a verb may come with "re" ("rebuild", "redeploy", "reboot"): those are changes
+NO_TASK_WORDS = 5
+CHANGE_ASKED = re.compile(r"\b((re-?)?(deploy|delop|pull|build|start|install|update|upgrade|run|exec|create|make|"
+                          r"write|delete|remove|stop|fix|set\s*up|change|edit|add|clone|push|kill|enable|disable|mkdir|"
+                          r"move|copy|apply|configure|put|give|grant|chmod|chown|shut|reset|revert|roll|checkout|"
+                          r"switch|merge|upload|download|open|close|mount|clean|clear|purge|backup|sync|schedule|"
+                          r"generate|compile|launch|migrate|seed|flush)\w*|re-?(boot|load|store|name|new)\w*|"
+                          r"go\s+ahead|proceed|do\s+it|yes)\b", re.I)
+
+
+def _asks_no_change(text: str) -> bool:
+    return len(text.split()) <= NO_TASK_WORDS and not CHANGE_ASKED.search(text)
 
 
 def as_check(name: str, args: dict[str, Any], query: str) -> tuple[str, dict[str, Any]]:
-    """A tool that changes a server, picked for a question about work already done → the read-only check of the
-    same server (diagnose_server, which is told the chat's last deploy). Anything else unchanged. O105: "did we
-    successfully pull the latest and build it?" started a deploy."""
+    """A tool that changes a server, picked for a question about work already done or for a message that
+    asks for no change at all → the read-only check of the same server (diagnose_server, which is told the chat's
+    last deploy). Anything else unchanged. O105: "did we successfully pull the latest and build it?" started a
+    deploy."""
     tool = BY_NAME.get(name)
-    if tool is None or not tool.changes or not STATUS_QUESTION.match(query or ""):
+    text = query or ""
+    if tool is None or not tool.changes or not (STATUS_QUESTION.match(text) or _asks_no_change(text)):
         return name, args
-    logger.info("assistant: %s for a question about done work → diagnose_server", name)
+    logger.info("assistant: %s for a question or a message asking no change → diagnose_server", name)
     return "diagnose_server", {"server": str((args or {}).get("server") or "")}
 
 

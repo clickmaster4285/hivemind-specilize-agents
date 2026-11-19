@@ -29,9 +29,10 @@ from src.core.config import Config
 from src.core.db import session_scope
 from src.jobs.jobs import append_event, claim_next_job, get_job, queue_depth, reclaim_orphaned_jobs, set_job_status
 
+log = logging.getLogger(__name__)
+
 _worker_thread: threading.Thread | None = None
 _stop = threading.Event()
-
 
 
 def _is_admin(config: Config, user_id: int | None) -> bool:
@@ -266,8 +267,6 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
         if event.get("type") in ANSWER_EVENTS and not event.get("job_id"):
             event = {**event, "job_id": job_id}
         closing = event.get("type") in keep_after_stop
-        if not closing and _is_cancelled(job_id):
-            return
         with session_scope(config) as session:
             current = get_job(session, job_id)
             if current is None or (current.status == "cancelled" and not closing):
@@ -396,7 +395,9 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
             return
         if runner is not None:
             # user_id: tools that use the session's server logins (src/server_vault.py) find this user's only
-            tool_args = {k: v for k, v in tool_args.items() if k not in ("user_id", "chat_work")}  # never the model's
+            # only the tool's own arguments: a model that invents one ("query", "job_id", "command") would crash the
+            # runner with "got multiple values"; user_id and chat_work never come from the model
+            tool_args = {k: v for k, v in tool_args.items() if k in tool.params}
             if tool.needs_server_login:
                 tool_args = _server_context(config, job_id, user_id, tool, tool_args, query, work)
             _output, errors, _elapsed = runner(query, job_id=job_id, config=config, on_progress=on_progress,
@@ -517,7 +518,8 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                 on_progress=on_progress,
             )
             with session_scope(config) as session:
-                if get_job(session, job_id) and get_job(session, job_id).status == "cancelled":
+                current = get_job(session, job_id)
+                if current is not None and current.status == "cancelled":
                     return
                 # Emit completion event before terminal status so SSE clients drain it.
                 _append_usage(session, job_id)
@@ -531,7 +533,9 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                         "errors": result.errors,
                     },
                 )
-                set_job_status(session, job_id, "succeeded")
+                failed = bool(result.errors) and not result.final_summary
+                set_job_status(session, job_id, "failed" if failed else "succeeded",
+                               error="; ".join(result.errors) if failed else None)
             return
 
         # jobs queued before the debate was removed (2026-10-17) — they are not run
@@ -562,9 +566,6 @@ def worker_loop(config: Config | None = None, poll_seconds: float = 1.0) -> None
             process_job(job_id, config)
         else:
             _stop.wait(poll_seconds)
-
-
-log = logging.getLogger(__name__)
 
 
 def start_inprocess_worker(config: Config | None = None) -> None:
