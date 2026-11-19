@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from src.servers import deploy as dp
-from src.servers.server_ops import CommandRun
+from src.servers.server_ops import MAX_OUTPUT_CHARS, NO_OUTPUT, CommandRun
 
 PROJECT = "/var/www/Clickmastersoftware"
 
@@ -80,7 +80,7 @@ class FakeServer:
     ran: list[str] = field(default_factory=list)
     head: list[str] = field(default_factory=lambda: ["aaa111"])
 
-    def execute(self, command, *, silence=None, keep_end=False):
+    def execute(self, command, *, silence=None, keep_end=False, max_chars=MAX_OUTPUT_CHARS):
         self.ran.append(command)
         if "rev-parse HEAD" in command:
             return CommandRun(command, 0, self.head[0])
@@ -88,8 +88,9 @@ class FakeServer:
             self.head[0] = "bbb222"
         for text, code, output in self.rules:
             if text in command:
-                return CommandRun(command, code, output)
-        return CommandRun(command, 0, "")
+                return CommandRun(command, code, (output[:max_chars] + "\n… (output cut)") if len(output) > max_chars
+                                  else output or NO_OUTPUT)
+        return CommandRun(command, 0, NO_OUTPUT)          # as the real server: an empty output reads "(no output)"
 
 
 PM2 = json.dumps([{"name": "web", "pm2_env": {"pm_cwd": f"{PROJECT}/frontend", "status": "online"}}])
@@ -203,3 +204,44 @@ def test_no_answer_or_stop_ends_the_deploy(answer, expected):
     ask, _asked = _clicks(lambda options: answer)
     report = dp.Deploy(_server(), FakeLogin(), ask=ask).run("nothing like it")
     assert f"**Stopped:** {expected}." in report
+
+
+# ── live run on the uk server, 2026-11-19 (ISSUES_LOG O100–O102) ───────
+
+def test_a_long_pm2_list_and_empty_outputs_are_read_right():
+    """pm2 jlist carries each process's environment (> 4,000 characters); empty grep results read "(no output)"."""
+    big = json.dumps([{"name": "clickmastersoftwareuk",
+                       "pm2_env": {"pm_cwd": PROJECT, "status": "online", "env": {"LS_COLORS": "x" * 9000}}}])
+    server = _server(**{"pm2 jlist": (0, big), "grep -rls": (0, "")})
+    ask, asked = _clicks(by_label("origin/main"), checked, checked, checked)
+    report = dp.Deploy(server, FakeLogin(), ask=ask).run("Clickmastersoftware")
+    restart = next(opts for q, opts, _m in asked if q == "Restart which?")
+    assert [(o.label, o.checked) for o in restart[:-1]] == [("pm2 clickmastersoftwareuk (online)", True),
+                                                            ("nginx (check the config, then reload)", False)]
+    assert "pm2 restart clickmastersoftwareuk" in " ".join(server.ran) and report.endswith("Done.")
+
+
+def test_build_output_folders_are_not_entered():
+    server = _server()
+    deploy = dp.Deploy(server, FakeLogin(), ask=lambda *a: [])
+    deploy.project = PROJECT
+    deploy.folders()
+    find = next(c for c in server.ran if f"-maxdepth {dp.MANIFEST_DEPTH}" in c)
+    assert "-name .next" in find and "-name dist" in find
+
+
+def test_an_app_left_running_the_old_build_is_not_called_done():
+    server = _server()
+    ask, _asked = _clicks(by_label("origin/main"), checked, checked,
+                          by_label("nginx"))
+    report = dp.Deploy(server, FakeLogin(), ask=ask).run("Clickmastersoftware")
+    assert "**Not live yet:**" in report and not report.endswith("Done.")
+
+
+def test_the_deploy_leaves_its_branch_and_a_summary_for_the_chat():
+    ask, _asked = _clicks(by_label("origin/main"), checked, checked, by_label("nginx"))
+    deploy = dp.Deploy(_server(), FakeLogin(), ask=ask)
+    deploy.run("Clickmastersoftware")
+    assert deploy.project == PROJECT and deploy.branch == "main"
+    assert "Pulled origin/main: 3 new commit(s)" in deploy.summary and deploy.summary.endswith(
+        "NOT live: the app was not restarted")

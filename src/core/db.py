@@ -108,6 +108,7 @@ def init_db(config: Config | None = None) -> None:
     _ensure_column(engine, "chat_threads", "continued_from", "continued_from VARCHAR(36)")
     _ensure_column(engine, "schedules", "last_status", "last_status VARCHAR(10) DEFAULT ''")
     _ensure_column(engine, "chat_threads", "unread", "unread BOOLEAN DEFAULT 0")
+    _ensure_column(engine, "chat_threads", "work", "work TEXT")
 
 
 @contextmanager

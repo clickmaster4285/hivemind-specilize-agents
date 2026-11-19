@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 MAX_ROUNDS = 12                 # how many commands the agent may run per question
 MAX_OUTPUT_CHARS = 4000         # of one command's output kept for the model
+NO_OUTPUT = "(no output)"       # what an empty output reads as (for the model); code that parses output: blank
 LOG_COMMAND_CHARS = 200         # of a timed-out command written to the API log (secrets masked first)
 TIMED_OUT_NOTE = (f"TIMED OUT: no output for {COMMAND_TIMEOUT} s, so I stopped waiting (it may still be running on "
                   "the server). Do not run it again as it is; use a command that finishes on its own (no follow, "
@@ -301,11 +302,13 @@ class RemoteSession:
             self._reconnect()                 # one retry on a dropped session
             return self.shell.raw(command, silence=silence)
 
-    def execute(self, command: str, *, silence: int = COMMAND_TIMEOUT, keep_end: bool = False) -> CommandRun:
+    def execute(self, command: str, *, silence: int = COMMAND_TIMEOUT, keep_end: bool = False,
+                max_chars: int = MAX_OUTPUT_CHARS) -> CommandRun:
         """Run the command with no read-only check (the caller has already decided it may run). A command that
         goes silent comes back as a timed-out run, so the model can go on instead of the job failing (O64).
         silence: seconds it may send nothing (an install or a build: minutes); keep_end: a long output keeps its
-        end (where a build says what failed) instead of its start."""
+        end (where a build says what failed) instead of its start; max_chars: output kept (a JSON list read by
+        code needs all of it — a cut one cannot be parsed)."""
         try:
             code, out, err = self._raw(command, silence)
         except CommandTimeout:
@@ -315,10 +318,10 @@ class RemoteSession:
             self.runs.append(run)
             return run
         text = (out + (("\n" + err) if err.strip() else "")).strip()
-        if len(text) > MAX_OUTPUT_CHARS:
-            text = (f"… (start cut, last {MAX_OUTPUT_CHARS} characters)\n" + text[-MAX_OUTPUT_CHARS:] if keep_end
-                    else text[:MAX_OUTPUT_CHARS] + f"\n… (output cut at {MAX_OUTPUT_CHARS} characters)")
-        run = CommandRun(command=command, code=code, output=text or "(no output)")
+        if len(text) > max_chars:
+            text = (f"… (start cut, last {max_chars} characters)\n" + text[-max_chars:] if keep_end
+                    else text[:max_chars] + f"\n… (output cut at {max_chars} characters)")
+        run = CommandRun(command=command, code=code, output=text or NO_OUTPUT)
         self.runs.append(run)
         return run
 
@@ -525,6 +528,12 @@ def _assistant_call(text: str, command: str | None) -> dict[str, Any]:
             "tool_calls": [{"function": {"name": "run_command", "arguments": args}}]}
 
 
+def _context_line(context: str) -> str:
+    """The chat's working context for the agent: use the known folder instead of searching the disk (O107)."""
+    return (f"{context} Use that folder when the request is about this project; do not search the disk for it. "
+            if context else "")
+
+
 def diagnose(
     login: ServerLogin,
     question: str,
@@ -533,8 +542,10 @@ def diagnose(
     model: str | None = None,
     should_continue: Callable[[], bool] = lambda: True,
     on_command: Callable[[CommandRun], None] = lambda run: None,
+    context: str = "",
 ) -> DiagnoseResult:
-    """The model runs read-only commands until it can answer `question`, then reports. Never changes the server."""
+    """The model runs read-only commands until it can answer `question`, then reports. Never changes the server.
+    context: what the chat works on (chat_work.describe): the project folder, branch and last deploy (O106, O107)."""
     model = model or config.model_fast or config.llm_model
     session = open_session(login)
     access = _access_line(session.shell)
@@ -542,7 +553,7 @@ def diagnose(
     run_tool = run_tool_for(login.os_family)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": prompt.format(access=access)},
-        {"role": "user", "content": f"Server: {login.shown}. Request: {question}"},
+        {"role": "user", "content": f"Server: {login.shown}. {_context_line(context)}Request: {question}"},
     ]
     client = LLMClient(config)
     result = DiagnoseResult(report="")
@@ -598,6 +609,7 @@ def run_server_diagnose(
     on_progress: Callable[[dict], None] | None = None,
     server: str | None = None,
     user_id: int | None = None,
+    chat_work: str = "",
     **_: object,
 ) -> tuple[str, list[str], float]:
     """'log in to web01 and check why it is slow' → read-only investigation + findings. Never changes the server."""
@@ -621,7 +633,7 @@ def run_server_diagnose(
                 status(("Refused: " if run.refused else "Ran: ") + run.command[:70])
 
             result = diagnose(login, query, config=config, should_continue=lambda: not live.is_stopped(job_id),
-                              on_command=on_command)
+                              on_command=on_command, context=chat_work)
             note = "\n\n_Read-only diagnosis: the server was not changed._"
             output = (result.report or "No findings.") + _commands_block(result.runs) + note
     except (AuditError, VaultError) as exc:
@@ -703,6 +715,7 @@ def operate(
     should_continue: Callable[[], bool] = lambda: True,
     confirm: Callable[[str, str], bool | None] = lambda command_id, command: False,
     on_command: Callable[[CommandRun], None] = lambda run: None,
+    context: str = "",
 ) -> OperateResult:
     """The model does `task`, running read-only commands freely and changing commands through the server's
     trust gate (audit → refused, confirm → the `confirm` callback, trusted → auto). Every change is logged."""
@@ -715,7 +728,7 @@ def operate(
     run_tool = run_tool_for(login.os_family)
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": prompt.format(access=access, mode_note=MODE_NOTE[login.mode])},
-        {"role": "user", "content": f"Server: {login.shown}. Task: {task}"},
+        {"role": "user", "content": f"Server: {login.shown}. {_context_line(context)}Task: {task}"},
     ]
     client = LLMClient(config)
     result = OperateResult(report="")
@@ -801,6 +814,7 @@ def run_server_operate(
     on_progress: Callable[[dict], None] | None = None,
     server: str | None = None,
     user_id: int | None = None,
+    chat_work: str = "",
     **_: object,
 ) -> tuple[str, list[str], float]:
     """'log in to web01 and restart nginx' / 'run deploy.sh on web01' → the agent does the work, changing
@@ -837,7 +851,7 @@ def run_server_operate(
 
             result = operate(login, query, config=config, user_id=user_id, job_id=job_id,
                              should_continue=lambda: not live.is_stopped(job_id), confirm=confirm,
-                             on_command=on_command)
+                             on_command=on_command, context=chat_work)
             note = (f"\n\n_Operated on **{login.label}** ({login.mode} mode): {result.changes} change(s) made. "
                     "Every change is in the command log._")
             output = (result.report or "Done.") + _commands_block(result.runs) + note

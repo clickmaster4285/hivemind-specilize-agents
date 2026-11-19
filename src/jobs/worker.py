@@ -14,7 +14,7 @@ from src.core.conversation import normalize_conversation
 from src.jobs.chat_memory import chat_memory, prefold, remember_job
 from src.jobs.chat_runner import run_chat
 from src.core.clock import set_time_zone
-from src.llm.assistant import BY_JOB, CLARIFY_INTRO, decide, speaker, tool_flag
+from src.llm.assistant import BY_JOB, BY_NAME, CLARIFY_INTRO, decide, speaker, tool_flag
 from src.llm.skills import Skill
 from src.llm.skills import apply as apply_skill
 from src.llm.skills import for_job as skill_for_job
@@ -83,6 +83,62 @@ def _server_names(user_id: int | None) -> str:
     except Exception as exc:  # noqa: BLE001 — a vault problem must not stop the answer
         log.info("server names for the prompt failed: %s", exc)
         return ""
+
+
+def _chat_server(user_id: int | None, work: dict) -> Any:
+    """The login of the server this chat works on (chat_work), or None."""
+    from src.servers import server_vault
+
+    try:
+        return server_vault.find(user_id, work["server"]) if user_id is not None and work.get("server") else None
+    except Exception:  # noqa: BLE001 — a hint only
+        return None
+
+
+def _resume_pending(config: Config, job_id: str, user_id: int | None, query: str, work: dict) -> tuple | None:
+    """A server tool asked "Which server?" in this chat: a short reply naming one runs that tool now, with the
+    question it was asked for (ISSUES_LOG O104). Anything else is a new message. → (tool, args, query) or None."""
+    from src.jobs import chat_work
+    from src.servers import server_vault
+
+    pending = work.get("pending")
+    if not isinstance(pending, dict):
+        return None
+    chat_work.remember(config, job_id, pending=None)        # asked once: answered now, or dropped
+    tool = BY_NAME.get(str(pending.get("tool") or ""))
+    if tool is None or user_id is None or not chat_work.is_reply(query):
+        return None
+    named = server_vault.server_in(query, server_vault.list_servers(user_id))
+    if not named:
+        return None
+    args = {**(pending.get("args") if isinstance(pending.get("args"), dict) else {}), "server": named}
+    return tool, args, str(pending.get("query") or query)
+
+
+def _server_context(config: Config, job_id: str, user_id: int | None, tool: Any, args: dict, query: str,
+                    work: dict) -> dict:
+    """A server tool's arguments with the chat's server and project filled in where the message names none, the
+    chat's working context saved for the next message, and a line for the tool's prompt (ISSUES_LOG O103, O107).
+    No server found among several → the tool asks "Which server?" and the reply is waited for (pending)."""
+    from src.jobs import chat_work
+    from src.servers import server_vault
+
+    try:
+        login = server_vault.resolve(user_id, args.get("server"), query, work.get("server")) if user_id else None
+        if login is None:
+            if user_id is not None and len(server_vault.list_servers(user_id)) > 1:
+                chat_work.remember(config, job_id, pending={"tool": tool.name, "args": args, "query": query})
+            return args
+        same = work.get("server") == login.id
+        args = {**args, "server": login.id}
+        if tool.name == "deploy_project" and not args.get("project") and same and work.get("project"):
+            args["project"] = work["project"].rstrip("/").rsplit("/", 1)[-1]
+        if not same:            # another server: the folder and deploy of the old one do not apply
+            chat_work.remember(config, job_id, server=login.id, project=None, branch=None, deploy=None)
+        args["chat_work"] = chat_work.describe(work if same else {}, login.shown)
+    except Exception as exc:  # noqa: BLE001 — the tool still asks or finds it itself
+        log.info("chat server context failed: %s", exc)
+    return args
 
 
 def _answerer(payload: dict, query: str, skill: Skill | None, *, config: Config, conversation,
@@ -291,7 +347,16 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
         tool_args: dict[str, Any] = {}
         specialist = None
         learning = False                 # the router's verdict: the user is learning a topic → a quiz suits
+        # what this chat works on (server, project, last deploy): follow-ups name none of it (ISSUES_LOG O103)
+        from src.jobs import chat_work
+        work = chat_work.get(config, job_id) if user_id is not None else {}
+        resumed = _resume_pending(config, job_id, user_id, query, work) if intent == "auto" else None
+        if resumed is not None:                       # the reply to "Which server?": the waiting tool runs now
+            tool, tool_args, query = resumed
+            intent = tool.job
+            on_progress({"type": "tool_chosen", "tool": tool.name, "args": tool_args})
         if intent == "auto":
+            chat_login = _chat_server(user_id, work)
             specialist, picked = _answerer(payload, query, skill, config=config, conversation=conversation,
                                            on_progress=on_progress)
             # the model answers directly (streamed, done) or picks a tool with its arguments
@@ -302,6 +367,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                               # a skill already says what is wanted: no clarifying questions (ISSUES_LOG O73)
                               clarify_ok=not bool(payload.get("followup")) and skill is None, refine=refine,
                               may_hand_over=picked, servers=_server_names(user_id),
+                              chat_work=chat_work.describe(work, chat_login.shown) if chat_login else "",
                               # a scheduled run: nobody is there to click a confirm card (BACKLOG L26 H1)
                               unattended=bool(payload.get("scheduled")))
             if decision.answered:
@@ -330,7 +396,9 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
             return
         if runner is not None:
             # user_id: tools that use the session's server logins (src/server_vault.py) find this user's only
-            tool_args = {k: v for k, v in tool_args.items() if k != "user_id"}     # never from the model
+            tool_args = {k: v for k, v in tool_args.items() if k not in ("user_id", "chat_work")}  # never the model's
+            if tool.needs_server_login:
+                tool_args = _server_context(config, job_id, user_id, tool, tool_args, query, work)
             _output, errors, _elapsed = runner(query, job_id=job_id, config=config, on_progress=on_progress,
                                                conversation=conversation, user_id=user_id, **tool_args)
             if tool.repeatable and not errors and not payload.get("scheduled"):

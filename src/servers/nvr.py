@@ -295,9 +295,9 @@ def run_nvr_cameras(
         login = server_vault.find(user_id, named, kind="nvr") if user_id is not None else None
         if login is None and not recorders:
             output = ("No recorder login for this session yet. Add the NVR in **Settings → Devices** (type: NVR, "
-                      "its address, user and password) — it stays in memory for this session only, never in the chat.")
+                      "its address, user and password) — it is saved for your account, never written in the chat.")
         elif login is None:
-            output = f"Which recorder? Added this session: {server_vault.names(recorders)}."
+            output = f"Which recorder? Yours: {server_vault.names(recorders)}."
         else:
             run.status(f"Reading the cameras on {login.shown}…")
             rec = read_recorder(login.host, login.username, login.password or "", login.port)

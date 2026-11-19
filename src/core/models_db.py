@@ -336,6 +336,9 @@ class ChatThreadRow(Base):
     continued_from: Mapped[str | None] = mapped_column(String(36), nullable=True)
     # a scheduled run wrote something new here that the user has not opened yet (ISSUES_LOG O99: results find you)
     unread: Mapped[bool] = mapped_column(Boolean, default=False)
+    # what the chat works on: server, project folder, branch, last deploy, a pending "Which server?" (src/jobs/
+    # chat_work.py, ISSUES_LOG O103) — JSON
+    work: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ScheduleRow(Base):

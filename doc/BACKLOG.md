@@ -735,9 +735,9 @@ every message logged in again. How it works: [SERVER_ACCESS_DECISION.md §9](SER
 - [x] O94 + O95 `deploy_project`: folder from a misspelt name, branch choice, install / build / restart on choice cards
 - [x] O96 SSH logins kept open 10 minutes and reused
 - [x] Live check on the uk server (the user, 2026-11-19): deploy ran end to end but the app was not restarted → O100–O112
-- [ ] O100 deploy reads "(no output)" as data; O101 pm2 not found, "Done." without an app restart; O102 build output as dependency folders
-- [ ] O103 + O107 the chat's working context (server, project folder, branch) remembered from each server job — replaces "remember the project folder"
-- [ ] O104 "Which server?" as a pending question answered by the next reply; labels matched by word ("uk")
+- [x] O100 deploy reads "(no output)" as data; O101 pm2 not found, "Done." without an app restart; O102 build output as dependency folders — built 2026-11-19
+- [x] O103 + O107 the chat's working context (server, project folder, branch) remembered from each server job — replaces "remember the project folder"
+- [x] O104 "Which server?" as a pending question answered by the next reply; labels matched by word ("uk")
 - [ ] O105 questions about done work never start a changing tool; O106 diagnose: chat context, no repeated command
 - [ ] O108 cards above the answer; O109 commands folded; O110 Run now while busy; O111 image edits keep the subject; O112 eval
 - [x] H2 skills from tasks — built 2026-11-17: "Save as skill" (✦) under every answer → `POST /api/skills/draft` (src/llm/skill_draft.py) → the skill editor opens filled in; saved only by the user

@@ -54,7 +54,9 @@ route:
   "put the prices of 5 phones in an Excel file" → "tool" create_document.
   A message about the server, device or website the chat is already working on continues that work, even
   when it does not name it again ("tell me all the project names", "now restart it"): the same kind of tool
-  with the earlier message's target, never "search".
+  with the earlier message's target, never "search". "Chat context" names that server and project when there
+  is one; a bare server or project name ("uk server", "uk, Clickmastersoftware") then answers a question about
+  which one — the same work goes on there.
   Not sure which tool → "model".
 - "search": the answer depends on facts that may have changed since your training or that must be looked up:
   news and recent events, real people (who someone is, their life, work, roles, what they did), companies,
@@ -151,14 +153,16 @@ def previous_question(conversation: list[dict[str, str]] | None) -> str:
 
 
 def route_message(query: str, config: Config, conversation: list[dict[str, str]] | None = None, *,
-                  tools: list[dict[str, Any]] | None = None, chat: Callable[..., str] | None = None) -> Route:
+                  tools: list[dict[str, Any]] | None = None, chat: Callable[..., str] | None = None,
+                  context: str = "") -> Route:
     """Ask the fast model where the message goes. tools: the schemas the tool choice would offer (the router may
-    name one of them). Never raises: a failed call leaves it to the tool choice."""
+    name one of them). context: what the chat works on (chat_work.describe, O103). Never raises: a failed call leaves it to the tool choice."""
     from src.core.clock import current_date_text
     from src.llm.llm_client import LLMClient
 
     previous = previous_question(conversation)
-    user = (f"Previous message: {previous}\n\n" if previous else "") + f"Message: {query}"
+    user = ((f"Chat context: {context}\n\n" if context else "") + (f"Previous message: {previous}\n\n" if previous
+            else "") + f"Message: {query}")
     try:
         raw = (chat or LLMClient(config).chat)(
             # the date alone, at the top: it changes once a day, so the prompt stays a cached prefix (O52); the

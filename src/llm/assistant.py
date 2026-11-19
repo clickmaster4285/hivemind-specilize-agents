@@ -415,6 +415,7 @@ def messages_for(
     refine_note: str | None = None,
     diagrams: bool = True,
     servers: str = "",
+    chat_work: str = "",
 ) -> list[dict]:
     """diagrams: the router's `diagram` flag; off, the ~900-token diagram rules become one line (O52).
     servers: the names of the servers the user added (server_vault.names), when a server tool is offered."""
@@ -433,6 +434,8 @@ def messages_for(
     if servers:      # the IT specialist said "add the server first" although three were added (ISSUES_LOG O83)
         system += (f"\nServers the user already added in Settings → Devices: {servers}. For work on them, call the "
                    "server tools; never say a server must be added first.")
+    if chat_work:    # follow-ups name no server or folder: the chat's own (ISSUES_LOG O103)
+        system += f"\n{chat_work} A message that names no other server or project means these."
     msgs = [{"role": "system", "content": system}]
     summary, turns = split_summary(conversation or [])
     if summary:          # a long chat's earlier part, folded into a summary (BACKLOG L12) — always kept
@@ -582,11 +585,13 @@ def decide(
     may_hand_over: bool = False,
     servers: str = "",
     unattended: bool = False,
+    chat_work: str = "",
 ) -> Decision:
     """One model call with the tools: a direct answer streams into the chat; a tool call returns.
     may_hand_over: the specialist was picked by the model (not a skill or the user's choice), so a tool it lacks
     moves the job to the specialist that has it (O69).
     servers: the names of the servers the user added; named in the prompt when a server tool is offered (O83).
+    chat_work: what the chat works on (chat_work.describe): the router and the tool choice see it (O103).
     unattended: a scheduled run nobody watches (BACKLOG L26 H1): no clarifying questions, no tool that waits for
     the user's click.
     With a specialist: its instructions join the prompt and only its tools are offered.
@@ -606,7 +611,7 @@ def decide(
     # to one that has it. A skill or the user's choice keeps its own tools (the keyword-plan skill went to the
     # site audit when the router saw every tool, O72)
     own_tools = specialist.tools if specialist else None
-    route = route_message(query, config, conversation,
+    route = route_message(query, config, conversation, context=chat_work,
                           tools=tool_schemas(config, None if may_hand_over else own_tools, unattended=unattended))
     if may_hand_over:
         specialist = hand_over(route.tool if route.route == TOOL else "", specialist)
@@ -632,7 +637,8 @@ def decide(
             LLMClient(config),
             messages=messages_for(query, config, conversation, model, specialist,
                                   refine_note=build_refine_note(refine) if refine else None, diagrams=route.diagram,
-                                  servers=servers if _offers_server_tool(tools) else ""),
+                                  servers=servers if _offers_server_tool(tools) else "",
+                                  chat_work=chat_work if _offers_server_tool(tools) else ""),
             tools=tools, model=model,
             on_delta=on_delta, should_continue=lambda: not live.is_stopped(job_id),
         )

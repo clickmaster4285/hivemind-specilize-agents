@@ -28,11 +28,11 @@ import re
 import shlex
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from src.core.config import Config
-from src.servers.server_ops import (CommandRun, RemoteSession, _commands_block,
+from src.servers.server_ops import (NO_OUTPUT, CommandRun, RemoteSession, _commands_block,
                                     destructive_for, open_session, release_session)
 from src.servers.server_vault import ServerLogin, VaultError
 from src.servers.linux_audit import AuditError
@@ -58,8 +58,13 @@ LOG_LINES = 10                  # new commits listed in the report
 # the files that say what a folder depends on; a pull that changes one means an install
 DEPENDENCY_FILES = frozenset({"package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
                               "requirements.txt", "composer.json", "composer.lock"})
-# folders that hold installed packages or history, not sources: listed (their presence matters) but not entered
-SKIPPED_DIRS = ("node_modules", ".git", "vendor", ".venv", "venv")
+# folders that hold installed packages, history or build output, not sources: listed (their presence matters)
+# but not entered — Next.js writes package.json files into .next/ (O102)
+SKIPPED_DIRS = ("node_modules", ".git", "vendor", ".venv", "venv",
+                ".next", ".nuxt", ".output", ".svelte-kit", "dist", "build")
+# what the deploy reads is parsed by code, not shown to the model: kept whole (pm2 jlist carries every process's
+# environment and passes the model's 4,000-character cap with one app — cut, its JSON cannot be read, O101)
+READ_CHARS = 2_000_000
 
 STOP, SKIP = "stop", "skip"
 
@@ -238,10 +243,16 @@ class Deploy:
         self.lines: list[str] = []            # the report, one line per step
         self.project = ""
         self._node = ""
+        self.branch = ""                      # the branch pulled (or the one already checked out)
+        self.summary = ""                     # one line of what this deploy did, for later questions
+        self.apps_found = False               # a pm2 process or service runs this project
+        self.app_restarted = False            # … and one of them was restarted
 
     # commands ------------------------------------------------------------
     def read(self, command: str, *, silence: int | None = None) -> CommandRun:
-        return self.session.execute(command, **({"silence": silence} if silence else {}))
+        """A read whose output code parses: whole, and an empty output empty (not "(no output)", O100)."""
+        run = self.session.execute(command, max_chars=READ_CHARS, **({"silence": silence} if silence else {}))
+        return replace(run, output="") if run.output == NO_OUTPUT else run
 
     def change(self, command: str, *, silence: int | None = None) -> CommandRun:
         """A changing command the user picked on a card: deny-list, the server's mode, then run and log it."""
@@ -321,6 +332,7 @@ class Deploy:
             raise Stopped(f"`git fetch` failed, so the branches could not be compared:\n```\n"
                           f"{_tail(fetched.output) or 'no output'}\n```")
         current = self.read(self.git("rev-parse --abbrev-ref HEAD")).output.strip()
+        self.branch = current
         before = self.read(self.git("rev-parse HEAD")).output.strip()
         branches = parse_branches(self.read(self.git(
             "for-each-ref --sort=-committerdate refs/remotes "
@@ -372,6 +384,7 @@ class Deploy:
         pull = self.git(f"pull --ff-only {q(branch.remote)} {q(branch.name)} 2>&1")
         command = pull if branch.name == current else f"{self.git(f'checkout {q(branch.name)} 2>&1')} && {pull}"
         self.status(f"Pulling {branch.ref}…")
+        self.branch = branch.name
         run = self.change(command, silence=FETCH_SILENCE)
         if run.timed_out or run.code:
             raise Stopped(f"the pull from **{branch.ref}** failed (it only fast-forwards, so nothing was merged):"
@@ -412,7 +425,10 @@ class Deploy:
         if not options:
             self.lines.append("Dependencies: no dependency file changed — nothing to install.")
             return []
-        picked = self.choose("New dependencies were found. Install them in which folders?",
+        question = ("Dependency files changed. Install them in which folders?"
+                    if any("changed" in o.label for o in options)
+                    else "These folders have no installed packages yet. Install them?")
+        picked = self.choose(question,
                              options + [Option(STOP, "Stop here")], multi=True)
         done = []
         for i in picked:
@@ -464,6 +480,7 @@ class Deploy:
         options: list[Option] = []
         commands: dict[str, str] = {}
         ours = [p for p in pm2 if _inside(p["cwd"], self.project)]
+        self.apps_found = bool(ours or units)
         for p in ours or pm2:                       # none from this folder: every pm2 process, none ticked
             oid = f"pm2:{p['name']}"
             commands[oid] = self.node(f"pm2 restart {shlex.quote(p['name'])}")
@@ -486,6 +503,7 @@ class Deploy:
             run = self.change(commands[oid] + " 2>&1")
             if run.timed_out or run.code:
                 raise Stopped(f"`{commands[oid]}` failed:\n```\n{_tail(run.output)}\n```")
+            self.app_restarted = self.app_restarted or oid.startswith(("pm2:", "systemd:"))
         if not picked:
             self.lines.append("Restart: you chose not to restart anything.")
             return
@@ -515,9 +533,15 @@ class Deploy:
             self.restart()
         except Stopped as exc:
             stopped = str(exc)
+        self.summary = (time.strftime("%Y-%m-%d %H:%M ") + "; ".join(
+            line.replace("**", "").split("\n")[0] for line in self.lines) + (f"; stopped: {stopped}" if stopped else
+            "; NOT live: the app was not restarted" if self.apps_found and not self.app_restarted else ""))[:600]
         title = f"Deploy of **{posixpath.basename(self.project) or project or 'the project'}** on **{self.login.shown}**"
         body = "\n".join(f"- {line}" for line in self.lines)
-        end = f"\n\n**Stopped:** {stopped}." if stopped else "\n\nDone."
+        end = (f"\n\n**Stopped:** {stopped}." if stopped else
+               "\n\n**Not live yet:** the app that runs this project (pm2 / service) was not restarted, so the site "
+               "still serves the old code. Restart it to go live." if self.apps_found and not self.app_restarted
+               else "\n\nDone.")
         return f"{title}\n\n{body}{end}" if body else f"{title}{end}"
 
 
@@ -535,7 +559,7 @@ def run_deploy_project(
     user_id: int | None = None,
     **_: object,
 ) -> tuple[str, list[str], float]:
-    from src.jobs import live
+    from src.jobs import chat_work, live
     from src.servers import server_vault
     from src.servers.command_audit import log_command
 
@@ -565,6 +589,9 @@ def run_deploy_project(
                 deploy = Deploy(session, login, ask=ask, status=status, log=log,
                                 should_continue=lambda: not live.is_stopped(job_id))
                 output = deploy.run(project or "", branch or "") + _commands_block(session.runs)
+                if deploy.project:          # the next message about this project needs no search (O103, O107)
+                    chat_work.remember(config, job_id, server=login.id, project=deploy.project,
+                                       branch=deploy.branch or None, deploy=deploy.summary)
             finally:
                 release_session(session)
     except (AuditError, VaultError) as exc:

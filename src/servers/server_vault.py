@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import re
 import socket
 import uuid
 from collections.abc import Callable
@@ -185,33 +186,51 @@ def find(user_id: int, name: str | None, kind: str = "ssh") -> ServerLogin | Non
                  if wanted in s.label.lower() or s.label.lower() in wanted or s.host.lower() in wanted), None)
 
 
-NO_LOGIN = ("No server login for this session yet. Add the server in **Settings → Devices** (address, user, "
-            "password or key, and its mode) — it stays in memory for this session only, never in the chat.")
+NO_LOGIN = ("No server login yet. Add the server in **Settings → Devices** (address, user, password or key, and "
+            "its mode) — it is saved for your account, never written in the chat.")
+# words that do not tell servers apart: "uk server" is told by "uk"
+GENERIC_LABEL_WORDS = frozenset({"server", "servers", "srv", "vps", "host", "box", "machine", "the", "our", "my"})
+
+
+def _label_words(label: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9][a-z0-9._-]*", label.lower()) if w not in GENERIC_LABEL_WORDS}
 
 
 def server_in(query: str, servers: list[ServerLogin]) -> str | None:
-    """A server named in the message by label or address ("audit web01", "check 192.168.88.66")."""
+    """A server named in the message by label, address or a word only its label has ("audit web01", "check
+    192.168.88.66", "uk , Clickmastersoftware" → uk server, ISSUES_LOG O104)."""
     low = (query or "").lower()
     for s in servers:
         if s.host in low or (s.label and s.label.lower() in low):
             return s.id
-    return None
+    said = set(re.findall(r"[a-z0-9][a-z0-9._-]*", low))
+    named = [s for s in servers if _label_words(s.label) & said
+             and not any(_label_words(s.label) & _label_words(o.label) & said for o in servers if o is not s)]
+    return named[0].id if len(named) == 1 else None
+
+
+def resolve(user_id: int, server: str | None, query: str, fallback: str | None = None) -> ServerLogin | None:
+    """The model's server, else one named in the message, else the chat's own (fallback, O103), else the only one."""
+    servers = list_servers(user_id)
+    for name in (server, server_in(query, servers), fallback):
+        if name and (login := find(user_id, name)) is not None:
+            return login
+    return servers[0] if len(servers) == 1 else None
 
 
 def login_for(user_id: int | None, server: str | None, query: str, *,
               question: str = "Which server?") -> tuple[ServerLogin | None, str]:
-    """The login a server tool should use: the one the model named, else one named in the message, else the only
-    one added → (login, ""); or (None, what to tell the user): add one first, or which of the added ones.
-    One place for every server tool (was copied in four, ISSUES_LOG O97)."""
+    """The login a server tool should use (resolve) → (login, ""); or (None, what to tell the user): add one first,
+    or which of the saved ones. One place for every server tool (was copied in four, ISSUES_LOG O97)."""
     if user_id is None:
         return None, NO_LOGIN
-    servers = list_servers(user_id)
-    login = find(user_id, server or server_in(query, servers))
+    login = resolve(user_id, server, query)
     if login is not None:
         return login, ""
+    servers = list_servers(user_id)
     if not servers:
         return None, NO_LOGIN
-    return None, f"{question} Added this session: {names(servers)}."
+    return None, f"{question} Your servers: {names(servers)}."
 
 
 def set_mode(user_id: int, server_id: str, mode: str) -> ServerLogin:

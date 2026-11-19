@@ -225,9 +225,9 @@ def run_network_device(
         login = server_vault.find(user_id, named, kind="network") if user_id is not None else None
         if login is None and not devices:
             output = ("No router or switch login for this session yet. Add it in **Settings → Devices** (type: Router "
-                      "/ switch) — it stays in memory for this session only, never in the chat.")
+                      "/ switch) — it is saved for your account, never written in the chat.")
         elif login is None:
-            output = f"Which device? Added this session: {server_vault.names(devices)}."
+            output = f"Which device? Yours: {server_vault.names(devices)}."
         else:
             run.status(f"Reading {login.shown}…")
             rep, _fingerprint = read_device(login)
