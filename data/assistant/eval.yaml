@@ -4,10 +4,12 @@
 # Rebuilt 2026-11-11 (ISSUES_LOG O37): the first set was never committed and was lost in the move to Ubuntu.
 # Fields:
 #   text    the user's message
-#   tool    the tool the model must call; a list = any of these; null = answer directly, no tool
+#   tool    the tool the model must call; a list = any of these; null = answer directly, no tool;
+#           ask_clarification also accepts a direct reply that asks a question (O112)
 #   expect  (optional) arguments the call must carry, compared without case ("" = left empty)
 #   skill   (optional) a built-in skill applied as /name would (its specialist, instructions and tools)
 #   previous (optional) the message before this one in the chat, for follow-ups
+#   context (optional) what the chat works on, as the chat gives it (chat_work.describe, O103)
 # Add every real message that was answered with the wrong tool.
 
 cases:
@@ -80,6 +82,20 @@ cases:
     previous: "go the uk server softwaredevelopemnen folder took the pull from latest branh , and delop the new code"
     tool: [diagnose_server, operate_server]
   # scheduled tasks made in words (O99, 2026-11-18)
+  # questions about a finished deploy started a new deploy; follow-ups lost the server (O103, O105, 2026-11-19)
+  - text: "di we suceesfully took the latest pull ? and build it successfully"
+    context: "This chat is working on uk server, project /var/www/Clickmastersoftware (branch changes11/17). Last deploy here: 2026-11-19 13:10 Project: /var/www/Clickmastersoftware; Pulled origin/changes11/17: 1 new commit(s); Built the project root in 37 s; Restarted — nginx: reloaded"
+    tool: [null, diagnose_server]
+  - text: "i can not see the update from the latest branch ? show we the check list what we did"
+    context: "This chat is working on uk server, project /var/www/Clickmastersoftware (branch changes11/17). Last deploy here: 2026-11-19 13:10 Project: /var/www/Clickmastersoftware; Pulled origin/changes11/17: 1 new commit(s); Built the project root in 37 s; Restarted — nginx: reloaded"
+    tool: [null, diagnose_server]
+  - text: "ok check again if new changes come"
+    context: "This chat is working on uk server, project /var/www/Clickmastersoftware (branch changes11/17). Last deploy here: 2026-11-19 13:10 Project: /var/www/Clickmastersoftware; Pulled origin/changes11/17: 1 new commit(s); Built the project root in 37 s; Restarted — nginx: reloaded"
+    tool: [diagnose_server, schedule_task]
+  - text: "uk server, Clickmastersoftware ,"
+    previous: "ok check again if new changes come"
+    context: "This chat is working on uk server, project /var/www/Clickmastersoftware (branch changes11/17). Last deploy here: 2026-11-19 13:10 Project: /var/www/Clickmastersoftware; Pulled origin/changes11/17: 1 new commit(s); Built the project root in 37 s; Restarted — nginx: reloaded"
+    tool: diagnose_server
   - text: "check the uk server every Monday at 9 and tell me what changed"
     tool: schedule_task
     expect: {every: "week", weekday: "Monday"}

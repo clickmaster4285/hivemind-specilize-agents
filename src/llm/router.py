@@ -57,6 +57,10 @@ route:
   with the earlier message's target, never "search". "Chat context" names that server and project when there
   is one; a bare server or project name ("uk server", "uk, Clickmastersoftware") then answers a question about
   which one — the same work goes on there.
+  A question about work already done ("did we pull the latest and build it?", "is it live?", "what did we do?")
+  is never a job that changes the server (a deploy, a command): "model" when Chat context's last deploy answers
+  it, else the read-only look at that server (diagnose_server). Checking for something new ("check again if new
+  changes came") is that look too.
   Not sure which tool → "model".
 - "search": the answer depends on facts that may have changed since your training or that must be looked up:
   news and recent events, real people (who someone is, their life, work, roles, what they did), companies,
@@ -156,7 +160,8 @@ def route_message(query: str, config: Config, conversation: list[dict[str, str]]
                   tools: list[dict[str, Any]] | None = None, chat: Callable[..., str] | None = None,
                   context: str = "") -> Route:
     """Ask the fast model where the message goes. tools: the schemas the tool choice would offer (the router may
-    name one of them). context: what the chat works on (chat_work.describe, O103). Never raises: a failed call leaves it to the tool choice."""
+    name one of them). context: what the chat works on (chat_work.describe, O103). Never raises: a failed call
+    leaves it to the tool choice."""
     from src.core.clock import current_date_text
     from src.llm.llm_client import LLMClient
 

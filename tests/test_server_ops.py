@@ -132,6 +132,48 @@ def test_a_change_command_from_the_model_is_refused_not_run(monkeypatch):
     assert "restart it yourself" in result.report
 
 
+def test_the_same_command_again_is_not_run_and_two_repeats_end_in_findings(monkeypatch):
+    """uk server, 2026-11-19: `ls -la /var/lib/git/` ran 8 times in a row (ISSUES_LOG O106)."""
+    shell = FakeShell({"ls -la /var/lib/git/": (0, "total 0", "")})
+    _patch_session(monkeypatch, shell)
+    seen_by_model = []
+    FakeLLM.script = [("", "ls -la /var/lib/git/")] + [("", "ls  -la /var/lib/git/")] * 2 + [
+        ("The folder is empty; the project is elsewhere.", None)]
+
+    class Watching(FakeLLM):
+        def chat_tools(self, *, messages, **kw):
+            seen_by_model.append(messages[-1]["content"])
+            return super().chat_tools(messages=messages, **kw)
+
+    monkeypatch.setattr(so, "LLMClient", Watching)
+    login = so.ServerLogin(id="2", label="uk server", host="10.0.0.2", port=22, username="u", password="p")
+    result = so.diagnose(login, "why can't I see the update", config=Config.from_env())
+    assert shell.ran.count("ls -la /var/lib/git/") == 1 and len(result.runs) == 1
+    assert seen_by_model[2].startswith("ALREADY RAN: this exact command ran in step 1")
+    assert seen_by_model[-1].startswith("Stop running commands")          # the second repeat: findings now
+    assert result.report == "The folder is empty; the project is elsewhere."
+
+
+def test_the_chats_folder_reaches_the_agent(monkeypatch):
+    shell = FakeShell({})
+    _patch_session(monkeypatch, shell)
+    first = []
+    FakeLLM.script = [("Done.", None)]
+
+    class Watching(FakeLLM):
+        def chat_tools(self, *, messages, **kw):
+            first.append(messages[1]["content"])
+            return super().chat_tools(messages=messages, **kw)
+
+    monkeypatch.setattr(so, "LLMClient", Watching)
+    login = so.ServerLogin(id="3", label="uk server", host="10.0.0.3", port=22, username="u", password="p")
+    so.diagnose(login, "did we pull?", config=Config.from_env(),
+                context="This chat is working on uk server, project /var/www/app.")
+    assert first[0] == ("Server: uk server. This chat is working on uk server, project /var/www/app. Use that "
+                        "folder when the request is about this project; do not search the disk for it. "
+                        "Request: did we pull?")
+
+
 # ── wiring ─────────────────────────────────────────────────────────────────
 def test_wired_for_the_it_specialist_credential_gated_not_admin_only():
     from src.llm.assistant import BY_NAME

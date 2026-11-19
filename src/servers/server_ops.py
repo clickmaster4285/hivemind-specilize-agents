@@ -481,7 +481,14 @@ Rules:
   asks to see something (which projects, folders or services there are) gets the list, not a diagnosis. For a
   problem write a short report: what you checked, what you found, the likely cause, and the fix to apply (as
   commands the user can run).
-- Be concrete and use the real values from the output. Do not invent."""
+- Be concrete and use the real values from the output. Do not invent.
+- An exit code other than 0 means the command failed or found nothing (`systemctl status sshd` exit 4: there is
+  no unit of that name — on Ubuntu it is `ssh`). Never report a failed command as a success.
+- Never run the same command twice: its output will not change. Run the checks yourself; do not hand the user
+  read-only commands to run.
+- A question about earlier work in this chat (a deploy: "did we pull?", "why can't I see the update?") is about
+  the project and branch named above: check its git state (`git -C <folder> log -1`, `git -C <folder> status`),
+  its build and the app that serves it (pm2 list, systemctl status), not git servers or other folders."""
 
 DIAGNOSE_SYSTEM_WIN = """You are an IT engineer logged in to a Windows server over SSH (PowerShell). {access}
 Investigate the user's request by running READ-ONLY PowerShell commands with run_command, one at a time,
@@ -528,10 +535,41 @@ def _assistant_call(text: str, command: str | None) -> dict[str, Any]:
             "tool_calls": [{"function": {"name": "run_command", "arguments": args}}]}
 
 
+REPEAT_LIMIT = 2            # repeated commands before the agent is told to write its findings (ISSUES_LOG O106)
+REPEATED_NOTE = ("ALREADY RAN: this exact command ran in step {step}; its output does not change, so it was not "
+                 "run again. Use a different command, or write your findings now.")
+
+
+class _Seen:
+    """The commands an agent ran this job: the 9B model ran `ls -la /var/lib/git/` 8 times in a row (O106)."""
+
+    def __init__(self) -> None:
+        self.steps: dict[str, int] = {}
+        self.repeats = 0
+
+    def repeated(self, command: str, step: int) -> str:
+        """The note for a command already run (and the repeat counted), or "" for a new one (remembered)."""
+        key = " ".join(command.split())
+        if key in self.steps:
+            self.repeats += 1
+            return REPEATED_NOTE.format(step=self.steps[key])
+        self.steps[key] = step
+        return ""
+
+
 def _context_line(context: str) -> str:
     """The chat's working context for the agent: use the known folder instead of searching the disk (O107)."""
     return (f"{context} Use that folder when the request is about this project; do not search the disk for it. "
             if context else "")
+
+
+def _write_findings(client: Any, messages: list[dict[str, Any]], run_tool: dict, model: str) -> str:
+    """No more commands: the findings from what was seen (the command limit, or the same command again)."""
+    text, _ = client.chat_tools(
+        messages=[*messages, {"role": "user", "content": "Stop running commands. Write your findings now "
+                              "from what you have seen: what you checked, the likely cause, and the fix."}],
+        tools=[run_tool], model=model, temperature=0.1)
+    return text or "Could not finish diagnosing within the command limit."
 
 
 def diagnose(
@@ -557,6 +595,7 @@ def diagnose(
     ]
     client = LLMClient(config)
     result = DiagnoseResult(report="")
+    seen = _Seen()
     try:
         for round_no in range(1, MAX_ROUNDS + 1):
             result.rounds = round_no
@@ -573,6 +612,14 @@ def diagnose(
                 messages.append(_assistant_call(text, None))
                 messages.append({"role": "tool", "content": "No command given. Provide a command, or write your findings."})
                 continue
+            note = seen.repeated(command, round_no)
+            if note:
+                messages.append(_assistant_call(text, command))
+                messages.append({"role": "tool", "content": note})
+                if seen.repeats >= REPEAT_LIMIT:
+                    result.report = _write_findings(client, messages, run_tool, model)
+                    break
+                continue
             run = session.run(command)
             on_command(run)
             result.runs.append(run)
@@ -582,11 +629,7 @@ def diagnose(
             messages.append(_assistant_call(text, command))
             messages.append({"role": "tool", "content": observation})
         else:
-            text, _ = client.chat_tools(
-                messages=[*messages, {"role": "user", "content": "Stop running commands. Write your findings now "
-                                      "from what you have seen: what you checked, the likely cause, and the fix."}],
-                tools=[run_tool], model=model, temperature=0.1)
-            result.report = text or "Could not finish diagnosing within the command limit."
+            result.report = _write_findings(client, messages, run_tool, model)
     finally:
         release_session(session)
     return result
@@ -732,6 +775,7 @@ def operate(
     ]
     client = LLMClient(config)
     result = OperateResult(report="")
+    seen = _Seen()
 
     def audit(command: str, decision: str, run: CommandRun | None) -> None:
         log_command(config=config, user_id=user_id, job_id=job_id, server_label=login.label, host=login.host,
@@ -756,6 +800,11 @@ def operate(
                 continue
 
             if classify_for(command, login.os_family) is None:
+                note = seen.repeated(command, round_no)     # a read-only repeat (a change may be retried)
+                if note:
+                    messages.append(_assistant_call(text, command))
+                    messages.append({"role": "tool", "content": note})
+                    continue
                 run = session.execute(command)              # read-only: runs freely
                 observation = run.observation
             else:

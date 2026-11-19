@@ -270,3 +270,28 @@ def test_checks_whose_result_changes_offer_a_schedule():
         "network_scan", "ping_host", "security_check", "image_scan", "server_audit", "nvr_cameras", "network_device",
         "site_audit", "compare_sites", "keyword_research"}
     assert not any(t.repeatable and t.waits_for_user for t in TOOLS)        # nothing that changes a server
+
+
+# ── questions about done work never change a server (ISSUES_LOG O105) ──
+
+@pytest.mark.parametrize("query, tool", [
+    ("di we suceesfully took the latest pull ? and build it successfully", "diagnose_server"),
+    ("did the deploy work on uk?", "diagnose_server"),
+    ("was the site restarted?", "diagnose_server"),
+    ("deploy the latest on uk", "deploy_project"),                  # a job, not a question
+    ("did you know how to deploy", "deploy_project"),               # no question mark: left to the model's pick
+])
+def test_a_question_about_done_work_is_checked_not_done(query, tool):
+    assert assistant.as_check("deploy_project", {"server": "uk server", "project": "x"}, query)[0] == tool
+
+
+def test_the_check_keeps_the_server_and_leaves_read_only_tools_alone():
+    assert assistant.as_check("operate_server", {"server": "uk", "task": "pull"}, "did we pull?") == (
+        "diagnose_server", {"server": "uk"})
+    assert assistant.as_check("server_audit", {"server": "uk"}, "is it hardened?") == ("server_audit", {"server": "uk"})
+
+
+def test_a_routed_deploy_for_a_question_becomes_the_check():
+    route = assistant.Route(route="tool", tool="deploy_project", args={"server": "uk server"})
+    decision = assistant.pre_route(route, "did we pull the latest and build it?", Config.from_env(), None)
+    assert decision is not None and decision.tool == "diagnose_server" and decision.args == {"server": "uk server"}

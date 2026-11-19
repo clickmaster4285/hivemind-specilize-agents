@@ -20,7 +20,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import yaml
@@ -74,6 +74,9 @@ class Tool:
     # its result changes over time (a scan, an audit, a ranking): under its answer the chat offers to repeat it on a
     # timetable (ISSUES_LOG O99, step 5)
     repeatable: bool = False
+    # changes a server: a question about work already done ("did we pull and build?") never starts it — it is
+    # checked read-only instead (as_check, ISSUES_LOG O105)
+    changes: bool = False
 
     @property
     def job(self) -> str:
@@ -222,7 +225,7 @@ TOOLS: tuple[Tool, ...] = (
           "task": "what to do on the server (a command, a file to create/run, or the change to make)"}, ("task",),
          lambda c: c.security_scan_enabled, waits_for_user=True,
          run="src.servers.server_ops:run_server_operate",
-         acts_on_machines=True, needs_server_login=True, router_runs=False),
+         acts_on_machines=True, needs_server_login=True, router_runs=False, changes=True),
     Tool("deploy_project",
          # the router reads only the first sentence (TOOL_LINE_CHARS): pull + deploy + project must be in it
          "Deploy a project on the user's Linux server: pull the latest code from a branch, install new "
@@ -236,7 +239,7 @@ TOOLS: tuple[Tool, ...] = (
           "branch": "the branch the user named; empty if none"},
          (), lambda c: c.security_scan_enabled, waits_for_user=True,
          run="src.servers.deploy:run_deploy_project",
-         acts_on_machines=True, needs_server_login=True),
+         acts_on_machines=True, needs_server_login=True, changes=True),
     Tool("schedule_task",
          # the router reads only the first sentence (TOOL_LINE_CHARS): "every … at …" and "automatically" must be
          # in it
@@ -294,10 +297,10 @@ TOOLS: tuple[Tool, ...] = (
          run="src.tools.keyword_research:run_keyword_research", repeatable=True),
     Tool("write_content",
          "Write a full piece of marketing or web copy — blog post, article, landing page, product or service page, "
-         "email, newsletter, ad or social post — in rounds: brief, draft, checks (keywords, length, readability, meta "
+         "newsletter, ad or social post — in rounds: brief, draft, checks (keywords, length, readability, meta "
          "title and description) and an editor's review, then improved drafts; shows every draft's score. Also "
-         "rewrites and improves an existing web page's copy when given its address. Not for stories, poems, code "
-         "or a quick slogan (answer those directly).",
+         "rewrites and improves an existing web page's copy when given its address. Not for stories, poems, code, "
+         "a quick slogan or a letter or email to a person (answer those directly).",
          {"request": "what to write: topic, audience, goal, length if said",
           "keywords": "comma-separated search keywords the user wants targeted; empty if none",
           "url": "address of an existing page to improve; empty for new content",
@@ -532,6 +535,22 @@ def hand_over(tool_name: str, specialist: Specialist | None,
     return other or specialist
 
 
+# a yes/no question about something done: "did we pull the latest and build it?", "di we …?" (typed fast), "was the
+# deploy live?" — the auxiliary first, a question mark later (ISSUES_LOG O105)
+STATUS_QUESTION = re.compile(r"^\W*(did|di|was|were|has|have|had|is|are)\b[^?]*\?", re.I)
+
+
+def as_check(name: str, args: dict[str, Any], query: str) -> tuple[str, dict[str, Any]]:
+    """A tool that changes a server, picked for a question about work already done → the read-only check of the
+    same server (diagnose_server, which is told the chat's last deploy). Anything else unchanged. O105: "did we
+    successfully pull the latest and build it?" started a deploy."""
+    tool = BY_NAME.get(name)
+    if tool is None or not tool.changes or not STATUS_QUESTION.match(query or ""):
+        return name, args
+    logger.info("assistant: %s for a question about done work → diagnose_server", name)
+    return "diagnose_server", {"server": str((args or {}).get("server") or "")}
+
+
 def _routed_tool(route: Route, config: Config, specialist: Specialist | None, *,
                  unattended: bool = False) -> Decision | None:
     """The router named a tool (O61): run it straight away, skipping the ~20 s tool choice, when the tool is one
@@ -556,7 +575,8 @@ def pre_route(route: Route, query: str, config: Config, specialist: Specialist |
     """Act on the router's verdict before the model sees the tools; None = let the model choose.
     decide() and evaluate() share it, so the eval measures the path real chats take."""
     if route.route == TOOL:
-        return _routed_tool(route, config, specialist, unattended=unattended)
+        name, args = as_check(route.tool, route.args, query)
+        return _routed_tool(replace(route, tool=name, args=args), config, specialist, unattended=unattended)
     if route.route == SEARCH and _web_allowed(config, specialist):
         logger.info("assistant: the router sends this to web_search")
         args = ({"query": route.query or query} | ({"news": "yes"} if route.news else {})
@@ -666,7 +686,8 @@ def decide(
                 return Decision(False, "clarify", "ask_clarification", {"questions": questions})
             live.finish_agent(job_id, "assistant")
             logger.info("assistant chose %s %s", tool.name, call["arguments"])
-            return Decision(False, tool.job, tool.name, dict(call["arguments"] or {}), learning=route.learning)
+            name, args = as_check(tool.name, dict(call["arguments"] or {}), query)
+            return Decision(False, BY_NAME[name].job, name, args, learning=route.learning)
     if calls:               # it wanted a tool we can't run: its text was only a preface cut off mid-sentence
         logger.info("assistant: unusable tool call(s) %s — answering normally", [c["name"] for c in calls])
     if not text or calls:   # no usable answer: the knowledge-base path answers (its bubble replaces this one)
@@ -722,13 +743,15 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
         t = time.perf_counter()
         # previous: the message before this one in the chat (a follow-up such as "next run pm2 restart all")
         conversation = [{"role": "user", "content": case["previous"]}] if case.get("previous") else None
+        # context: what the chat works on, as chat_work.describe gives it to a real chat (O103)
+        context = str(case.get("context") or "")
         sp = pick(case["text"], config=config, conversation=conversation, specialists=choices) if specialists else None
         # skill: a built-in skill applied as /name would (its specialist answers, its instructions and tools)
         skill = built_in.get(case.get("skill", ""))
         if skill is not None:
             sp = skills.apply(skill, next((c for c in choices if c.id == skill.specialist), sp))
         picked = specialists and skill is None             # as the worker: a skill keeps its own tools
-        route = route_message(case["text"], config, conversation,
+        route = route_message(case["text"], config, conversation, context=context,
                               tools=tool_schemas(config, None if picked else (sp.tools if sp else None)))
         if picked:
             sp = hand_over(route.tool if route.route == TOOL else "", sp, choices)
@@ -739,16 +762,20 @@ def evaluate(config: Config | None = None, *, specialists: bool = False) -> dict
         else:
             # the first call is what is scored: a calculate call counts as the choice (it is not worked out)
             reply, calls = client.chat_tools(messages=messages_for(case["text"], config, conversation, model, sp,
-                                                                   diagrams=route.diagram),
+                                                                   diagrams=route.diagram, chat_work=context),
                                              tools=offered, model=model,
                                              temperature=0.0)
             got, args = (calls[0]["name"], calls[0]["arguments"]) if calls else (None, {})
+            if got:                                     # as decide(): done-work questions are checked (O105)
+                got, args = as_check(got, args, case["text"])
         rows.append({**case, "got": got, "specialist": sp.id if sp else None, "args": args,
                      "pre_routed": routed is not None, "reply": (reply or "").strip(),
                      "seconds": round(time.perf_counter() - t, 1)})
     for r in rows:
         allowed = r.get("tool")
         r["ok"] = r["got"] in allowed if isinstance(allowed, list) else r["got"] == allowed
+        # a clarifying question asked in plain words instead of the card is the same behaviour (O112)
+        r["ok"] = r["ok"] or (allowed == "ask_clarification" and r["got"] is None and "?" in r["reply"])
         # expect: arguments the call must carry ("" = left empty), compared without case
         r["ok"] = r["ok"] and all(str(r["args"].get(k) or "").strip().lower() == str(v).lower()
                                   for k, v in (r.get("expect") or {}).items())
