@@ -30,6 +30,11 @@ cases:
     tool: about_multeagent
   - text: "Which model are you running on and what can you do?"
     tool: about_multeagent
+  # answered from the prompt's model line instead of the tool (eval 2026-11-19): the router now has examples
+  - text: "what can you do for me?"
+    tool: about_multeagent
+  - text: "what can I do to speed up my old laptop?"      # about the user, not the assistant
+    tool: [null, web_search]
 
   # ── look things up ─────────────────────────────────────────────────────────────────────────
   - text: "What is the latest stable version of PostgreSQL and what changed in it?"

@@ -52,6 +52,8 @@ route:
   not say. E.g. "tell me the issues in this website from seo perspective
   https://example.pk/" → {{"route": "tool", "tool": "site_audit", "args": {{"url": "https://example.pk/"}}}};
   "put the prices of 5 phones in an Excel file" → "tool" create_document.
+  A question about the assistant itself ("which model are you running on?", "what can you do?", "what is in your
+  knowledge base?") → "tool" about_multeagent: it answers from live facts, not from memory.
   A message about the server, device or website the chat is already working on continues that work, even
   when it does not name it again ("tell me all the project names", "now restart it"): the same kind of tool
   with the earlier message's target, never "search". "Chat context" names that server and project when there
