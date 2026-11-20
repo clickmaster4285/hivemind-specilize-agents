@@ -740,3 +740,49 @@ export async function getThreadMemory(threadId: string): Promise<ThreadMemory> {
 export async function compactThread(threadId: string): Promise<{ folded: number; memory: ThreadMemory }> {
   return request(`/api/threads/${encodeURIComponent(threadId)}/compact`, { method: "POST" });
 }
+
+// ── My account and reset links (BACKLOG L30 T2) ─────────────────────────────────────────────────────────────
+
+/** Change my password (the current one first); my other sign-ins end, this one stays. */
+export async function changePassword(current: string, next: string): Promise<{ sessions_ended: number; user: AuthUser }> {
+  return request("/api/auth/password", { method: "POST", body: JSON.stringify({ current, new: next }) });
+}
+
+/** My email / phone (an empty string clears it). */
+export async function updateMe(fields: { email?: string; phone?: string }): Promise<AuthUser> {
+  return request("/api/auth/me", { method: "PATCH", body: JSON.stringify(fields) });
+}
+
+/** Sign out every browser and device of this account, this one too. */
+export async function logoutEverywhere(): Promise<{ sessions_ended: number }> {
+  return request("/api/auth/logout-all", { method: "POST" });
+}
+
+/** Whose password a reset link sets (404 when the link is used, expired or wrong). Signed out. */
+export async function resetInfo(token: string): Promise<{ username: string }> {
+  return request(`/api/auth/reset?token=${encodeURIComponent(token)}`);
+}
+
+export async function resetPassword(token: string, password: string): Promise<{ username: string }> {
+  return request("/api/auth/reset", { method: "POST", body: JSON.stringify({ token, password }) });
+}
+
+/** Admin: a one-time reset link's token for this person (shown once; their earlier links stop working). */
+export async function makeResetLink(id: number): Promise<{ token: string; expires_at: string }> {
+  return request(`/api/auth/users/${id}/reset-link`, { method: "POST" });
+}
+
+/** What a bulk action may change (never a password or an email). */
+export type UserBulkChanges = Partial<{
+  role: "member" | "admin";
+  status: "active" | "disabled";
+  team: string;
+  daily_job_quota: number;
+  modules: string[];
+}>;
+
+/** Admin: the same change to several accounts, all or none. */
+export async function bulkUpdateUsers(ids: number[], changes: UserBulkChanges): Promise<{ changed: number; selected: number }> {
+  return request("/api/auth/users/bulk", { method: "POST", body: JSON.stringify({ ids, changes }) });
+}
+

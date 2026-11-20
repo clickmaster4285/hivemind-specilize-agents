@@ -29,6 +29,7 @@ from src.core.models_db import (
     DeviceRow,
     Job,
     LoginFailure,
+    PasswordReset,
     RefreshToken,
     ScheduleRow,
     SeoProject,
@@ -76,7 +77,8 @@ def delete_account(db: Session, user: User) -> Deleted:
     done.jobs = db.scalar(select(func.count()).select_from(Job).where(Job.user_id == uid)) or 0
     done.device_ids = set(db.scalars(select(DeviceRow.id).where(DeviceRow.user_id == uid)))
     for model, column in (
-        (RefreshToken, RefreshToken.user_id), (DeviceRow, DeviceRow.user_id), (ScheduleRow, ScheduleRow.user_id),
+        (RefreshToken, RefreshToken.user_id), (PasswordReset, PasswordReset.user_id),
+        (DeviceRow, DeviceRow.user_id), (ScheduleRow, ScheduleRow.user_id),
         (UserInvite, UserInvite.created_by), (SkillRow, SkillRow.owner_id), (SeoProject, SeoProject.user_id),
     ):
         done.rows += _rows(db, model, column, uid)
@@ -90,6 +92,7 @@ def delete_account(db: Session, user: User) -> Deleted:
     user.email = user.phone = user.team = None
     user.password_hash = hash_password(secrets.token_urlsafe(32))   # no one knows it; the status refuses it anyway
     user.status = USER_FORMER
+    user.must_change_password = False
     user.role = "member"
     user.modules_json = "[]"
     user.signup_address = None

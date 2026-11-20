@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { WIDE_PAGE_WIDTH } from "@/components/app/PageHeader";
+import AccountSection from "@/components/settings/AccountSection";
 import UsageSection from "@/components/settings/UsageSection";
 import UsersSection from "@/components/settings/users/UsersSection";
 import { useUsers } from "@/hooks/useUsers";
@@ -37,6 +38,7 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
     ...(isAdmin ? [{ id: "users" as const, label: "Users" }] : []),
     ...(has("usage") ? [{ id: "usage" as const, label: "Usage" }] : []),
     { id: "agents", label: "Agents" },
+    { id: "account", label: "My account" },
   ];
   const tab = tabs.find((t) => t.id === asked)?.id ?? tabs[0].id;
   const setTab = (id: SettingsTab) => router.replace(settingsTabPath(id), { scroll: false });
@@ -74,6 +76,13 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
       {tab === "usage" && has("usage") ? (
         <section className={panel}>
           <UsageSection />
+        </section>
+      ) : null}
+
+      {/* My account (everyone, BACKLOG L30 T2) */}
+      {tab === "account" ? (
+        <section className={panel}>
+          <AccountSection />
         </section>
       ) : null}
 

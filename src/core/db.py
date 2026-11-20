@@ -132,6 +132,8 @@ def init_db(config: Config | None = None) -> None:
     # the command log outlives a deleted account (ISSUES_LOG O123)
     _ensure_column(engine, "command_log", "username", "username VARCHAR(120) DEFAULT ''")
     _ensure_nullable(engine, "command_log", "user_id")
+    _ensure_column(engine, "users", "must_change_password", "must_change_password BOOLEAN DEFAULT 0")
+    _ensure_column(engine, "refresh_tokens", "session_started_at", "session_started_at DATETIME")
 
 
 @contextmanager

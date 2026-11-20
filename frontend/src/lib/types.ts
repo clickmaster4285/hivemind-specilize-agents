@@ -120,6 +120,8 @@ export type AuthUser = {
   daily_job_quota?: number;
   /** the modules this user may use (src/core/modules.py): every one for an admin */
   modules?: string[];
+  /** an admin chose the password: the person must replace it before using the app (BACKLOG L30 T2) */
+  must_change_password?: boolean;
 };
 
 /** An account as the admin Users panel sees it (never the password hash). */

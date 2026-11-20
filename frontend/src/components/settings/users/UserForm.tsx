@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 
+import ResetLinkPanel from "@/components/settings/users/ResetLinkPanel";
 import type { UsersApi } from "@/hooks/useUsers";
 import { listModules } from "@/lib/api";
 import { errorText } from "@/lib/chat";
@@ -169,6 +170,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           <span>Last edited: {fmt(user.updated_at)}</span>
         </div>
       ) : null}
+      {user?.status === "active" ? <ResetLinkPanel userId={user.id} username={user.username} /> : null}
 
       <div className={section}>
         <h5 className={sectionTitle}>Account</h5>
@@ -186,7 +188,7 @@ export default function UserForm({ users, user, onDone }: Props) {
             />
           </label>
           <label className={label}>
-            {creating ? "Password" : "Reset password (leave blank to keep it)"}
+            {creating ? "First password (they choose their own at first sign-in)" : "Set a password (blank keeps it; prefer a reset link)"}
             <input
               className={formFieldCompact}
               required={creating}

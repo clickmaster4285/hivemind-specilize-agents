@@ -29,6 +29,9 @@ O16, O36, O38, O39, O45. The device-login vault (AES) is in [SERVER_ACCESS_DECIS
   - a **7-day refresh token** that renews it quietly.
 - **Logout** ends the session at once. So does **disabling a user**, which takes effect on their very next request.
 - If a stolen refresh token is used after the real one, the whole sign-in is cancelled.
+- **A sign-in lasts at most 30 days**, however often it is renewed; then the person signs in again.
+- **A new password, role or status ends that person's other sign-ins at once** (whoever had the old password is
+  out). Settings → My account → **Sign out everywhere** ends every sign-in of your account, this one too.
 
 ### 1.3 Abuse limits (S2)
 
@@ -193,6 +196,18 @@ A picture attached to a message is trusted for nothing it says about itself:
 
 Not done: a virus scan (ClamAV) — it needs the `clamav` package installed on this PC (your decision). For
 pictures, the re-encoding already removes what a scanner would look for in them.
+
+### 1.11 Passwords people choose themselves (L30 T2)
+
+- **A first password set by an admin must be replaced** at the first sign-in, before anything else works (the API
+  refuses every other call until then). So admins never know anyone's real password.
+- **Settings → My account → Password**: the current password first (an unattended open session cannot be taken
+  over), then the new one twice. Your other browsers and devices are signed out; this one stays.
+- **Forgot it?** An admin opens the user and makes a **reset link** — no email needed. It works **once**, for
+  **24 hours**; a new link cancels the old. Opening it sets a new password and ends every sign-in of the account.
+  Only a fingerprint (SHA-256) of the link is stored, like invites.
+- **Every admin change is in the security log**: account created, changed (exactly what: role, status, team,
+  quota, modules, approved, password reset, sign-ins ended), password changed, reset link made.
 
 ## Part 2 — Technical reference
 

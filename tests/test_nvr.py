@@ -119,6 +119,7 @@ def test_entity_tricks_in_a_reply_are_refused():
 
 # ── the login store and the chat job (N2, N3) ──────────────────────────
 
+from fastapi import Request  # noqa: E402
 from src.servers import server_vault  # noqa: E402
 
 USER = 4242
@@ -222,7 +223,7 @@ def test_taking_access_away_forgets_the_users_device_logins(vault):
     db.add_all([admin, User(id=USER, username="ana", password_hash="x", role="member", modules_json='["devices"]')])
     db.commit()
     server_vault.add(USER, label="nvr", host="192.168.190.248", port=80, username="admin", password="x", kind="nvr")
-    assert update_user(USER, UserUpdatePayload(modules=["skills"]), admin=admin, db=db)["modules"] == ["skills"]
+    assert update_user(USER, UserUpdatePayload(modules=["skills"]), request=Request({"type": "http", "headers": [], "path": "/", "query_string": b""}), admin=admin, db=db)["modules"] == ["skills"]
     assert server_vault.list_servers(USER, kind=None) == []
 
 

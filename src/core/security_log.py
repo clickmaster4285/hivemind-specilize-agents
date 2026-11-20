@@ -31,8 +31,14 @@ ADDRESS_BLOCKED = "address_blocked"
 TOKEN_REUSED = "token_reused"
 UPLOAD_REFUSED = "upload_refused"
 UNLOCKED = "unlocked"
-ACCOUNT_DELETED = "account_deleted"     # an admin deleted an account for good (src/core/account_delete.py)
-KINDS = (LOGIN_FAILED, ACCOUNT_LOCKED, ADDRESS_BLOCKED, TOKEN_REUSED, UPLOAD_REFUSED, UNLOCKED, ACCOUNT_DELETED)
+ACCOUNT_DELETED = "account_deleted"     # an admin deleted an account (src/core/account_delete.py)
+# admins' changes to accounts and passwords (BACKLOG L30 T2): who changed what, when
+ACCOUNT_CREATED = "account_created"
+ACCOUNT_CHANGED = "account_changed"     # detail lists each change: "role member → admin; approved; password reset"
+PASSWORD_CHANGED = "password_changed"   # by the person: in My account, or with a reset link
+RESET_LINK = "reset_link"               # an admin made a password-reset link
+KINDS = (LOGIN_FAILED, ACCOUNT_LOCKED, ADDRESS_BLOCKED, TOKEN_REUSED, UPLOAD_REFUSED, UNLOCKED, ACCOUNT_DELETED,
+         ACCOUNT_CREATED, ACCOUNT_CHANGED, PASSWORD_CHANGED, RESET_LINK)
 
 
 def record(db: Session, kind: str, *, user_id: int | None = None, account: str = "", address: str = "",

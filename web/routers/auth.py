@@ -22,7 +22,8 @@ from src.core.abuse import (
     record_failure,
     wait_text,
 )
-from src.core.accounts import AccountError
+from src.core import security_log
+from src.core.accounts import AccountError, check_password, clean_email, clean_text
 from src.core.auth import (
     REFRESH_COOKIE,
     check_credentials,
@@ -30,15 +31,18 @@ from src.core.auth import (
     end_session,
     get_current_user,
     get_db,
-    user_modules,
     refresh_session,
+    revoke_user_sessions,
+    session_family,
     set_session_cookies,
     start_session,
+    user_modules,
+    verify_password,
 )
 from src.core.config import Config
 from src.core.models_db import USER_ACTIVE, USER_PENDING, User, utcnow
 from src.core.signup import open_signup, sign_up, usable_invite
-from web.schemas import LoginPayload, SignupPayload
+from web.schemas import LoginPayload, PasswordChangePayload, PasswordResetPayload, ProfilePayload, SignupPayload
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -53,6 +57,7 @@ def _user_view(user: User) -> dict[str, Any]:
         "phone": user.phone,
         "status": user.status,
         "modules": user_modules(user),
+        "must_change_password": bool(user.must_change_password),
     }
 
 
@@ -169,3 +174,89 @@ def signup(payload: SignupPayload, request: Request, db: Session = Depends(get_d
 @router.get("/me")
 def me(user: User = Depends(get_current_user)) -> dict[str, Any]:
     return {**_user_view(user), "daily_job_quota": user.daily_job_quota}
+
+
+# ── My account (BACKLOG L30 T2): what a person changes about themselves ──────────────────────────────────
+
+def _rule(rule, *args, **kwargs):
+    """Run an account rule (src/core/accounts.py); a broken rule becomes its HTTP answer."""
+    try:
+        return rule(*args, **kwargs)
+    except AccountError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+
+@router.patch("/me")
+def update_me(payload: ProfilePayload, user: User = Depends(get_current_user),
+              db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Change my email or phone (an empty string clears it); the email stays unique across accounts."""
+    if payload.email is not None:
+        user.email = _rule(clean_email, db, payload.email, owner_id=user.id)
+    if payload.phone is not None:
+        user.phone = clean_text(payload.phone)
+    db.commit()
+    return {**_user_view(user), "daily_job_quota": user.daily_job_quota}
+
+
+@router.post("/password")
+def change_password(payload: PasswordChangePayload, request: Request, user: User = Depends(get_current_user),
+                    db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Change my password: the current one first (an unattended open session cannot be taken over); my other
+    sign-ins end, this one stays. Also how an admin-chosen first password is replaced."""
+    from src.core.password_reset import set_password
+
+    if not verify_password(payload.current, user.password_hash):
+        raise HTTPException(status_code=400, detail="The current password is not right")
+    if payload.new == payload.current:
+        raise HTTPException(status_code=400, detail="Choose a password different from the current one")
+    _rule(check_password, payload.new)
+    ended = set_password(db, user, payload.new, keep_session=session_family(request))
+    security_log.record(db, security_log.PASSWORD_CHANGED, user_id=user.id, account=user.username,
+                        address=address_key(client_address(request.scope)),
+                        detail=f"in My account; {ended} other sign-in{'s' if ended != 1 else ''} ended")
+    db.commit()
+    return {"ok": True, "sessions_ended": ended, "user": _user_view(user)}
+
+
+@router.post("/logout-all")
+def logout_everywhere(response: Response, user: User = Depends(get_current_user),
+                      db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Sign out everywhere — every browser and device of this account, this one too."""
+    ended = revoke_user_sessions(db, user.id)
+    db.commit()
+    clear_session_cookies(response)
+    return {"ok": True, "sessions_ended": ended}
+
+
+# ── reset links: made by an admin (users.reset_link), opened while signed out ─────────────────────────────
+
+@router.get("/reset")
+def reset_info(token: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Whose password the link resets — so the page can say it — or 404 when it is used, expired or wrong."""
+    from src.core.password_reset import usable_link
+
+    found = usable_link(db, token)
+    if found is None:
+        raise HTTPException(status_code=404, detail="This link is used, expired or wrong — ask an admin for a new one")
+    return {"username": found[1].username}
+
+
+@router.post("/reset")
+def reset_password(payload: PasswordResetPayload, request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Set a new password with a reset link: the link is spent and every sign-in of the account ends. The person
+    then signs in with the new password (the link itself never signs anyone in)."""
+    from src.core.password_reset import set_password, usable_link
+
+    found = usable_link(db, payload.token)
+    if found is None:
+        raise HTTPException(status_code=404, detail="This link is used, expired or wrong — ask an admin for a new one")
+    reset, user = found
+    _rule(check_password, payload.password)
+    reset.used_at = utcnow()
+    ended = set_password(db, user, payload.password)
+    security_log.record(db, security_log.PASSWORD_CHANGED, user_id=user.id, account=user.username,
+                        address=address_key(client_address(request.scope)),
+                        detail=f"with a reset link; {ended} sign-in{'s' if ended != 1 else ''} ended")
+    db.commit()
+    return {"ok": True, "username": user.username}
+

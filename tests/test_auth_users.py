@@ -40,6 +40,10 @@ def _login(session, username: str, password: str) -> dict:
     return login(LoginPayload(username=username, password=password), request, Response(), db=session)
 
 
+# a request with no session cookies: the admin route only reads the caller's own sign-in from it
+NO_COOKIES = Request({"type": "http", "headers": [], "path": "/api/auth/users", "query_string": b""})
+
+
 @pytest.fixture
 def admin() -> User:
     """A stand-in admin for the require_admin dependency (not persisted; the route never reads it)."""
@@ -151,7 +155,7 @@ def test_update_changes_fields(session, admin_row):
     out = update_user(
         created["id"],
         UserUpdatePayload(team="marketing", email="ned@example.com", phone="999", daily_job_quota=7, status="active"),
-        admin=admin_row, db=session,
+        request=NO_COOKIES, admin=admin_row, db=session,
     )
     assert out["team"] == "marketing"
     assert out["email"] == "ned@example.com"
@@ -164,13 +168,13 @@ def test_update_rejects_duplicate_email(session, admin_row):
     create_user(UserCreatePayload(username="olive", password="longenough", email="o@example.com"), _admin=admin_row, db=session)
     peter = create_user(UserCreatePayload(username="peter", password="longenough"), _admin=admin_row, db=session)
     with pytest.raises(HTTPException) as exc:  # case-insensitive, excludes the user's own row
-        update_user(peter["id"], UserUpdatePayload(email="O@example.com"), admin=admin_row, db=session)
+        update_user(peter["id"], UserUpdatePayload(email="O@example.com"), request=NO_COOKIES, admin=admin_row, db=session)
     assert exc.value.status_code == 409
 
 
 def test_password_reset_changes_login(session, admin_row):
     quinn = create_user(UserCreatePayload(username="quinn", password="origpass1"), _admin=admin_row, db=session)
-    update_user(quinn["id"], UserUpdatePayload(password="newpass12"), admin=admin_row, db=session)
+    update_user(quinn["id"], UserUpdatePayload(password="newpass12"), request=NO_COOKIES, admin=admin_row, db=session)
     assert _login(session, "quinn", "newpass12")["user"]["username"] == "quinn"
     with pytest.raises(HTTPException):
         _login(session, "quinn", "origpass1")
@@ -184,7 +188,7 @@ def test_deactivate_blocks_login_but_keeps_account(session, admin_row):
         _login(session, "rita", "longenough")
     assert exc.value.status_code == 403
     # re-enabling via update lets them back in
-    update_user(rita["id"], UserUpdatePayload(status="active"), admin=admin_row, db=session)
+    update_user(rita["id"], UserUpdatePayload(status="active"), request=NO_COOKIES, admin=admin_row, db=session)
     assert _login(session, "rita", "longenough")["user"]["username"] == "rita"
 
 
@@ -193,7 +197,7 @@ def test_admin_cannot_lock_themselves_out(session, admin_row):
         deactivate_user(admin_row.id, admin=admin_row, db=session)
     assert deact.value.status_code == 400
     with pytest.raises(HTTPException) as demote:
-        update_user(admin_row.id, UserUpdatePayload(role="member"), admin=admin_row, db=session)
+        update_user(admin_row.id, UserUpdatePayload(role="member"), request=NO_COOKIES, admin=admin_row, db=session)
     assert demote.value.status_code == 400
 
 

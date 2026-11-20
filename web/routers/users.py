@@ -5,16 +5,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.core import abuse, live_events, modules, security_log, signup
 from src.core.abuse import ADDRESS_KEY, Lock, account_key
 from src.core.accounts import AccountError, check_password, clean_email, clean_text, clean_username
-from src.core.auth import get_db, hash_password, may_use, require_admin, user_modules
+from src.core.auth import (get_db, hash_password, may_use, require_admin, revoke_user_sessions, session_family,
+                           user_modules)
 from src.core.models_db import USER_ACTIVE, USER_DISABLED, USER_FORMER, USER_PENDING, Job, User, UserInvite
-from web.schemas import InvitePayload, SignupSettingsPayload, UserCreatePayload, UserDeletePayload, UserUpdatePayload
+from web.schemas import (InvitePayload, SignupSettingsPayload, UserBulkPayload, UserCreatePayload, UserDeletePayload,
+                         UserUpdatePayload)
 
 router = APIRouter(prefix="/api/auth/users", tags=["users"])
 
@@ -124,54 +126,115 @@ def create_user(
         user.modules_json = _modules_json(payload.modules)
     if payload.daily_job_quota is not None:
         user.daily_job_quota = max(0, payload.daily_job_quota)
+    user.must_change_password = True      # the admin chose it: the person replaces it at the first sign-in
     db.add(user)
+    db.flush()
+    security_log.record(db, security_log.ACCOUNT_CREATED, user_id=user.id, account=user.username,
+                        detail=f"by {_admin.username}: {user.role}" + (f", team {user.team}" if user.team else ""))
     db.commit()
     db.refresh(user)
     return _user_public(user, 0)
+
+
+def _apply_changes(db: Session, admin: User, user: User, payload: UserUpdatePayload,
+                   admin_session: str | None) -> list[str]:
+    """Apply the fields that were sent; → what changed, in words, for the security log. A new password, role or
+    status ends the person's sign-ins (a leaked password stops working at once) — an admin changing their own
+    account keeps the sign-in they are using (`admin_session`). The caller commits."""
+    if user.id == admin.id:
+        if payload.status == USER_DISABLED:
+            raise HTTPException(status_code=400, detail="You cannot disable your own account")
+        if payload.role == "member":
+            raise HTTPException(status_code=400, detail="You cannot remove your own admin role")
+    changed: list[str] = []
+
+    def put(field: str, value: Any, label: str | None = None) -> None:
+        old = getattr(user, field)
+        if old != value:
+            setattr(user, field, value)
+            changed.append(label or f"{field.replace('_', ' ')} {old or '—'} → {value or '—'}")
+
+    if payload.role is not None:
+        put("role", payload.role)
+    if payload.status is not None:
+        put("status", payload.status, "approved" if user.status == USER_PENDING and payload.status == USER_ACTIVE
+            else None)
+    if payload.team is not None:
+        put("team", payload.team.strip() or None)
+    if payload.email is not None:
+        put("email", _checked(clean_email, db, payload.email, owner_id=user.id))
+    if payload.phone is not None:
+        put("phone", payload.phone.strip() or None)
+    if payload.daily_job_quota is not None:
+        put("daily_job_quota", max(0, payload.daily_job_quota))
+    if payload.modules is not None:
+        put("modules_json", _modules_json(payload.modules), "modules " + (", ".join(payload.modules) or "none"))
+    if payload.password is not None:
+        _checked(check_password, payload.password)
+        user.password_hash = hash_password(payload.password)
+        user.must_change_password = user.id != admin.id     # someone else's password: they choose their own next
+        changed.append("password reset")
+    if any(c == "password reset" or c.startswith(("role ", "status ", "approved")) for c in changed):
+        ended = revoke_user_sessions(db, user.id, keep_family=admin_session if user.id == admin.id else None)
+        if ended:
+            changed.append(f"{ended} sign-in{'s' if ended != 1 else ''} ended")
+    return changed
+
+
+def _audit_changes(db: Session, admin: User, user: User, changed: list[str]) -> None:
+    if changed:
+        security_log.record(db, security_log.ACCOUNT_CHANGED, user_id=user.id, account=user.username,
+                            detail=f"by {admin.username}: " + "; ".join(changed))
+
+
+def _after_access_change(user: User) -> None:
+    if not may_use(user, "devices"):
+        from src.servers import server_vault
+
+        server_vault.clear(user.id)   # access taken away: the device logins they added go at once
 
 
 @router.patch("/{user_id}")
 def update_user(
     user_id: int,
     payload: UserUpdatePayload,
+    request: Request,
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Admin edits an account. Guards stop you from locking admin out of the system."""
+    """Admin edits an account; each change goes to the security log. Guards stop you from locking admin out."""
     live_events.after_commit(db, live_events.USERS, admins=True)
     user = _live_user(db, user_id)
-    if user.id == admin.id:
-        if payload.status == USER_DISABLED:
-            raise HTTPException(status_code=400, detail="You cannot disable your own account")
-        if payload.role == "member":
-            raise HTTPException(status_code=400, detail="You cannot remove your own admin role")
-
-    if payload.role is not None:
-        user.role = payload.role
-    if payload.status is not None:
-        user.status = payload.status
-    if payload.team is not None:
-        user.team = payload.team.strip() or None
-    if payload.email is not None:
-        user.email = _checked(clean_email, db, payload.email, owner_id=user.id)
-    if payload.phone is not None:
-        user.phone = payload.phone.strip() or None
-    if payload.daily_job_quota is not None:
-        user.daily_job_quota = max(0, payload.daily_job_quota)
-    if payload.password is not None:
-        _checked(check_password, payload.password)
-        user.password_hash = hash_password(payload.password)
-    if payload.modules is not None:
-        user.modules_json = _modules_json(payload.modules)
-
+    _audit_changes(db, admin, user, _apply_changes(db, admin, user, payload, session_family(request)))
     _ensure_an_admin_remains(db)  # catches demoting/disabling the last admin by any path
     db.commit()
     db.refresh(user)
-    if not may_use(user, "devices"):
-        from src.servers import server_vault
-
-        server_vault.clear(user.id)   # access taken away: the device logins they added go at once
+    _after_access_change(user)
     return _user_public(user)
+
+
+@router.post("/bulk")
+def update_users(payload: UserBulkPayload, request: Request, admin: User = Depends(require_admin),
+                 db: Session = Depends(get_db)) -> dict[str, Any]:
+    """The same change to several accounts (Users table → select → action), in one transaction: all or none.
+    Only role, status, team, quota and modules — a password or an email is one person's."""
+    live_events.after_commit(db, live_events.USERS, admins=True)
+    users = db.scalars(select(User).where(User.id.in_(set(payload.ids)), User.status != USER_FORMER)).all()
+    if len(users) != len(set(payload.ids)):
+        raise HTTPException(status_code=404, detail="Some of the selected users no longer exist — reload the list")
+    changes = UserUpdatePayload(**payload.changes.model_dump(exclude_unset=True))
+    changed = 0
+    for user in users:
+        if user.status == USER_PENDING and changes.status == USER_DISABLED:
+            continue                 # a sign-up is rejected one by one (Review), not disabled in bulk
+        done = _apply_changes(db, admin, user, changes, session_family(request))
+        _audit_changes(db, admin, user, done)
+        changed += bool(done)
+    _ensure_an_admin_remains(db)
+    db.commit()
+    for user in users:
+        _after_access_change(user)
+    return {"changed": changed, "selected": len(users)}
 
 
 @router.delete("/{user_id}")
@@ -301,6 +364,22 @@ def list_locks(_admin: User = Depends(require_admin), db: Session = Depends(get_
 def unlock_user(user_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
     user = _live_user(db, user_id)
     return {"unlocked": abuse.unlock(db, account_key(user.id, user.username), by=admin.username)}
+
+
+@router.post("/{user_id}/reset-link")
+def reset_link(user_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
+    """A one-time password-reset link for this person (src/core/password_reset.py) — the token is shown this once;
+    the page turns it into the link to send them. Their earlier unused links stop working."""
+    from src.core.password_reset import RESET_LIFETIME, create_link
+
+    user = _live_user(db, user_id)
+    if user.status != USER_ACTIVE:
+        raise HTTPException(status_code=400, detail="Only an active account can reset its password")
+    token, reset = create_link(db, user, admin)
+    security_log.record(db, security_log.RESET_LINK, user_id=user.id, account=user.username,
+                        detail=f"by {admin.username}, valid {int(RESET_LIFETIME.total_seconds() // 3600)} h")
+    db.commit()
+    return {"token": token, "expires_at": reset.expires_at.isoformat()}
 
 
 COMMAND_LOG_LIMIT = 300        # newest rows the admin page shows

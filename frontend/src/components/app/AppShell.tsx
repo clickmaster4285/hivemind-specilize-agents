@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { useApp } from "@/components/app/AppProvider";
 import ChatUrlSync from "@/components/app/ChatUrlSync";
 import Navbar from "@/components/app/Navbar";
 import Sidebar from "@/components/app/Sidebar";
 import AuthScreen from "@/components/auth/AuthScreen";
+import { ChooseOwnPassword, RESET_PARAM, ResetPassword } from "@/components/auth/PasswordScreens";
+
+// the address is known only in the browser: read like AuthScreen's invite, so server and browser markup match
+const noSubscribe = () => () => undefined;
+const resetFromAddress = () => new URLSearchParams(window.location.search).get(RESET_PARAM);
 
 /** Whether the sidebar is collapsed, remembered per browser (a per-viewer convenience, BACKLOG L24 U2). */
 const COLLAPSED_KEY = "multeagent_sidebar_collapsed";
@@ -33,7 +38,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const app = useApp();
   // read once on mount: the shell only renders after sign-in, in the browser, so there is no server markup to match
   const [collapsed, setCollapsed] = useState(readCollapsed);
+  const resetToken = useSyncExternalStore(noSubscribe, resetFromAddress, () => null);
+  const [resetClosed, setResetClosed] = useState(false);
 
+  if (!app.auth.user && resetToken && !resetClosed) {
+    return (
+      <ResetPassword
+        token={resetToken}
+        onDone={() => {
+          window.history.replaceState(null, "", window.location.pathname);   // the link is spent
+          setResetClosed(true);
+        }}
+      />
+    );
+  }
+  if (app.auth.user?.must_change_password) {
+    return <ChooseOwnPassword user={app.auth.user} onChosen={app.auth.passwordChosen}
+                              onSignOut={() => void app.auth.signOut()} />;
+  }
   if (!app.auth.user) {
     return (
       <AuthScreen

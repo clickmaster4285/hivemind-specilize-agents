@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useLiveTopic } from "@/hooks/useLiveEvents";
-import { createUser, deactivateUser, deleteUser, listUsers, unlockUser, updateUser } from "@/lib/api";
+import { bulkUpdateUsers, createUser, deactivateUser, deleteUser, listUsers, unlockUser, updateUser, type UserBulkChanges } from "@/lib/api";
 import type { ManagedUser, UserCreateInput, UserUpdateInput } from "@/lib/types";
 
 /**
@@ -79,7 +79,17 @@ export function useUsers(active: boolean) {
     [load],
   );
 
-  return { users, loaded, create, update, deactivate, remove, unlock };
+  // the same change to several accounts, all or none (BACKLOG L30 T2)
+  const bulk = useCallback(
+    async (ids: number[], changes: UserBulkChanges) => {
+      const done = await bulkUpdateUsers(ids, changes);
+      await load();
+      return done;
+    },
+    [load],
+  );
+
+  return { users, loaded, create, update, deactivate, remove, unlock, bulk };
 }
 
 export type UsersApi = ReturnType<typeof useUsers>;

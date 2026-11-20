@@ -60,6 +60,8 @@ class User(Base):
     # self sign-up (L16 S7): the address it came from (sign-ups per address per day) and the inviting admin
     signup_address: Mapped[str | None] = mapped_column(String(ADDRESS_CHARS), nullable=True, index=True)
     invited_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # a password an admin chose (a new account, a reset by hand): the person must replace it before using the app
+    must_change_password: Mapped[bool] = mapped_column(Boolean, default=False)
 
     jobs: Mapped[list[Job]] = relationship(back_populates="user")
 
@@ -98,6 +100,9 @@ class RefreshToken(Base):
     family: Mapped[str] = mapped_column(String(36), index=True)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    # when the sign-in began, copied to each token of the family: a sign-in lasts at most auth.SESSION_MAX_AGE
+    # however often it is refreshed (older rows of the family are cleaned up, so they cannot tell)
+    session_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -115,6 +120,22 @@ class UserInvite(Base):
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     modules_json: Mapped[str] = mapped_column(Text, default=DEFAULT_MODULES_JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PasswordReset(Base):
+    """A one-time password-reset link an admin made for someone (BACKLOG L30 T2; no email needed): works once,
+    until `expires_at`; only the token's SHA-256 is kept, like invites. Using it sets a new password and ends every
+    sign-in of that account; making a new one cancels the old."""
+
+    __tablename__ = "password_resets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

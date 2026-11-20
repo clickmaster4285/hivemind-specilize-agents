@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useWindowEvent } from "@/hooks/useWindowEvent";
-import { ApiError, login, logout, me, SESSION_EXPIRED_EVENT } from "@/lib/api";
+import { ApiError, login, logout, logoutEverywhere, me, SESSION_EXPIRED_EVENT } from "@/lib/api";
 import { errorText } from "@/lib/chat";
 import type { AuthUser, CaptchaAnswer } from "@/lib/types";
 
@@ -29,7 +29,7 @@ export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
     me()
       .then(async (u) => {
         setUser(u);
-        await onSignedIn(false, u);
+        if (!u.must_change_password) await onSignedIn(false, u);   // the app loads once their own password is set
       })
       .catch(() => setUser(null));
   }, [onSignedIn]);
@@ -48,7 +48,7 @@ export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
         const u = await login(username.trim(), password, captcha);
         setCaptchaRequired(false);
         setUser(u);
-        await onSignedIn(true, u);
+        if (!u.must_change_password) await onSignedIn(true, u);
       } catch (err) {
         if (err instanceof ApiError && err.captchaRequired) setCaptchaRequired(true);
         setError(errorText(err));
@@ -57,12 +57,25 @@ export function useAuth({ onSignedIn, onSignedOut }: AuthEvents) {
     [onSignedIn],
   );
 
-  const signOut = useCallback(async () => {
-    const pending = onSignedOut("logout");
-    setUser(null);
-    await pending;                      // its calls still need the session
-    await logout().catch(() => undefined);
-  }, [onSignedOut]);
+  /** The person replaced an admin-chosen password (BACKLOG L30 T2): now the app may load. */
+  const passwordChosen = useCallback(
+    async (u: AuthUser) => {
+      setUser(u);
+      await onSignedIn(true, u);
+    },
+    [onSignedIn],
+  );
 
-  return { user, error, captchaRequired, signIn, signOut };
+  /** everywhere: every browser and device of this account is signed out, this one too. */
+  const signOut = useCallback(
+    async (options?: { everywhere?: boolean }) => {
+      const pending = onSignedOut("logout");
+      setUser(null);
+      await pending;                      // its calls still need the session
+      await (options?.everywhere ? logoutEverywhere() : logout()).catch(() => undefined);
+    },
+    [onSignedOut],
+  );
+
+  return { user, error, captchaRequired, signIn, signOut, passwordChosen };
 }

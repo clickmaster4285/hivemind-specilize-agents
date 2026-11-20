@@ -40,6 +40,12 @@ REFRESH_REUSE_GRACE = timedelta(seconds=10)
 # an HS256 key should be at least as long as the hash output (RFC 7518 §3.2)
 MIN_SECRET_BYTES = 32
 REFRESH_TOKEN_BYTES = 32
+# a sign-in ends this long after it began, however often it was refreshed (OWASP session management: an absolute
+# timeout next to the idle one, which is the refresh token's REFRESH_TOKEN_DAYS)
+SESSION_MAX_AGE = timedelta(days=30)
+# while an account must replace an admin-chosen password, only these calls work (the page shows the change form)
+PASSWORD_CHANGE_PATHS = frozenset({"/api/auth/me", "/api/auth/password", "/api/auth/logout", "/api/events"})
+PASSWORD_CHANGE_HEADER = "X-Password-Change"
 
 
 def hash_password(password: str) -> str:
@@ -101,10 +107,11 @@ def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _issue_refresh(db: Session, user_id: int, family: str, config: Config) -> str:
+def _issue_refresh(db: Session, user_id: int, family: str, config: Config, started: datetime) -> str:
     token = secrets.token_urlsafe(REFRESH_TOKEN_BYTES)
-    db.add(RefreshToken(user_id=user_id, family=family, token_hash=token_digest(token),
-                        expires_at=utcnow() + timedelta(days=config.refresh_token_days)))
+    db.add(RefreshToken(user_id=user_id, family=family, token_hash=token_digest(token), session_started_at=started,
+                        expires_at=min(utcnow() + timedelta(days=config.refresh_token_days),
+                                       started + SESSION_MAX_AGE)))
     return token
 
 
@@ -113,12 +120,35 @@ def _revoke_family(db: Session, family: str) -> None:
                .values(revoked_at=utcnow()))
 
 
+def revoke_user_sessions(db: Session, user_id: int, *, keep_family: str | None = None) -> int:
+    """End every sign-in of this account (but `keep_family`, the caller's own), at once: their access tokens stop
+    at the next call (get_current_user checks the family). For a password, role or status change, a reset link,
+    "Sign out everywhere". Returns the number of sign-ins ended."""
+    stmt = select(RefreshToken.family).where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+    if keep_family:
+        stmt = stmt.where(RefreshToken.family != keep_family)
+    families = set(db.scalars(stmt))
+    if families:
+        db.execute(update(RefreshToken).where(RefreshToken.family.in_(families), RefreshToken.revoked_at.is_(None))
+                   .values(revoked_at=utcnow()))
+    return len(families)
+
+
+def session_family(request: Request) -> str | None:
+    """The caller's own sign-in (its family id), from the access cookie — kept when they end their other sessions."""
+    token = request.cookies.get(ACCESS_COOKIE)
+    try:
+        return decode_token(token)["sid"] if token else None
+    except HTTPException:
+        return None
+
+
 def start_session(db: Session, user: User, config: Config | None = None) -> tuple[str, str]:
     """A new sign-in: (access token, refresh token). The user's expired tokens are cleared on the way."""
     config = config or Config.from_env()
     db.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id, RefreshToken.expires_at < utcnow()))
     family = str(uuid.uuid4())
-    refresh = _issue_refresh(db, user.id, family, config)
+    refresh = _issue_refresh(db, user.id, family, config, utcnow())
     db.commit()
     return create_access_token(user, family, config), refresh
 
@@ -146,7 +176,8 @@ def refresh_session(db: Session, token: str, config: Config | None = None,
     if row.used_at is not None:
         return user, create_access_token(user, row.family, config), None
     row.used_at = now
-    refresh = _issue_refresh(db, user.id, row.family, config)
+    # rows made before session_started_at existed: their own time is the best guess of when the sign-in began
+    refresh = _issue_refresh(db, user.id, row.family, config, as_utc(row.session_started_at or row.created_at))
     db.commit()
     return user, create_access_token(user, row.family, config), refresh
 
@@ -221,6 +252,9 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
                                                       RefreshToken.revoked_at.is_not(None)).limit(1))
     if revoked is not None:
         raise _unauthorized("Signed out — sign in again")
+    if user.must_change_password and request.url.path not in PASSWORD_CHANGE_PATHS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Choose your own password first",
+                            headers={PASSWORD_CHANGE_HEADER: "required"})
     return user
 
 

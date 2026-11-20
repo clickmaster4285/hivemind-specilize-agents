@@ -46,7 +46,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L27](#l27-server-work-like-a-developer--2026-11-18-issues_log-o93o96) | Server work like a developer: guided deploy, look-questions, logins kept open | built 2026-11-18 | live check on the uk server |
 | [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H1, H2, H3 built (2026-11-18) | NousResearch hermes-agent (MIT) |
 | [L29](#l29-live-updates-without-a-reload--planned-2026-11-20-issues_log-o120) | Live updates without a reload (one SSE stream) | built 2026-11-20 | API restart + user's look with two tabs |
-| [L30](#l30-a-team-of-10-or-more--planned-2026-11-20-issues_log-o121o125) | A team of 10+ users: capacity, accounts, admin, sharing, operations | T1 built | T1: API restart, services install; then T2 |
+| [L30](#l30-a-team-of-10-or-more--planned-2026-11-20-issues_log-o121o125) | A team of 10+ users: capacity, accounts, admin, sharing, operations | T1, T2 built | API restart, services install; then T3 queue |
 | [L31](#l31-a-knowledge-base-that-learns-from-the-web--built-2026-11-20) | Knowledge base learns from web answers | pages built 2026-11-20 | API restart (migration 004); answers reused later |
 
 ---
@@ -805,15 +805,16 @@ queue wait so far under 12 s.
       Restore rehearsed with `./restore.sh --verify` on the 2026-11-19 archive: every table back, nothing changed.
       Left for the user: choose `BACKUP_COPY_TO` (NAS / USB / another machine)
 
-**T2 — accounts at 10+**
-- [ ] Change my own password (and email, name); first password must be changed at first sign-in
-- [ ] A password or role change ends all of that user's sessions; sessions list + "Sign out everywhere"; 30-day cap
-      on a sign-in (O124)
-- [ ] Forgot password without email: a one-time reset link an admin makes (like invite links); SMTP later if wanted
-- [ ] Admin changes logged (role, modules, quota, password reset, approvals: who, what, when)
-- [ ] Users table: search, filter (status, team, role), sort (last sign-in, questions), last sign-in column, bulk
-      actions (modules, quota, team, deactivate), usage CSV export
-- [ ] Usage per team (today the `team` field is only a label)
+**T2 — accounts at 10+** — built 2026-11-20 (how it works: [SECURITY.md](SECURITY.md) 1.2, 1.11)
+- [x] Settings → My account (everyone): my password (current one first), email, phone, Sign out everywhere; an
+      admin-chosen first password must be replaced before the API allows anything else (`must_change_password`)
+- [x] A password, role or status change ends that person's sign-ins; 30-day cap on a sign-in (O124). Not built: a
+      list of open sessions (sessions keep no device or address yet)
+- [x] Forgot password without email: a one-time 24-hour reset link an admin makes (`src/core/password_reset.py`)
+- [x] Admin changes in the security log: created, changed (each field), approved, password changed, reset link
+- [x] Users table: search, filters (status, role, team), sorting (name, last sign-in, questions), last sign-in
+      column, bulk activate / deactivate / team / quota in one transaction (`POST /api/auth/users/bulk`)
+- [ ] Usage per team and a usage CSV export — next
 
 **T3 — the queue with 10 people asking (O125)**
 - [ ] A job waiting for a confirm / choice click gives the worker back (or a 60 s limit)

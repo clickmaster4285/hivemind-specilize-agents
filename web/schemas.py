@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ── auth & users ───────────────────────────────────────────────────────────
@@ -43,6 +43,41 @@ class UserUpdatePayload(BaseModel):
     status: Literal["active", "disabled"] | None = None
     password: str | None = None
     modules: list[str] | None = None   # the full new list of module ids (src/core/modules.py)
+
+
+class UserBulkChanges(BaseModel):
+    """What a bulk action may change (one person's password, email or phone is never set in bulk)."""
+
+    model_config = ConfigDict(extra="forbid")
+    role: Literal["member", "admin"] | None = None
+    status: Literal["active", "disabled"] | None = None
+    team: str | None = None
+    daily_job_quota: int | None = Field(default=None, ge=0)
+    modules: list[str] | None = None
+
+
+class UserBulkPayload(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=500)
+    changes: UserBulkChanges
+
+
+class PasswordChangePayload(BaseModel):
+    """My account → Change password: the current one proves it is the person, not a borrowed open session."""
+
+    current: str = Field(max_length=200)
+    new: str = Field(max_length=200)
+
+
+class ProfilePayload(BaseModel):
+    """My account: what a person may change about themselves (an empty string clears it)."""
+
+    email: str | None = Field(default=None, max_length=255)
+    phone: str | None = Field(default=None, max_length=40)
+
+
+class PasswordResetPayload(BaseModel):
+    token: str = Field(max_length=200)
+    password: str = Field(max_length=200)
 
 
 class SignupPayload(BaseModel):
