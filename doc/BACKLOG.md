@@ -160,7 +160,11 @@ To build:
   deleted; a failed check only hides the line. Off switch: `VERIFY_ANSWERS=false`.
 - **Web answers — built 2026-11-20:** a web-search answer (the Web path and a knowledge-base miss answered from
   the web) is checked the same way against the pages it was written from (`answer_from_web(read=…)`,
-  `chat_runner.checked_web`). Off switch: `VERIFY_WEB_ANSWERS=false`. Deep research answers are not checked yet.
+  `chat_runner.checked_web`). Off switch: `VERIFY_WEB_ANSWERS=false`.
+- **Deep research — built 2026-11-20:** the report is checked against its knowledge-base and web sources as
+  the writer saw them (`deep_research(read=…)`). A long report is judged in groups (`verify.claim_groups`: ≤ 12
+  claims and ≤ 24,000 characters of cited sources per call, so no prompt overflows num_ctx); the status says
+  "(2/4)"; a stopped job ends the check. Off switch: `VERIFY_DEEP_ANSWERS=false` (~20–60 s more per report).
 - **Measured 2026-10-31 (B6 rerun, 129 questions):** grounded **94%** (target 90%), strict 93%.
 
 Earlier notes:

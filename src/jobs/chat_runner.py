@@ -97,7 +97,7 @@ def build_refine_note(reason: str) -> str:
 
 
 def _verify(text: str, passages: list[Any], *, client: LLMClient, model: str, job_id: str | None,
-            status: Callable[[str], None]) -> dict[str, Any] | None:
+            status: Callable[[str], None], what: str = "answer") -> dict[str, Any] | None:
     """Check an answer against the sources it was written from (src/brain/verify.py) after it is written:
     knowledge-base passages, or the web pages of a web answer (BACKLOG L5c).
 
@@ -106,10 +106,12 @@ def _verify(text: str, passages: list[Any], *, client: LLMClient, model: str, jo
 
     if not passages or live.is_stopped(job_id):
         return None
-    status("Checking the answer against its sources…")
+    status(f"Checking the {what} against its sources…")
     try:
         checked = verify_answer(text, passages,
-                                chat=lambda **kw: client.chat(model=model, max_retries=0, **kw))
+                                chat=lambda **kw: client.chat(model=model, max_retries=0, **kw),
+                                should_continue=lambda: not live.is_stopped(job_id),
+                                on_group=lambda i, n: status(f"Checking the {what} against its sources ({i}/{n})…"))
     except Exception as exc:  # noqa: BLE001 — the answer is already written; only the badge is lost
         log.warning("answer check failed: %s", exc)
         return None
@@ -352,6 +354,7 @@ def run_chat(
         if deep:
             from src.tools.deep_research import deep_research
 
+            deep_read: list[Any] = []
             text, sources = deep_research(
                 query,
                 config,
@@ -367,10 +370,17 @@ def run_chat(
                 # the knowledge base joins the research and is cross-checked against the live web
                 account_id=account_id,
                 collections=specialist.collections if specialist else None,
+                read=deep_read,
             )
             output = text
             role = "Deep research"
             extra = {"grounded": bool(sources), "sources": sources}
+            if config.verify_deep_answers and sources and deep_read:
+                live.set_text(job_id, "assistant", output)          # the report stays readable meanwhile
+                checked = _verify(output, deep_read, client=client, model=model, job_id=job_id, status=progress,
+                                  what="report")
+                if checked is not None:
+                    extra["verification"] = checked
         elif options:
             from src.tools.answer_options import generate_options
 

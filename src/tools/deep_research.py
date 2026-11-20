@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from urllib.parse import urlsplit
 
 from src.brain.retrieve import Passage as BrainPassage
@@ -118,11 +119,13 @@ def deep_research(
     should_continue: Callable[[], bool] = lambda: True,
     account_id: str | None = None,
     collections: list[str] | None = None,
+    read: list | None = None,
 ) -> tuple[str, list[dict]]:
     """→ (a thorough report with [n] citations, sources for the UI). `client_chat` is a plain (non-streamed)
     call used for planning; `chat` streams the final report into the answer. When the knowledge base covers
     the question, its passages join the web's (up to half the passage budget) and the writer cross-checks
-    the two, calling out where our docs and the live web differ."""
+    the two, calling out where our docs and the live web differ. read: a list that receives the sources under
+    their [n] numbers, as the writer saw them (knowledge-base text cut the same way), for the answer check (L5c)."""
     if not config.web_search_url:
         raise WebSearchError("web search is not set up (WEB_SEARCH_URL in .env)")
     t0 = time.perf_counter()
@@ -185,6 +188,8 @@ def deep_research(
     system = DEEP_SYSTEM + (COMPARE_RULES if kb and chosen else "") + f"\n\n{date_line(now)}"
     user = f"{context_lead(conversation_block)}## Sources\n\n" + "\n\n".join(kb_blocks + web_blocks) + f"\n\n## Question\n{question}"
     text = chat(system=system, user=user, model=model, temperature=0.3)
+    if read is not None:
+        read[:] = [replace(p, content=p.content[:PASSAGE_CHARS]) for p in kb] + chosen
 
     from src.brain.answer import cited_numbers
 

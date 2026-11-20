@@ -48,6 +48,12 @@ JUDGE_LINE_RE = re.compile(
 
 QUOTE_MATCH = 0.85          # share of the quote that must appear in the passage (tolerates small slips)
 
+# One judge call reads at most this much: a deep-research report cites up to 24 sources in dozens of sentences,
+# and a prompt over the model's context (num_ctx 12288) is cut from the start without a word. The claims are
+# judged in groups instead, each with only the sources it cites; a short answer stays one call.
+MAX_CLAIMS_PER_CALL = 12
+MAX_SOURCE_CHARS = 24_000   # ~6-7k tokens of sources, leaving room for the claims and the reply
+
 CITE_RE = re.compile(r"\[(\d{1,2}(?:\s*,\s*\d{1,2})*)\]")
 
 @dataclass
@@ -184,19 +190,47 @@ def apply_judgement(claims: list[Claim], reply: str, passages: Sequence[Any]) ->
             claim.verdict = "unsure"
 
 
-def verify_answer(text: str, passages: Sequence[Any], chat: Callable[..., str]) -> dict[str, Any] | None:
-    """Check an answer's cited claims; None when it has none (nothing to check).
+def claim_groups(claims: list[Claim], passages: Sequence[Any]) -> list[list[Claim]]:
+    """The claims in answer order, cut into groups one judge call can read: at most MAX_CLAIMS_PER_CALL claims
+    and MAX_SOURCE_CHARS of the sources they cite (a claim whose sources alone are longer still gets a call)."""
+    groups: list[list[Claim]] = []
+    group: list[Claim] = []
+    used: set[int] = set()
+    for claim in claims:
+        more = used | set(claim.cites)
+        size = sum(len(_words_of(passages[n - 1])) for n in more)
+        if group and (len(group) >= MAX_CLAIMS_PER_CALL or size > MAX_SOURCE_CHARS):
+            groups.append(group)
+            group, more = [], set(claim.cites)
+        group.append(claim)
+        used = more
+    return groups + ([group] if group else [])
+
+
+def verify_answer(text: str, passages: Sequence[Any], chat: Callable[..., str], *,
+                  should_continue: Callable[[], bool] = lambda: True,
+                  on_group: Callable[[int, int], None] | None = None) -> dict[str, Any] | None:
+    """Check an answer's cited claims; None when it has none (nothing to check) or the check was stopped.
 
     chat = a non-streaming chat function (system=, user=, temperature=) — the judge's reply must never
-    stream into the answer bubble. Returns counts plus the sentences that were not confirmed."""
+    stream into the answer bubble. A long answer is judged in groups (claim_groups); on_group(i, count) is
+    told before each one after the first, and should_continue() is asked between them.
+    Returns counts plus the sentences that were not confirmed."""
     body = "\n".join(line for line in text.splitlines() if not line.startswith(NOTE_PREFIX))
     claims, _ = split_claims(body)
     claims = [c for c in claims if all(1 <= n <= len(passages) for n in c.cites)]
     if not claims:
         return None
     started = time.perf_counter()
-    reply = chat(system=JUDGE_SYSTEM, user=judge_prompt(claims, passages), temperature=JUDGE_TEMPERATURE)
-    apply_judgement(claims, reply, passages)
+    groups = claim_groups(claims, passages)
+    for i, group in enumerate(groups, 1):
+        if i > 1:
+            if not should_continue():
+                return None
+            if on_group:
+                on_group(i, len(groups))
+        reply = chat(system=JUDGE_SYSTEM, user=judge_prompt(group, passages), temperature=JUDGE_TEMPERATURE)
+        apply_judgement(group, reply, passages)
     supported = [c for c in claims if c.verdict == "yes"]
     unsupported = [c for c in claims if c.verdict == "no"]
     unclear = [c for c in claims if c.verdict not in ("yes", "no")]
@@ -206,5 +240,6 @@ def verify_answer(text: str, passages: Sequence[Any], chat: Callable[..., str]) 
         "unsupported": [{"text": c.text, "cites": c.cites} for c in unsupported],
         "unclear": [{"text": c.text, "cites": c.cites, "verdict": c.verdict or "not judged"} for c in unclear],
         "seconds": round(time.perf_counter() - started, 1),
+        "calls": len(groups),
         "claims": [asdict(c) for c in claims],
     }
