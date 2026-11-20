@@ -837,14 +837,20 @@ queue wait so far under 12 s.
       every command on a shared device is logged with who asked (reads too); one password change for everyone.
       Personal devices keep working. `device_shares` table, `server_vault.list_servers` (a person's own share wins
       over their team's), `set_shares` (replace-all, one transaction), Devices → device → **Sharing**
-- [ ] **Roles:** *team lead* — for their own team only: approve sign-ups, make reset links, deactivate, see the
+- [ ] **Roles — postponed by the user 2026-11-20 ("not needed now"):** *team lead* — for their own team only: approve sign-ups, make reset links, deactivate, see the
       team's usage; cannot change roles, admins or settings. *Auditor* — read-only usage, security log and server
       commands; changes nothing
-- [ ] **Sharing chats and projects:** read-only with chosen people or a team, under "Shared with me"; "Continue in
-      my own chat" makes a copy; the owner sees who has it and can stop sharing any time
-- [ ] **Team knowledge:** a new *team* level in the knowledge base (next to public and private): documents (PDF,
-      Word, Markdown, text) uploaded by an admin or that team's lead, found only by that team's members — one
-      person's private data still never mixes with shared knowledge (decision 2026-10-14 kept)
+- [x] **Sharing chats and projects — built 2026-11-20, changed the same day to links** (user: "we don't have to
+      manage team and people, just share and send the link"): Share… makes a read-only link (`/s/<token>`, only its
+      SHA-256 stored); anyone signed in who opens it becomes a reader (`chat_shares` row, checked by the job read
+      routes — cancel / confirm / delete stay the owner's), sees it under "Shared with me" and may "Continue in my
+      own chat" (a new chat from its summary). A project link covers its chats, also later ones. A new link replaces
+      the old one; Stop sharing ends the link and every reader's access. `src/jobs/sharing.py`
+- [x] **Team knowledge — built 2026-11-20:** a *team* scope in the knowledge base (migration 005: RLS reads a team
+      row only when `brain.team` matches, writes only as the system); `brain.db.connect` sets the team from the
+      signed-in account, so every search finds its team's documents with no caller changed. Admins add PDF (pypdf),
+      Word, Markdown, text, HTML in Settings → Team knowledge (`src/brain/team_docs.py`); members see their team's
+      list. Uploads by team leads wait for the postponed roles
 
 **T5 — operations**
 - [ ] Monitoring: health, disk, GPU, database size, queue depth, last backup — an alert when one is wrong

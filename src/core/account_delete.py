@@ -26,6 +26,7 @@ from src.core.abuse import account_key
 from src.core.models_db import (
     USER_FORMER,
     CommandLog,
+    ChatShare,
     DeviceRow,
     DeviceShare,
     Job,
@@ -77,6 +78,9 @@ def delete_account(db: Session, user: User) -> Deleted:
     done = Deleted()
     done.jobs = db.scalar(select(func.count()).select_from(Job).where(Job.user_id == uid)) or 0
     done.device_ids = set(db.scalars(select(DeviceRow.id).where(DeviceRow.user_id == uid)))
+    # their chats stay, but are no longer shared; and nothing is shared with them any more (BACKLOG L30 T4)
+    done.rows += db.execute(delete(ChatShare).where((ChatShare.owner_id == uid) | (ChatShare.user_id == uid))
+                            ).rowcount or 0
     # shares of their devices, and the devices shared with them (BACKLOG L30 T4)
     done.rows += db.execute(delete(DeviceShare).where(DeviceShare.user_id == uid)).rowcount or 0
     if done.device_ids:

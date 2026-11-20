@@ -104,6 +104,24 @@ class DeviceShare(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class ChatShare(Base):
+    """A chat or a whole project shared read-only by link (BACKLOG L30 T4; the user's choice 2026-11-20: "just share
+    and send the link"). One row is the link itself (token_hash: only the SHA-256 of the token is kept); opening it
+    adds a row for that reader (user_id), which the read routes check. Stopping sharing deletes them all.
+    One of thread_id / project_id is set. `team` is unused (an earlier people/team design)."""
+
+    __tablename__ = "chat_shares"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    thread_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    team: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class RefreshToken(Base):
     """One refresh token of a sign-in (BACKLOG L16 S1); only its SHA-256 is kept. A sign-in is a family:
     each refresh spends the token and issues the next one in the same family. A spent token shown again

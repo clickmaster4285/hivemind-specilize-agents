@@ -89,7 +89,7 @@ function InlineEdit({ initial, onCancel, onSend }: { initial: string; onCancel: 
 }
 
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
-function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onChoose, onPickOption, onClarifySubmit, onPickSuggestion }: Props) {
+function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onChoose, onPickOption, onClarifySubmit, onPickSuggestion, readOnly = false }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
   // for each item, the user's question it answers (the last user message before it): what "Repeat…" asks again
@@ -165,8 +165,8 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
             item={item}
             isError={isError}
             fallbackJobId={activeJobId}
-            showToolbar={item.kind === "user" || index === lastAgentIdx || isLastError}
-            canRetry={!running && (index === lastUserIdx || index === lastAgentIdx || isLastError)}
+            showToolbar={readOnly ? item.kind !== "user" : item.kind === "user" || index === lastAgentIdx || isLastError}
+            canRetry={!readOnly && !running && (index === lastUserIdx || index === lastAgentIdx || isLastError)}
             running={running}
             editing={editingId === item.id}
             onStartEdit={() => setEditingId(item.id)}
@@ -180,7 +180,7 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
             onPickOption={onPickOption}
             onClarifySubmit={onClarifySubmit}
             onPickSuggestion={onPickSuggestion}
-            isLastAgent={index === lastAgentIdx}
+            isLastAgent={!readOnly && index === lastAgentIdx}
             question={questions[index]}
           />
           </Fragment>
@@ -214,6 +214,8 @@ type Props = {
   onPickOption: (query: string, card: AnswerOption) => void;
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
   onPickSuggestion: (q: string) => void;
+  /** a chat shared with me (BACKLOG L30 T4): read only — no edit, retry or regenerate */
+  readOnly?: boolean;
 };
 
 /** Stable key tying a heading to its images — must match the backend's _norm_anchor (web_images.py):

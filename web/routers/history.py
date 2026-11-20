@@ -20,6 +20,7 @@ from web.schemas import (
     HistoryImportPayload,
     ProjectCreatePayload,
     ProjectRenamePayload,
+    SharedLinkPayload,
     ThreadContinuePayload,
     ThreadUpsertPayload,
 )
@@ -210,3 +211,132 @@ def delete_project_endpoint(
     ok = history_store.delete_project(db, user.id, project_id)
     db.commit()
     return {"ok": ok}
+
+
+# ── sharing chats and projects by link (BACKLOG L30 T4): the owner's side ──────────────────────────────────
+
+def _link_route(kind: str, object_id: str, user: User, db: Session, action: str) -> dict[str, Any]:
+    from src.core import live_events
+    from src.jobs import sharing
+
+    try:
+        if action == "state":
+            return sharing.link_state(db, user, kind, object_id)
+        if action == "make":
+            token = sharing.make_link(db, user, kind, object_id)
+            db.commit()
+            return {"token": token, **sharing.link_state(db, user, kind, object_id)}
+        for reader in sharing.stop_sharing(db, user, kind, object_id):     # their "Shared with me" changes
+            live_events.after_commit(db, live_events.CHATS, user_id=reader)
+        db.commit()
+        return {"shared": False, "readers": []}
+    except sharing.ShareError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/api/threads/{thread_id}/link")
+def thread_link(thread_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """Whether my chat has a share link, and who opened it."""
+    return _link_route("chat", thread_id, user, db, "state")
+
+
+@router.post("/api/threads/{thread_id}/link")
+def make_thread_link(thread_id: str, db: Session = Depends(get_db),
+                     user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """A read-only link to my chat for anyone signed in (shown once; a new one replaces the old)."""
+    return _link_route("chat", thread_id, user, db, "make")
+
+
+@router.delete("/api/threads/{thread_id}/link")
+def stop_thread_link(thread_id: str, db: Session = Depends(get_db),
+                     user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """Stop sharing: the link stops working and everyone who opened it loses access."""
+    return _link_route("chat", thread_id, user, db, "stop")
+
+
+@router.get("/api/projects/{project_id}/link")
+def project_link(project_id: str, db: Session = Depends(get_db),
+                 user: User = Depends(get_current_user)) -> dict[str, Any]:
+    return _link_route("project", project_id, user, db, "state")
+
+
+@router.post("/api/projects/{project_id}/link")
+def make_project_link(project_id: str, db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """A read-only link to every chat of my project (also ones added later)."""
+    return _link_route("project", project_id, user, db, "make")
+
+
+@router.delete("/api/projects/{project_id}/link")
+def stop_project_link(project_id: str, db: Session = Depends(get_db),
+                      user: User = Depends(get_current_user)) -> dict[str, Any]:
+    return _link_route("project", project_id, user, db, "stop")
+
+
+# ── … and the reader's side ───────────────────────────────────────────────────────────────────────────────
+
+@router.post("/api/shared/open")
+def open_shared_link(payload: SharedLinkPayload, db: Session = Depends(get_db),
+                     user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """Someone signed in opened a share link: they may read the chat (or the project's chats) from now on."""
+    from src.jobs.sharing import ShareError, open_link
+
+    try:
+        found = open_link(db, user, payload.token)
+    except ShareError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    db.commit()
+    return found
+
+
+@router.get("/api/shared")
+def shared_with_me(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
+    """The chats shared with me — links I opened, to a chat or a project — newest first."""
+    from src.jobs.sharing import shared_with_me as listing
+
+    return listing(db, user)
+
+
+def _shared_thread(db: Session, user: User, thread_id: str) -> ChatThreadRow:
+    from src.jobs.sharing import can_read_thread
+
+    thread = db.get(ChatThreadRow, thread_id)
+    if thread is None or not can_read_thread(db, user, thread_id):
+        raise HTTPException(status_code=404, detail="This chat is not shared with you (or no longer)")
+    return thread
+
+
+@router.get("/api/shared/{thread_id}")
+def shared_chat(thread_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """A shared chat to read: its title, owner and messages (each job; the page loads their events by id)."""
+    from src.jobs.chat_memory import _thread_jobs
+    from src.jobs.jobs import job_to_dict
+
+    thread = _shared_thread(db, user, thread_id)
+    owner = db.get(User, thread.user_id)
+    jobs = _thread_jobs(db, thread_id, thread.user_id, before=None, after=None)
+    return {"thread_id": thread_id, "title": thread.title, "owner": owner.username if owner else "—",
+            "jobs": [job_to_dict(j, slim=True) for j in jobs]}
+
+
+@router.post("/api/shared/{thread_id}/continue")
+def continue_shared(thread_id: str, payload: ThreadContinuePayload, db: Session = Depends(get_db),
+                    user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """"Continue in my own chat": a new chat of mine that starts from the shared chat's summary (its owner's chat is
+    not touched)."""
+    thread = _shared_thread(db, user, thread_id)
+    title = thread.title
+    try:
+        summary = summarize_chat(Config.from_env(), thread_id, thread.user_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(status_code=503, detail=f"The model could not summarise this chat: {exc}") from exc
+    try:
+        row = history_store.upsert_thread(db, user.id, payload.new_thread_id, title=f"{title} (continued)"[:200])
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Forbidden") from exc
+    row.summary, row.continued_from = summary, None       # not linked: the source is someone else's chat
+    db.commit()
+    return {"thread": history_store._thread_dict(row), "summary": summary}
+

@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  IconClock, IconDevices, IconFilter, IconFolder, IconLibrary, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch,
+  IconClock, IconDevices, IconShared, IconFilter, IconFolder, IconLibrary, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch,
   IconSettings,
 } from "@/components/app/NavIcons";
 import RepeatDialog from "@/components/app/RepeatDialog";
+import ShareDialog from "@/components/app/ShareDialog";
 import type { HistoryApi } from "@/hooks/useHistory";
 import { searchChats, type ChatSearchHit } from "@/lib/api";
 import {
@@ -16,6 +17,7 @@ import {
   PROJECTS_PATH,
   SCHEDULES_PATH,
   SETTINGS_PATH,
+  SHARED_PATH,
   pageRoot,
   settingsTabPath,
 } from "@/lib/routes";
@@ -46,6 +48,7 @@ const PAGES = [
   { path: PROJECTS_PATH, label: "Projects", Icon: IconFolder },
   { path: LIBRARY_PATH, label: "Library", Icon: IconLibrary },
   { path: SCHEDULES_PATH, label: "Scheduled", Icon: IconClock },
+  { path: SHARED_PATH, label: "Shared with me", Icon: IconShared },
   { path: DEVICES_PATH, label: "Devices", Icon: IconDevices, module: "devices" },
   { path: PLUGINS_PATH, label: "Plugins", Icon: IconPlug },
 ];
@@ -273,6 +276,7 @@ function ThreadList({
   // the per-chat ⋮ menu — one at a time, positioned from the button so the scrolling list can't clip it
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
   const [repeating, setRepeating] = useState<ChatThread | null>(null);
+  const [sharing, setSharing] = useState<ChatThread | null>(null);
   const menuThread = history.filteredThreads.find((t) => t.id === menu?.id) || null;
   // the hover card: full title and date beside the row (one-line titles are cut with "…", L24 U3)
   const [card, setCard] = useState<{ thread: ChatThread; x: number; y: number } | null>(null);
@@ -515,6 +519,10 @@ function ThreadList({
               <span>🔁</span>
               Repeat…
             </button>
+            <button type="button" className={menuRow} onClick={() => { setMenu(null); setSharing(menuThread); }}>
+              <span>👥</span>
+              Share…
+            </button>
             {history.projects.length ? (
               <>
                 <div className="my-1 border-t border-line" />
@@ -553,6 +561,9 @@ function ThreadList({
             </button>
           </div>
         </>
+      ) : null}
+      {sharing ? (
+        <ShareDialog kind="chat" id={sharing.id} title={sharing.title} onClose={() => setSharing(null)} />
       ) : null}
       {repeating ? (
         <RepeatDialog prompt={repeating.title} onClose={() => setRepeating(null)} onSaved={() => setRepeating(null)} />

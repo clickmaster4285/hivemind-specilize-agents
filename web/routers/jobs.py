@@ -43,12 +43,18 @@ SSE_HEARTBEAT_SECONDS = 15
 QUEUE_UPDATE_SECONDS = 5
 
 
-def _owned_job(db: Session, job_id: str, user: User, *, forbid_status: int = 403) -> Job:
+def _owned_job(db: Session, job_id: str, user: User, *, forbid_status: int = 403, read: bool = False) -> Job:
     """The job if it exists and the caller may see it, else 404/403 (admins may see any job).
-    confirm uses forbid_status=404 so it never reveals that someone else's job id exists."""
+    confirm uses forbid_status=404 so it never reveals that someone else's job id exists. read=True (the read-only
+    routes): also a job of a chat shared with the caller (BACKLOG L30 T4) — never for cancel, confirm, delete."""
     job = get_job(db, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
+    if read and job.user_id != user.id and user.role != "admin":
+        from src.jobs.sharing import can_read_job
+
+        if can_read_job(db, user, job):
+            return job
     if user.role != "admin" and job.user_id != user.id:
         raise HTTPException(status_code=forbid_status,
                             detail="Job not found" if forbid_status == 404 else "Forbidden")
@@ -144,7 +150,7 @@ def get_job_endpoint(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    return job_to_dict(_owned_job(db, job_id, user))
+    return job_to_dict(_owned_job(db, job_id, user, read=True))
 
 
 @router.post("/{job_id}/cancel")
@@ -202,7 +208,7 @@ def job_events_history(
     user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
     """Return all stored events for a job (for chat history replay)."""
-    job = _owned_job(db, job_id, user)
+    job = _owned_job(db, job_id, user, read=True)
     rows = list_events_after(db, job_id, 0)
     events = []
     for row in rows:
@@ -222,7 +228,7 @@ def export_answer_endpoint(
 ) -> FileResponse:
     """"Download as": convert the answer to a file (no model call) and return it. The answer's sources come
     from the job's own record when the text matches it."""
-    job = _owned_job(db, job_id, user)
+    job = _owned_job(db, job_id, user, read=True)
     config = Config.from_env()
     found = answer_in_events([json.loads(r.event_json) for r in list_events_after(db, job_id, 0)], payload.text)
     try:
@@ -242,7 +248,7 @@ def job_attachment(
     user: User = Depends(get_current_user),
 ) -> FileResponse:
     """Download an image or generated document for this job."""
-    job = _owned_job(db, job_id, user)
+    job = _owned_job(db, job_id, user, read=True)
     config = Config.from_env()
     payload = json.loads(job.payload_json or "{}")
     attachments = payload.get("attachments") if isinstance(payload.get("attachments"), list) else []
@@ -271,7 +277,7 @@ def _check_owned(job_id: str, user: User) -> None:
     from src.core.db import session_scope
 
     with session_scope() as db:
-        _owned_job(db, job_id, user)
+        _owned_job(db, job_id, user, read=True)
 
 
 def _queue_update(job_id: str) -> dict[str, Any] | None:

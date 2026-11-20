@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { useApp } from "@/components/app/AppProvider";
 import PageHeader, { pageSearch } from "@/components/app/PageHeader";
+import ShareDialog from "@/components/app/ShareDialog";
 import { useOpenChat } from "@/hooks/useOpenChat";
 import { threadDate } from "@/lib/threadGroups";
 import type { ChatThread } from "@/lib/threads";
@@ -21,6 +22,7 @@ export default function ProjectsPage() {
   const app = useApp();
   const { openChat, newChat } = useOpenChat();
   const [search, setSearch] = useState("");
+  const [sharing, setSharing] = useState<{ id: string; name: string } | null>(null);
   const history = app.history;
   if (!app.auth.user) return null; // the shell shows the login when signed out
 
@@ -70,6 +72,10 @@ export default function ProjectsPage() {
                     </p>
                   </div>
                   <span className="flex shrink-0 gap-0.5">
+                    <button type="button" className={iconBtn()} title="Share project (read-only)" aria-label="Share project"
+                            onClick={() => setSharing({ id: p.id, name: p.name })}>
+                      👥
+                    </button>
                     <button type="button" className={iconBtn()} title="Rename project" aria-label="Rename project"
                             onClick={() => {
                               const name = window.prompt("Rename project", p.name);
@@ -115,6 +121,9 @@ export default function ProjectsPage() {
           })}
         </ul>
       )}
+      {sharing ? (
+        <ShareDialog kind="project" id={sharing.id} title={sharing.name} onClose={() => setSharing(null)} />
+      ) : null}
     </PageHeader>
   );
 }

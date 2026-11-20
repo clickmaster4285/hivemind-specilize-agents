@@ -819,3 +819,76 @@ export async function setDeviceShares(id: string, shares: DeviceShare[]): Promis
   });
 }
 
+// ── sharing chats and projects read-only (BACKLOG L30 T4) ───────────────────────────────────────────────────
+
+/** Someone I can share with: name and team only. */
+export type Person = { id: number; username: string; team: string | null };
+/** A chat shared with me. */
+export type SharedChat = { thread_id: string; title: string; owner: string; project: string | null; updated_at: string | null };
+/** My chat's / project's share link: whether it is live, and who opened it. */
+export type ShareLinkState = { shared: boolean; readers: string[]; token?: string };
+
+export async function listPeople(): Promise<Person[]> {
+  return request("/api/auth/people");
+}
+
+const linkPath = (kind: "chat" | "project", id: string) =>
+  `/api/${kind === "chat" ? "threads" : "projects"}/${encodeURIComponent(id)}/link`;
+
+export async function getShareLink(kind: "chat" | "project", id: string): Promise<ShareLinkState> {
+  return request(linkPath(kind, id));
+}
+
+/** A new read-only link (its token is shown this once; the old link stops working). */
+export async function makeShareLink(kind: "chat" | "project", id: string): Promise<ShareLinkState> {
+  return request(linkPath(kind, id), { method: "POST" });
+}
+
+/** Stop sharing: the link stops working and everyone who opened it loses access. */
+export async function stopShareLink(kind: "chat" | "project", id: string): Promise<ShareLinkState> {
+  return request(linkPath(kind, id), { method: "DELETE" });
+}
+
+/** I opened a share link: from now on I may read it. → the chat to show, and whether it is my own. */
+export async function openShareLink(token: string): Promise<{ thread_id: string; own: boolean }> {
+  return request("/api/shared/open", { method: "POST", body: JSON.stringify({ token }) });
+}
+
+export async function listSharedWithMe(): Promise<SharedChat[]> {
+  return request("/api/shared");
+}
+
+export async function getSharedChat(threadId: string): Promise<{ thread_id: string; title: string; owner: string; jobs: Job[] }> {
+  return request(`/api/shared/${encodeURIComponent(threadId)}`);
+}
+
+/** "Continue in my own chat": a new chat of mine starting from the shared chat's summary. */
+export async function continueSharedChat(
+  threadId: string,
+  newThreadId: string,
+): Promise<{ thread: { id: string; title: string }; summary: string }> {
+  return request(`/api/shared/${encodeURIComponent(threadId)}/continue`, {
+    method: "POST",
+    body: JSON.stringify({ new_thread_id: newThreadId }),
+  });
+}
+
+// ── team knowledge (BACKLOG L30 T4) ──────────────────────────────────────────────────────────────────────────
+
+export type TeamDoc = { id: number; title: string; file: string; uploaded_by: string; bytes: number; uploaded_at: string; chunks: number };
+
+/** A team's documents (a member: their own team's; an admin: the team asked for). */
+export async function listTeamDocs(team?: string): Promise<{ team: string; documents: TeamDoc[] }> {
+  return request(`/api/brain/team-docs${team ? `?team=${encodeURIComponent(team)}` : ""}`);
+}
+
+/** Admin: add a file (base64) to a team's knowledge — read and embedded now, so a long PDF takes a while. */
+export async function uploadTeamDoc(team: string, filename: string, data: string): Promise<{ chunks: number; replaced: boolean }> {
+  return request("/api/brain/team-docs", { method: "POST", body: JSON.stringify({ team, filename, data }) },
+                 { timeoutMs: 300_000 });
+}
+
+export async function removeTeamDoc(team: string, id: number): Promise<void> {
+  await request(`/api/brain/team-docs/${id}?team=${encodeURIComponent(team)}`, { method: "DELETE" });
+}
+

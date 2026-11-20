@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { WIDE_PAGE_WIDTH } from "@/components/app/PageHeader";
 import AccountSection from "@/components/settings/AccountSection";
+import TeamKnowledgeSection from "@/components/settings/TeamKnowledgeSection";
 import CommandLogPanel from "@/components/settings/users/CommandLogPanel";
 import UsageSection from "@/components/settings/UsageSection";
 import UsersSection from "@/components/settings/users/UsersSection";
@@ -39,6 +40,7 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
     ...(isAdmin ? [{ id: "users" as const, label: "Users" }, { id: "commands" as const, label: "Server commands" }] : []),
     ...(has("usage") ? [{ id: "usage" as const, label: "Usage" }] : []),
     { id: "agents", label: "Agents" },
+    { id: "knowledge", label: "Team knowledge" },
     { id: "account", label: "My account" },
   ];
   const tab = tabs.find((t) => t.id === asked)?.id ?? tabs[0].id;
@@ -84,6 +86,13 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
       {tab === "commands" && isAdmin ? (
         <section className={panel}>
           <CommandLogPanel />
+        </section>
+      ) : null}
+
+      {/* Team knowledge (everyone sees their team's; admins add files, BACKLOG L30 T4) */}
+      {tab === "knowledge" ? (
+        <section className={panel}>
+          <TeamKnowledgeSection />
         </section>
       ) : null}
 

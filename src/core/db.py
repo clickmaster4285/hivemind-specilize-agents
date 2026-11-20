@@ -135,6 +135,7 @@ def init_db(config: Config | None = None) -> None:
     _ensure_column(engine, "users", "must_change_password", "must_change_password BOOLEAN DEFAULT 0")
     _ensure_column(engine, "refresh_tokens", "session_started_at", "session_started_at DATETIME")
     _ensure_column(engine, "refresh_tokens", "device", "device VARCHAR(120) DEFAULT ''")
+    _ensure_column(engine, "chat_shares", "token_hash", "token_hash VARCHAR(64)")
     _ensure_column(engine, "refresh_tokens", "address", f"address VARCHAR({models_db.ADDRESS_CHARS}) DEFAULT ''")
 
 

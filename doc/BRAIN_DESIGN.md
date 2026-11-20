@@ -380,6 +380,7 @@ New Python packages (to confirm): `pgvector` (Python adapter), `trafilatura` (HT
 - **Chat (Phase 1):** chat uses the brain **automatically** for every real question: `retrieve` → `answer` → sources shown under the reply. Skipped for greetings, creative writing (stories, poems) and image requests. If retrieval finds nothing relevant, the reply says so instead of guessing.
 - **Specialists (later):** each specialist = instructions + tools + **a set of collections** (IT → `it`, `general`; Marketing → `marketing`, `general`). Retrieval already takes a collection filter, so nothing in the brain changes.
 - **Private knowledge (later):** uploads become `scope = 'private'` sources owned by an account (optionally one agent). The RLS rules in §3.4 already protect them.
+- **Team knowledge (built 2026-11-20, BACKLOG L30 T4):** a third scope, `team`, with `owner_id = 'team:<name>'` (migration 005). `can_read` lets a team row through only when `brain.team` (set per transaction by `src/brain/db.py` from the signed-in account's team) matches; `can_write` allows team rows only as the system — the API checks who may upload. Uploads: `src/brain/team_docs.py`.
 - **GPU:** embedding runs on CPU; chat stays on the 9b on the GPU; SDXL still unloads Ollama models as today.
 
 ---
