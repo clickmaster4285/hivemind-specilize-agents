@@ -114,6 +114,8 @@ class Config:
     brain_fresh_hours: float = 24.0
     # after a knowledge-base answer, check each cited sentence against its source (src/brain/verify.py)
     verify_answers: bool = True
+    # the same check after a web-search answer, against the pages it was written from (~5-8 s more on the GPU)
+    verify_web_answers: bool = True
     # security_check tool (src/security_scan.py): ports, services, certificates, this PC's firewall — admins only
     security_scan_enabled: bool = True
     # the offline CVE list security_check matches software versions against (src/servers/cve_db.py)
@@ -265,6 +267,7 @@ class Config:
             brain_scheduler_minutes=max(5, int(os.getenv("BRAIN_SCHEDULER_MINUTES", "30"))),
             brain_fresh_hours=max(0.1, float(os.getenv("BRAIN_FRESH_HOURS", "24"))),
             verify_answers=os.getenv("VERIFY_ANSWERS", "true").strip().lower() not in {"0", "false", "no", "off"},
+            verify_web_answers=_bool("VERIFY_WEB_ANSWERS", True),
             cve_db_path=Path(os.getenv("CVE_DB", str(DEFAULT_CVE_DB))),
             nuclei_dir=Path(os.getenv("NUCLEI_DIR", str(DEFAULT_NUCLEI_DIR))),
             security_scan_enabled=os.getenv("SECURITY_SCAN_ENABLED", "true").strip().lower()

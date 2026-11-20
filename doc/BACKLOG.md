@@ -157,7 +157,11 @@ To build:
 - **Built:** after each knowledge-base answer, one more model call (`src/brain/verify.py`, the same
   quote-first judge as the B6 test) checks every cited sentence; the chat shows "✓ 6 of 7 statements
   confirmed by the sources" and lists the unsupported ones. The answer is readable meanwhile; nothing is
-  deleted; a failed check only hides the line. Off switch: `VERIFY_ANSWERS=false`. Not yet: web-search answers.
+  deleted; a failed check only hides the line. Off switch: `VERIFY_ANSWERS=false`.
+- **Web answers — built 2026-11-20:** a web-search answer (the Web path and a knowledge-base miss answered from
+  the web) is checked the same way against the pages it was written from (`answer_from_web(read=…)`,
+  `chat_runner.checked_web`). Off switch: `VERIFY_WEB_ANSWERS=false`. Deep research answers are not checked yet.
+- **Measured 2026-10-31 (B6 rerun, 129 questions):** grounded **94%** (target 90%), strict 93%.
 
 Earlier notes:
 

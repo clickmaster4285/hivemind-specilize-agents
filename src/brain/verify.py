@@ -1,8 +1,10 @@
 """Check a grounded answer against its sources, claim by claim — BACKLOG L5c (doc/ISSUES_LOG.md #38).
 
-Used twice: in the chat, right after a knowledge-base answer is written (src/chat_runner.py: the user
-reads the answer while it is checked, then sees "✓ 6 of 7 statements confirmed"), and by the B6 test
-(src/brain/answer_eval.py). One model call per answer, temperature 0:
+Used twice: in the chat, right after a knowledge-base or web answer is written (src/jobs/chat_runner.py: the
+user reads the answer while it is checked, then sees "✓ 6 of 7 statements confirmed"), and by the B6 test
+(src/brain/answer_eval.py). One model call per answer, temperature 0. A source is a knowledge-base passage
+(src/brain/retrieve.Passage: content, heading_path) or a web page's (src/tools/web_search.Passage: text,
+heading) — only its title, section and words are read:
 
   split_claims     the answer's cited sentences (a sentence without [n] inherits its line's citations)
   judge            the model must first QUOTE the source words behind each claim, then say yes/partly/no
@@ -14,13 +16,12 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass
 from difflib import SequenceMatcher
 from typing import Any
 
 from src.brain.command_check import NOTE_PREFIX
-from src.brain.retrieve import Passage
 
 MIN_CLAIM_WORDS = 4
 
@@ -56,6 +57,15 @@ class Claim:
     verdict: str | None = None          # yes | partly | no | unsure (None = not judged)
     quote: str = ""                     # the judge's evidence from the cited sources
     quote_found: bool | None = None     # the quote really is in a cited passage (None = no quote given)
+
+def _words_of(source: Any) -> str:
+    """A source's text: a knowledge-base passage's content, a web page's text."""
+    return getattr(source, "content", None) or getattr(source, "text", "") or ""
+
+
+def _section_of(source: Any) -> str:
+    return getattr(source, "heading_path", None) or getattr(source, "heading", "") or ""
+
 
 def _cites(text: str) -> list[int]:
     return sorted({int(n) for group in CITE_RE.findall(text) for n in group.split(",")})
@@ -106,13 +116,13 @@ def split_claims(text: str) -> tuple[list[Claim], int]:
                 pending.append(sentence)
     return claims, uncited + len(pending)
 
-def judge_prompt(claims: list[Claim], passages: list[Passage]) -> str:
+def judge_prompt(claims: list[Claim], passages: Sequence[Any]) -> str:
     """Only the passages the claims cite, under their original numbers (less to read = fewer slips)."""
     used = sorted({n for c in claims for n in c.cites if 1 <= n <= len(passages)})
     sources = "\n\n".join(
         f'<source id="{n}">\n[{n}] {passages[n - 1].title}'
-        + (f"\nSection: {passages[n - 1].heading_path}" if passages[n - 1].heading_path else "")
-        + f"\n\n{passages[n - 1].content}\n</source>"
+        + (f"\nSection: {_section_of(passages[n - 1])}" if _section_of(passages[n - 1]) else "")
+        + f"\n\n{_words_of(passages[n - 1])}\n</source>"
         for n in used
     )
     numbered = "\n".join(
@@ -159,7 +169,7 @@ def quote_in(quote: str, texts: list[str]) -> bool:
             return True
     return False
 
-def apply_judgement(claims: list[Claim], reply: str, passages: list[Passage]) -> None:
+def apply_judgement(claims: list[Claim], reply: str, passages: Sequence[Any]) -> None:
     """Verdicts onto the claims, checked against the judge's own evidence:
     "yes" whose quote is not in the cited passages → "partly" (support not shown);
     "no" although the judge quoted real supporting text → "unsure" (it contradicts itself — a person
@@ -167,14 +177,14 @@ def apply_judgement(claims: list[Claim], reply: str, passages: list[Passage]) ->
     for claim, (verdict, quote) in zip(claims, parse_judgement(reply, len(claims))):
         claim.verdict, claim.quote = verdict, quote
         if quote:
-            claim.quote_found = quote_in(quote, [passages[n - 1].content for n in claim.cites])
+            claim.quote_found = quote_in(quote, [_words_of(passages[n - 1]) for n in claim.cites])
         if verdict == "yes" and not claim.quote_found:
             claim.verdict = "partly"
         elif verdict == "no" and claim.quote_found:
             claim.verdict = "unsure"
 
 
-def verify_answer(text: str, passages: list[Passage], chat: Callable[..., str]) -> dict[str, Any] | None:
+def verify_answer(text: str, passages: Sequence[Any], chat: Callable[..., str]) -> dict[str, Any] | None:
     """Check an answer's cited claims; None when it has none (nothing to check).
 
     chat = a non-streaming chat function (system=, user=, temperature=) — the judge's reply must never

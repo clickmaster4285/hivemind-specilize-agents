@@ -96,19 +96,19 @@ def build_refine_note(reason: str) -> str:
             "the reason points to. Do not apologise or mention this rating; just answer better.]")
 
 
-def _verify(answer: Any, *, client: LLMClient, model: str, job_id: str | None,
+def _verify(text: str, passages: list[Any], *, client: LLMClient, model: str, job_id: str | None,
             status: Callable[[str], None]) -> dict[str, Any] | None:
-    """Check a knowledge-base answer against its sources (src/brain/verify.py) after it is written.
+    """Check an answer against the sources it was written from (src/brain/verify.py) after it is written:
+    knowledge-base passages, or the web pages of a web answer (BACKLOG L5c).
 
     Never breaks the answer: a failed or stopped check just shows no verification line."""
     from src.brain.verify import verify_answer
 
-    passages = answer.search.passages if answer.search else []
     if not passages or live.is_stopped(job_id):
         return None
     status("Checking the answer against its sources…")
     try:
-        checked = verify_answer(answer.text, passages,
+        checked = verify_answer(text, passages,
                                 chat=lambda **kw: client.chat(model=model, max_retries=0, **kw))
     except Exception as exc:  # noqa: BLE001 — the answer is already written; only the badge is lost
         log.warning("answer check failed: %s", exc)
@@ -324,6 +324,18 @@ def run_chat(
         sourced = "\n\n".join(p for p in (format_question_context(history), note) if p)
         user_msg = f"{prior}\n\n## Current message\n{query}" if prior else query
         extra: dict[str, Any] = {}
+        web_read: list[Any] = []          # the pages the web answer was written from, under their [n] numbers
+
+        def progress(message: str) -> None:
+            _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": message})
+
+        def checked_web(text: str, web_extra: dict[str, Any]) -> dict[str, Any]:
+            """The web answer checked against its pages (L5c), like a knowledge-base answer; readable meanwhile."""
+            if not (config.verify_web_answers and web_extra.get("grounded") and web_read):
+                return web_extra
+            live.set_text(job_id, "assistant", text)
+            checked = _verify(text, web_read, client=client, model=model, job_id=job_id, status=progress)
+            return web_extra | ({"verification": checked} if checked is not None else {})
 
         def web_answer() -> tuple[str, dict[str, Any]]:
             """SearXNG + the top pages → (answer, extra): the Web path, and a knowledge-base miss (O50)."""
@@ -333,7 +345,7 @@ def run_chat(
                     on_progress, {"type": "status", "agent_id": "assistant", "message": message}
                 ),
                 conversation_block=sourced, news=web_news, search_query=web_query, calculation=web_calculation,
-                diagram=web_diagram,
+                diagram=web_diagram, read=web_read,
             )
             return text, {"grounded": bool(sources), "sources": sources}
 
@@ -374,6 +386,7 @@ def run_chat(
                 role = "Direct reply"
         elif use_web:
             output, extra = web_answer()
+            extra = checked_web(output, extra)
             role = "Web search"
         elif use_brain:
             _emit(on_progress, {"type": "status", "agent_id": "assistant", "message": "Searching the knowledge base…"})
@@ -400,6 +413,7 @@ def run_chat(
                         answer = kb_answer(general_fallback=True)
                 if web is not None:
                     output, extra = web
+                    extra = checked_web(output, extra)
                     role = "Web search"
                 else:
                     output = answer.text
@@ -407,9 +421,8 @@ def run_chat(
                     extra = {"grounded": answer.grounded, "sources": answer.sources_payload()}
                 if answer.grounded and config.verify_answers:
                     live.set_text(job_id, "assistant", output)          # the answer stays readable meanwhile
-                    checked = _verify(answer, client=client, model=model, job_id=job_id,
-                                      status=lambda m: _emit(on_progress, {"type": "status",
-                                                                           "agent_id": "assistant", "message": m}))
+                    checked = _verify(answer.text, answer.search.passages if answer.search else [],
+                                      client=client, model=model, job_id=job_id, status=progress)
                     if checked is not None:
                         extra["verification"] = checked
             except (BrainDBError, EmbedError) as exc:

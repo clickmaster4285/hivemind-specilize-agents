@@ -294,13 +294,15 @@ def answer_from_web(
     search_query: str = "",
     calculation: bool = False,
     diagram: bool = True,
+    read: list[Passage] | None = None,
 ) -> tuple[str, list[dict]]:
     """→ (answer with [n] citations, sources for the UI). news=True: news results too (see search).
     search_query: the search words the model wrote in web_search's `query` — typos fixed, a follow-up's subject
     filled in from the conversation (ISSUES_LOG O49); the question itself when empty. They find and rank the
     pages; the model still answers the question as asked. calculation=True (the router saw a number to work out):
     CALCULATION_NOTE goes right after the question, where the model heeds it most. diagram=False (the router saw no
-    use for a drawing): one line instead of the diagram rules (O52)."""
+    use for a drawing): one line instead of the diagram rules (O52). read: a list that receives the sources the
+    answer was written from, under their [n] numbers, so the chat can check the answer against them (L5c)."""
     words = search_query.strip() or question
     t0 = time.perf_counter()
     status("Searching the news…" if news else "Searching the web…")
@@ -313,6 +315,8 @@ def answer_from_web(
     t_read = time.perf_counter()
     if not passages:
         return "The web results could not be read. Try again or rephrase the question.", []
+    if read is not None:
+        read[:] = passages
     numbered = "\n\n".join(
         f'<source id="{n}">\n[{n}] {p.title} — {urlsplit(p.url).hostname}'
         + (f" (published {p.published})" if p.published else "")
