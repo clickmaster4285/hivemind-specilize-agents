@@ -12,6 +12,7 @@ const CHAT_PREFIX = "/chat/";
 
 // the forms that are pages of their own inside the layout (BACKLOG L19b D5): "new" opens an empty form
 export const NEW_DEVICE_PATH = `${DEVICES_PATH}/new`;
+export const devicePath = (id: string) => `${DEVICES_PATH}/${encodeURIComponent(id)}`;
 export type SettingsTab = "users" | "usage" | "agents";
 export const settingsTabPath = (tab: SettingsTab) => `${SETTINGS_PATH}?tab=${tab}`;
 export const userPath = (id: number | "new") => `${SETTINGS_PATH}/users/${id}`;

@@ -26,6 +26,12 @@ class UserCreatePayload(BaseModel):
     modules: list[str] | None = None   # src/core/modules.py ids; None = the defaults for a new member
 
 
+class UserDeletePayload(BaseModel):
+    """Delete an account for good: the admin types its username, so a slip of the mouse cannot do it."""
+
+    confirm: str = Field(max_length=200)
+
+
 class UserUpdatePayload(BaseModel):
     # Every field is optional: only the ones sent are changed. For team/email/phone an empty string
     # clears the field; omit the key to leave it as it is. `password`, when given, resets the password.

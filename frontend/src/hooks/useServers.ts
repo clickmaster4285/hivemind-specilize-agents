@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { addServer, listServers, removeServer, setServerMode } from "@/lib/api";
+import { addServer, listServers, removeServer, setServerMode, updateServer } from "@/lib/api";
 import type { ServerInfo, ServerLoginInput, ServerMode } from "@/lib/types";
 
 /**
@@ -10,6 +10,7 @@ import type { ServerInfo, ServerLoginInput, ServerMode } from "@/lib/types";
  */
 export function useServers(active: boolean) {
   const [servers, setServers] = useState<ServerInfo[]>([]);
+  const [loaded, setLoaded] = useState(false);   // the first list arrived (a device's edit page waits for it)
 
   const load = useCallback(async () => {
     try {
@@ -25,7 +26,8 @@ export function useServers(active: boolean) {
     let cancelled = false;
     listServers()
       .then((list) => !cancelled && setServers(list))
-      .catch(() => !cancelled && setServers([]));
+      .catch(() => !cancelled && setServers([]))
+      .finally(() => !cancelled && setLoaded(true));
     return () => {
       cancelled = true;
     };
@@ -34,6 +36,14 @@ export function useServers(active: boolean) {
   const add = useCallback(
     async (payload: ServerLoginInput) => {
       await addServer(payload);
+      await load();
+    },
+    [load],
+  );
+
+  const update = useCallback(
+    async (id: string, payload: ServerLoginInput) => {
+      await updateServer(id, payload);
       await load();
     },
     [load],
@@ -55,7 +65,7 @@ export function useServers(active: boolean) {
     [load],
   );
 
-  return { servers, add, remove, setMode };
+  return { servers, loaded, add, update, remove, setMode };
 }
 
 export type ServersApi = ReturnType<typeof useServers>;

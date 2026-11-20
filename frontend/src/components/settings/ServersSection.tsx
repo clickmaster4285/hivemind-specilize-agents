@@ -4,7 +4,7 @@ import Link from "next/link";
 
 import { MODE_LABEL, SNMP_PORT } from "@/components/settings/DeviceForm";
 import type { ServersApi } from "@/hooks/useServers";
-import { NEW_DEVICE_PATH } from "@/lib/routes";
+import { NEW_DEVICE_PATH, devicePath } from "@/lib/routes";
 import type { ServerKind, ServerMode } from "@/lib/types";
 import { btn, formFieldCompact, table } from "@/lib/ui";
 
@@ -87,15 +87,20 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
                       )}
                     </td>
                     <td className={`${table.td} text-right`}>
-                      <button
-                        type="button"
-                        className={btn("ghost", "sm")}
-                        onClick={() => {
-                          if (confirm(`Remove ${s.label || s.host}? Its saved login is deleted.`)) void servers.remove(s.id);
-                        }}
-                      >
-                        Remove
-                      </button>
+                      <span className="inline-flex gap-1.5">
+                        <Link href={devicePath(s.id)} className={btn("ghost", "sm")}>
+                          Edit
+                        </Link>
+                        <button
+                          type="button"
+                          className={btn("ghost", "sm")}
+                          onClick={() => {
+                            if (confirm(`Remove ${s.label || s.host}? Its saved login is deleted.`)) void servers.remove(s.id);
+                          }}
+                        >
+                          Remove
+                        </button>
+                      </span>
                     </td>
                   </tr>
                 );

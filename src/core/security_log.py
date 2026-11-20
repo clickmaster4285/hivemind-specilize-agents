@@ -31,7 +31,8 @@ ADDRESS_BLOCKED = "address_blocked"
 TOKEN_REUSED = "token_reused"
 UPLOAD_REFUSED = "upload_refused"
 UNLOCKED = "unlocked"
-KINDS = (LOGIN_FAILED, ACCOUNT_LOCKED, ADDRESS_BLOCKED, TOKEN_REUSED, UPLOAD_REFUSED, UNLOCKED)
+ACCOUNT_DELETED = "account_deleted"     # an admin deleted an account for good (src/core/account_delete.py)
+KINDS = (LOGIN_FAILED, ACCOUNT_LOCKED, ADDRESS_BLOCKED, TOKEN_REUSED, UPLOAD_REFUSED, UNLOCKED, ACCOUNT_DELETED)
 
 
 def record(db: Session, kind: str, *, user_id: int | None = None, account: str = "", address: str = "",

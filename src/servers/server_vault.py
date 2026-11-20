@@ -233,6 +233,41 @@ def login_for(user_id: int | None, server: str | None, query: str, *,
     return None, f"{question} Your servers: {names(servers)}."
 
 
+def get(user_id: int, server_id: str) -> ServerLogin:
+    """One of the user's own logins, with its secret (for an edit that keeps the saved password)."""
+    with _scope() as session:
+        row = session.scalar(select(DeviceRow).where(DeviceRow.user_id == user_id, DeviceRow.id == server_id))
+        if row is None:
+            raise VaultError("device not found")
+        return _login(row)
+
+
+def update(user_id: int, login: ServerLogin) -> ServerLogin:
+    """Save an edited login over the row with its id (Settings → Devices → Edit). The caller has already tested
+    a changed address or login; the secret is encrypted again, bound to the same owner and row."""
+    if login.mode not in MODES:
+        raise VaultError(f"mode must be one of {', '.join(MODES)}")
+    if not 1 <= int(login.port) <= 65535:
+        raise VaultError("the port must be 1–65535")
+    if not (login.username or "").strip():
+        raise VaultError("enter the user name")
+    if not (login.password or login.private_key):
+        raise VaultError("enter a password or a private key")
+    secret = json.dumps({k: getattr(login, k) or None for k in SECRET_FIELDS})
+    with _scope() as session:
+        row = session.scalar(select(DeviceRow).where(DeviceRow.user_id == user_id, DeviceRow.id == login.id))
+        if row is None:
+            raise VaultError("device not found")
+        row.label = (login.label or login.host).strip()[:60]
+        row.host, row.port, row.username = login.host.strip(), int(login.port), login.username.strip()
+        row.secret_enc = crypto.encrypt(secret, _aad(user_id, row.id))
+        row.host_key, row.mode, row.os, row.os_family = login.host_key, login.mode, login.os, login.os_family
+        session.flush()
+        saved = _login(row)
+    _forget({login.id})        # a connection kept open with the old login closes now
+    return saved
+
+
 def set_mode(user_id: int, server_id: str, mode: str) -> ServerLogin:
     if mode not in MODES:
         raise VaultError(f"mode must be one of {', '.join(MODES)}")

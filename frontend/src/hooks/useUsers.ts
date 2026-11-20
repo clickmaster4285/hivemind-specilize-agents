@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { createUser, deactivateUser, listUsers, unlockUser, updateUser } from "@/lib/api";
+import { createUser, deactivateUser, deleteUser, listUsers, unlockUser, updateUser } from "@/lib/api";
 import type { ManagedUser, UserCreateInput, UserUpdateInput } from "@/lib/types";
 
 /**
@@ -65,7 +65,17 @@ export function useUsers(active: boolean) {
     [load],
   );
 
-  return { users, loaded, create, update, deactivate, unlock };
+  // for good: the account and everything theirs (Deactivate is the undoable one)
+  const remove = useCallback(
+    async (id: number, confirm: string) => {
+      const done = await deleteUser(id, confirm);
+      await load();
+      return done;
+    },
+    [load],
+  );
+
+  return { users, loaded, create, update, deactivate, remove, unlock };
 }
 
 export type UsersApi = ReturnType<typeof useUsers>;

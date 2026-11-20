@@ -2,9 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 
-import type { ServersApi } from "@/hooks/useServers";
 import { errorText } from "@/lib/chat";
-import type { ServerKind, ServerLoginInput, ServerMode } from "@/lib/types";
+import type { ServerInfo, ServerKind, ServerLoginInput, ServerMode } from "@/lib/types";
 import { btn, formFieldCompact } from "@/lib/ui";
 
 // the usual port of each kind: SSH (servers, routers, switches), and the recorder's web API
@@ -35,19 +34,32 @@ export const MODE_LABEL: Record<string, string> = {
 const label = "flex flex-col gap-1 text-xs text-muted";
 
 type Props = {
-  add: ServersApi["add"];
+  /** adds the device, or saves the edit of `device` */
+  save: (payload: ServerLoginInput) => Promise<unknown>;
+  /** the saved device being edited; absent = adding a new one */
+  device?: ServerInfo;
   isAdmin: boolean;
   /** the login worked and the device is saved */
-  onAdded: () => void;
+  onSaved: () => void;
   onCancel: () => void;
 };
 
-/** /devices/new (BACKLOG L19b D5): add a server, recorder, router or switch. The login is tested before it is
- *  saved; a failed test keeps the form with its error so the user can fix it. */
-export default function DeviceForm({ add, isAdmin, onAdded, onCancel }: Props) {
-  const [form, setForm] = useState<ServerLoginInput>(emptyServer);
-  const [auth, setAuth] = useState<"password" | "key">("password");
-  const [via, setVia] = useState<"ssh" | "snmp">("ssh");          // a router / switch: its command line or SNMP
+function formFrom(device: ServerInfo | undefined): ServerLoginInput {
+  if (!device) return emptyServer;
+  // the secret is never sent to the page: its fields start empty and, left empty, keep the saved one
+  return { ...emptyServer, kind: device.kind, label: device.label, host: device.host, port: device.port,
+           username: device.username, mode: device.mode };
+}
+
+/** /devices/new and /devices/<id> (BACKLOG L19b D5): add or edit a server, recorder, router or switch. A new or
+ *  changed login is tested before it is saved; a failed test keeps the form with its error so the user can fix
+ *  it. Editing: the type stays, and a blank password / key keeps the saved one. */
+export default function DeviceForm({ save, device, isAdmin, onSaved, onCancel }: Props) {
+  const editing = device !== undefined;
+  const [form, setForm] = useState<ServerLoginInput>(() => formFrom(device));
+  const [auth, setAuth] = useState<"password" | "key">(device?.auth === "key" ? "key" : "password");
+  // a router / switch: its command line or SNMP (a saved one on SNMP's port is an SNMP switch)
+  const [via, setVia] = useState<"ssh" | "snmp">(device?.kind === "network" && device.port === SNMP_PORT ? "snmp" : "ssh");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<ServerLoginInput>) => setForm((f) => ({ ...f, ...patch }));
@@ -60,7 +72,7 @@ export default function DeviceForm({ add, isAdmin, onAdded, onCancel }: Props) {
     setBusy(true);
     setError(null);
     try {
-      await add({
+      await save({
         kind: form.kind,
         label: form.label,
         host: form.host,
@@ -72,7 +84,7 @@ export default function DeviceForm({ add, isAdmin, onAdded, onCancel }: Props) {
           : { private_key: form.private_key, key_passphrase: form.key_passphrase }),
       });
       setForm(emptyServer); // the password / key leaves the page's memory
-      onAdded();
+      onSaved();
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -86,6 +98,8 @@ export default function DeviceForm({ add, isAdmin, onAdded, onCancel }: Props) {
         <select
           className={formFieldCompact}
           value={form.kind}
+          disabled={editing}
+          title={editing ? "A device's type cannot change — remove it and add it again" : undefined}
           onChange={(e) => {
             const kind = e.target.value as ServerKind;
             setVia("ssh");
@@ -189,9 +203,9 @@ export default function DeviceForm({ add, isAdmin, onAdded, onCancel }: Props) {
           {snmp ? "Community string (the switch's SNMP read community)" : "Password"}
           <input
             className={formFieldCompact}
-            required
+            required={!editing}
             type="password"
-            placeholder={snmp ? "public" : "••••••••"}
+            placeholder={editing ? "Leave empty to keep the saved one" : snmp ? "public" : "••••••••"}
             autoComplete="new-password"
             value={form.password || ""}
             onChange={(e) => set({ password: e.target.value })}
@@ -203,9 +217,9 @@ export default function DeviceForm({ add, isAdmin, onAdded, onCancel }: Props) {
             Private key
             <textarea
               className={`${formFieldCompact} font-[var(--font-mono)] resize-y`}
-              required
+              required={!editing}
               rows={4}
-              placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+              placeholder={editing ? "Leave empty to keep the saved key" : "-----BEGIN OPENSSH PRIVATE KEY-----"}
               spellCheck={false}
               value={form.private_key || ""}
               onChange={(e) => set({ private_key: e.target.value })}
@@ -231,7 +245,7 @@ export default function DeviceForm({ add, isAdmin, onAdded, onCancel }: Props) {
           Cancel
         </button>
         <button type="submit" className={btn("primary", "sm")} disabled={busy}>
-          {busy ? "Testing the login…" : "Add & test login"}
+          {busy ? (editing ? "Saving…" : "Testing the login…") : editing ? "Save" : "Add & test login"}
         </button>
       </div>
     </form>

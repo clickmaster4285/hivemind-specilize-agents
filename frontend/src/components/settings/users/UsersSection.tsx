@@ -1,19 +1,72 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
+import { useApp } from "@/components/app/AppProvider";
 import BlockedComputers from "@/components/settings/users/BlockedComputers";
 import InvitesPanel from "@/components/settings/users/InvitesPanel";
 import SecurityLogPanel from "@/components/settings/users/SecurityLogPanel";
 import type { UsersApi } from "@/hooks/useUsers";
+import { errorText } from "@/lib/chat";
 import { userPath } from "@/lib/routes";
+import type { ManagedUser } from "@/lib/types";
 import { btn, table } from "@/lib/ui";
 
 /** Settings → Users: sign-ups waiting for approval, sign-up and invites, the accounts and a Create user
- *  button. Creating, editing or reviewing one opens its own page, /settings/users/<id> (BACKLOG L19b D5). */
+ *  button. Creating, editing or reviewing one opens its own page, /settings/users/<id> (BACKLOG L19b D5).
+ *  Each account row also has Deactivate / Activate (sign-in blocked, everything kept) and Delete (for good,
+ *  after typing the username) — the user's choice 2026-11-20. */
 export default function UsersSection({ users }: { users: UsersApi }) {
+  const me = useApp().auth.user;
+  const [busy, setBusy] = useState<number | null>(null);
+  const [notice, setNotice] = useState<{ text: string; bad: boolean } | null>(null);
   const waiting = users.users.filter((u) => u.status === "pending");
   const accounts = users.users.filter((u) => u.status !== "pending");
+
+  async function act(u: ManagedUser, work: () => Promise<string>) {
+    setBusy(u.id);
+    setNotice(null);
+    try {
+      setNotice({ text: await work(), bad: false });
+    } catch (err) {
+      setNotice({ text: errorText(err), bad: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function toggleActive(u: ManagedUser) {
+    if (u.status === "disabled") {
+      void act(u, async () => {
+        await users.update(u.id, { status: "active" });
+        return `${u.username} can sign in again.`;
+      });
+      return;
+    }
+    if (!confirm(`Deactivate ${u.username}? They can no longer sign in; their chats and queries are kept, and you can activate them again.`)) return;
+    void act(u, async () => {
+      await users.deactivate(u.id);
+      return `${u.username} is deactivated.`;
+    });
+  }
+
+  function remove(u: ManagedUser) {
+    const typed = prompt(
+      `Delete ${u.username} for good?\n\nTheir account, chats, projects, schedules, devices and own skills are removed ` +
+        `and cannot be brought back. To keep their history, use Deactivate instead.\n\nType the username to confirm:`,
+    );
+    if (typed === null) return;
+    if (typed.trim() !== u.username) {
+      setNotice({ text: "The username did not match — nothing was deleted.", bad: true });
+      return;
+    }
+    void act(u, async () => {
+      const done = await users.remove(u.id, typed.trim());
+      const kb = done.knowledge_base.startsWith("not removed") ? ` Knowledge base: ${done.knowledge_base}.` : "";
+      return `${done.username} was deleted with ${done.questions} questions.${kb}`;
+    });
+  }
 
   return (
     <>
@@ -65,6 +118,11 @@ export default function UsersSection({ users }: { users: UsersApi }) {
       <InvitesPanel />
       <BlockedComputers />
 
+      {notice ? (
+        <p role="status" className={`m-0 text-xs ${notice.bad ? "text-danger" : "text-muted"}`}>
+          {notice.text}
+        </p>
+      ) : null}
       {accounts.length ? (
         <div className={table.wrap}>
           <table className={table.table}>
@@ -114,9 +172,23 @@ export default function UsersSection({ users }: { users: UsersApi }) {
                   <td className={`${table.td} hidden md:table-cell text-right tabular-nums`}>{u.query_count ?? 0}</td>
                   <td className={`${table.td} hidden lg:table-cell text-right tabular-nums`}>{u.daily_job_quota}</td>
                   <td className={`${table.td} text-right`}>
-                    <Link href={userPath(u.id)} className={btn("ghost", "sm")}>
-                      Edit
-                    </Link>
+                    <span className="inline-flex flex-wrap justify-end gap-1.5">
+                      <Link href={userPath(u.id)} className={btn("ghost", "sm")}>
+                        Edit
+                      </Link>
+                      {u.id === me?.id ? null : (
+                        <>
+                          <button type="button" className={btn("ghost", "sm")} disabled={busy !== null}
+                                  onClick={() => toggleActive(u)}>
+                            {u.status === "disabled" ? "Activate" : "Deactivate"}
+                          </button>
+                          <button type="button" className={btn("danger", "ghost", "sm")} disabled={busy !== null}
+                                  onClick={() => remove(u)}>
+                            {busy === u.id ? "…" : "Delete"}
+                          </button>
+                        </>
+                      )}
+                    </span>
                   </td>
                 </tr>
               ))}

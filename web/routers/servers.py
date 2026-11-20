@@ -34,68 +34,100 @@ def list_servers(user: User = Depends(DEVICES)) -> list[dict[str, Any]]:
     return [s.public() for s in server_vault.list_servers(user.id, kind=None)]
 
 
-def _add_recorder(payload: ServerLoginPayload, user: User) -> dict[str, Any]:
-    """A camera recorder: one read of its camera list is the test login (read-only, never retried)."""
-    from src.servers import nvr, server_vault
+def _tested(kind: str, trial: Any) -> dict[str, Any]:
+    """Log in once with a trial login, as each kind is checked (read-only): a recorder's camera list, a router's or
+    switch's read, a server's SSH login. → host_key, os, os_family, access. A trial carrying a pinned host key
+    (an edit of the same address) refuses any other key. Raises HTTPException 400 with what went wrong."""
+    from src.servers import linux_audit, netdev, nvr, server_vault
 
     try:
-        host = server_vault.check_private(payload.host)
-        recorder = nvr.read_recorder(host, payload.username.strip(), payload.password or "", payload.port)
-        login = server_vault.add(user.id, label=payload.label or recorder.name or host, host=host, port=payload.port,
-                                 username=payload.username, password=payload.password, kind="nvr",
-                                 os=" · ".join(p for p in (recorder.api, recorder.model) if p))
-    except (server_vault.VaultError, nvr.NvrError) as exc:
+        if kind == "nvr":
+            trial.host = server_vault.check_private(trial.host)
+            recorder = nvr.read_recorder(trial.host, trial.username, trial.password or "", trial.port)
+            return {"host_key": "", "os": " · ".join(p for p in (recorder.api, recorder.model) if p),
+                    "os_family": "linux", "access": f"{len(recorder.cameras)} cameras", "name": recorder.name}
+        if kind == "network":
+            trial.host = server_vault.check_private(trial.host)
+            info = netdev.test_login(trial)
+            return {**info, "os_family": "linux"}
+        trial.host = server_vault.check_host(trial.host)
+        info = linux_audit.test_login(trial)
+        return {**info, "os_family": info.get("os_family", "linux")}
+    except (server_vault.VaultError, linux_audit.AuditError, netdev.DeviceError, nvr.NvrError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {**login.public(), "access": f"{len(recorder.cameras)} cameras"}
+    except Exception as exc:  # never hang or 500: a test login can fail in many ways — say what, cleanly
+        logger.exception("test login failed for %s@%s:%s", trial.username, trial.host, trial.port)
+        raise HTTPException(status_code=400, detail=f"could not log in: {type(exc).__name__}: {exc}") from exc
 
 
-def _add_network_device(payload: ServerLoginPayload, user: User) -> dict[str, Any]:
-    """A router or switch: one read-only read is the test login; its SSH host key is pinned like a server's."""
-    from src.servers import linux_audit, netdev, server_vault
+def _trial(payload: ServerLoginPayload, **keep: Any) -> Any:
+    from src.servers import server_vault
 
-    try:
-        host = server_vault.check_private(payload.host)
-        trial = server_vault.ServerLogin(id="trial", label=payload.label or host, host=host, port=payload.port,
-                                         username=payload.username.strip(), password=payload.password or None,
-                                         private_key=payload.private_key or None,
-                                         key_passphrase=payload.key_passphrase or None, kind="network")
-        info = netdev.test_login(trial)
-        login = server_vault.add(user.id, label=trial.label, host=host, port=trial.port, username=trial.username,
-                                 password=trial.password, private_key=trial.private_key,
-                                 key_passphrase=trial.key_passphrase, host_key=info["host_key"], kind="network",
-                                 os=info["os"])
-    except (server_vault.VaultError, linux_audit.AuditError, netdev.DeviceError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {**login.public(), "access": info["access"]}
+    return server_vault.ServerLogin(
+        id="trial", label=payload.label or payload.host.strip(), host=payload.host.strip(), port=payload.port,
+        username=payload.username.strip(), password=payload.password or keep.get("password"),
+        private_key=payload.private_key or keep.get("private_key"),
+        key_passphrase=payload.key_passphrase or keep.get("key_passphrase"),
+        host_key=keep.get("host_key", ""), kind=payload.kind)
 
 
 @router.post("")
 def add_server(payload: ServerLoginPayload, user: User = Depends(DEVICES)) -> dict[str, Any]:
-    """Log in once (learn the server's host key and access level), then keep the login for the session."""
-    from src.servers import linux_audit, server_vault
+    """Log in once (learn the device's host key and what it shows), then keep the login until it is removed."""
+    from src.servers import server_vault
 
-    if payload.kind == "nvr":
-        return _add_recorder(payload, user)
-    if payload.kind == "network":
-        return _add_network_device(payload, user)
-    _check_mode(user, payload.mode)
+    readonly = payload.kind != "ssh"           # recorders, routers and switches are only ever read
+    if not readonly:
+        _check_mode(user, payload.mode)
+    trial = _trial(payload)
+    info = _tested(payload.kind, trial)
     try:
-        server_vault.check_host(payload.host)
-        trial = server_vault.ServerLogin(id="trial", label=payload.label or payload.host, host=payload.host.strip(),
-                                         port=payload.port, username=payload.username.strip(),
-                                         password=payload.password or None, private_key=payload.private_key or None,
-                                         key_passphrase=payload.key_passphrase or None)
-        info = linux_audit.test_login(trial)
-        login = server_vault.add(user.id, label=trial.label, host=trial.host, port=trial.port,
-                                 username=trial.username, password=trial.password, private_key=trial.private_key,
-                                 key_passphrase=trial.key_passphrase, host_key=info["host_key"], mode=payload.mode,
-                                 os=info.get("os", ""), os_family=info.get("os_family", "linux"))
-    except (server_vault.VaultError, linux_audit.AuditError) as exc:
+        login = server_vault.add(user.id, label=payload.label or info.get("name") or trial.host, host=trial.host,
+                                 port=trial.port, username=trial.username, password=trial.password,
+                                 private_key=trial.private_key, key_passphrase=trial.key_passphrase,
+                                 host_key=info["host_key"], mode="audit" if readonly else payload.mode,
+                                 os=info.get("os", ""), os_family=info["os_family"], kind=payload.kind)
+    except server_vault.VaultError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # never hang or 500: a test login can fail in many ways — say what, cleanly
-        logger.exception("add_server failed for %s@%s:%s", payload.username, payload.host, payload.port)
-        raise HTTPException(status_code=400, detail=f"could not add the server: {type(exc).__name__}: {exc}") from exc
-    return {**login.public(), "os": info["os"], "access": info["access"]}
+    return {**login.public(), "access": info["access"]}
+
+
+@router.put("/{server_id}")
+def update_server(server_id: str, payload: ServerLoginPayload, user: User = Depends(DEVICES)) -> dict[str, Any]:
+    """Edit a saved device (Settings → Devices → Edit). A blank password / key keeps the saved one. A new address,
+    port, user name or secret is tested first, like adding; the same address must still show the host key pinned
+    when it was added. Only the name or mode changed: saved without logging in."""
+    from src.servers import server_vault
+
+    try:
+        old = server_vault.get(user.id, server_id)
+    except server_vault.VaultError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if payload.kind != old.kind:
+        raise HTTPException(status_code=400, detail="a device's type cannot change — add it again as the other type")
+    readonly = old.kind != "ssh"
+    if not readonly:
+        _check_mode(user, payload.mode)
+    same_place = payload.host.strip() == old.host and payload.port == old.port
+    new_secret = bool(payload.password or payload.private_key)
+    keep = {k: getattr(old, k) for k in server_vault.SECRET_FIELDS} | ({"host_key": old.host_key} if same_place else {})
+    if new_secret:          # a new password replaces the key and vice versa: only what was typed is kept
+        keep = {k: v for k, v in keep.items() if k == "host_key"}
+    trial = _trial(payload, **keep)
+    info: dict[str, Any] = {"host_key": old.host_key, "os": old.os, "os_family": old.os_family, "access": ""}
+    if not (same_place and payload.username.strip() == old.username and not new_secret):
+        info = _tested(old.kind, trial)
+    edited = server_vault.ServerLogin(
+        id=old.id, label=payload.label.strip() or old.label, host=trial.host, port=trial.port,
+        username=trial.username, password=trial.password, private_key=trial.private_key,
+        key_passphrase=trial.key_passphrase, host_key=info["host_key"] or (old.host_key if same_place else ""),
+        mode="audit" if readonly else payload.mode, os=info.get("os") or old.os,
+        os_family=info.get("os_family") or old.os_family, kind=old.kind)
+    try:
+        saved = server_vault.update(user.id, edited)
+    except server_vault.VaultError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {**saved.public(), "access": info["access"], "tested": bool(info["access"])}
 
 
 @router.put("/{server_id}/mode")

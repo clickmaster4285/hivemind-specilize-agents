@@ -22,7 +22,7 @@ export default function NewDevicePage() {
     <PageHeader title="Add device" about="The login is tested before it is saved, encrypted, for you only.">
       {canDevices ? (
         <section className="mt-6 rounded-xl border border-line bg-panel p-5">
-          <DeviceForm add={servers.add} isAdmin={user.role === "admin"} onAdded={back} onCancel={back} />
+          <DeviceForm save={servers.add} isAdmin={user.role === "admin"} onSaved={back} onCancel={back} />
         </section>
       ) : (
         <p className="mt-6 text-[0.9rem] text-muted">Ask an admin for access to devices.</p>

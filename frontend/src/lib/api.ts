@@ -178,6 +178,14 @@ export async function deactivateUser(id: number): Promise<ManagedUser> {
   return request(`/api/auth/users/${id}`, { method: "DELETE" });
 }
 
+/** Delete an account for good: the person, their chats and everything theirs. `confirm` = the username, typed. */
+export async function deleteUser(
+  id: number,
+  confirm: string,
+): Promise<{ username: string; questions: number; knowledge_base: string }> {
+  return request(`/api/auth/users/${id}/delete`, { method: "POST", body: JSON.stringify({ confirm }) });
+}
+
 /** Whether anyone who can open the page may sign up (else only with an invite link). */
 export async function getSignupSettings(): Promise<{ open: boolean }> {
   return request("/api/auth/users/signup-settings");
@@ -302,6 +310,12 @@ export async function listServers(): Promise<ServerInfo[]> {
 export async function addServer(payload: ServerLoginInput): Promise<ServerInfo> {
   // the API logs in over SSH to test the credentials; bound the wait so a dead host fails clearly
   return request("/api/servers", { method: "POST", body: JSON.stringify(payload) }, { timeoutMs: 30000 });
+}
+
+/** Save an edited device; a changed address or login is tested first (blank password / key = keep the saved one). */
+export async function updateServer(id: string, payload: ServerLoginInput): Promise<ServerInfo> {
+  return request(`/api/servers/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(payload) },
+                 { timeoutMs: 30000 });
 }
 
 export async function removeServer(id: string): Promise<void> {

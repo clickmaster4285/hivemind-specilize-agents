@@ -14,6 +14,7 @@ const KIND_LABEL: Record<string, string> = {
   token_reused: "Sign-in token reused",
   upload_refused: "Upload refused",
   unlocked: "Unlocked by an admin",
+  account_deleted: "Account deleted",
 };
 /** Kinds worth a second look: shown in the danger colour. */
 const SERIOUS = new Set(["account_locked", "address_blocked", "token_reused"]);

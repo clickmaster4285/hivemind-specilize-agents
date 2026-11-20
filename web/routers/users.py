@@ -14,7 +14,7 @@ from src.core.abuse import ADDRESS_KEY, Lock, account_key
 from src.core.accounts import AccountError, check_password, clean_email, clean_text, clean_username
 from src.core.auth import get_db, hash_password, may_use, require_admin, user_modules
 from src.core.models_db import USER_ACTIVE, USER_DISABLED, USER_PENDING, Job, User, UserInvite
-from web.schemas import InvitePayload, SignupSettingsPayload, UserCreatePayload, UserUpdatePayload
+from web.schemas import InvitePayload, SignupSettingsPayload, UserCreatePayload, UserDeletePayload, UserUpdatePayload
 
 router = APIRouter(prefix="/api/auth/users", tags=["users"])
 
@@ -189,6 +189,43 @@ def deactivate_user(
     db.commit()
     db.refresh(user)
     return _user_public(user)
+
+
+@router.post("/{user_id}/delete")
+def delete_user(
+    user_id: int,
+    payload: UserDeletePayload,
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Delete an account for good (src/core/account_delete.py): the person, their chats and everything theirs.
+    "Deactivate" (DELETE /{user_id}) is the undoable one. The admin confirms by typing the username."""
+    from src.core.account_delete import AccountBusy, after_commit, delete_account, delete_knowledge_base_rows
+    from src.core.config import Config
+
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+    if payload.confirm.strip() != user.username:
+        raise HTTPException(status_code=400, detail="Type the username exactly to confirm the delete")
+    config = Config.from_env()
+    username = user.username
+    try:
+        done = delete_account(db, user)
+    except AccountBusy as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _ensure_an_admin_remains(db)
+    security_log.record(db, security_log.ACCOUNT_DELETED, user_id=user_id, account=username,
+                        detail=f"by {admin.username}: {done.jobs} questions, {done.rows} other rows")
+    db.commit()
+    # after the commit: files, kept connections and the knowledge base (another database) — a failure there
+    # must not undo the delete
+    after_commit(done, artifacts_dir=config.artifacts_dir)
+    done.knowledge_base = delete_knowledge_base_rows(user_id, config)
+    return {"status": "deleted", "id": user_id, "username": username, "questions": done.jobs,
+            "rows": done.rows, "chat_folders": done.files, "knowledge_base": done.knowledge_base}
 
 
 # ── sign-up: the open switch and invite links (BACKLOG L16 S7) ─────────────────────────────────────────
