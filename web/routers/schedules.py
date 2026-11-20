@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
 
+from src.core import live_events
 from src.core.auth import get_current_user, get_db
 from src.core.config import Config
 from src.core.models_db import ChatThreadRow, User
@@ -47,6 +48,7 @@ def create_schedule(payload: ScheduleCreatePayload, db: Session = Depends(get_db
         row = schedules.create(db, user, **payload.model_dump(), config=Config.from_env())
     except schedules.ScheduleError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    live_events.after_commit(db, live_events.SCHEDULES, user_id=user.id)
     db.commit()
     return _out(db, row)
 
@@ -55,6 +57,7 @@ def create_schedule(payload: ScheduleCreatePayload, db: Session = Depends(get_db
 def update_schedule(schedule_id: int, payload: ScheduleUpdatePayload, db: Session = Depends(get_db),
                     user: User = Depends(get_current_user)) -> dict[str, Any]:
     row = schedules.set_enabled(db, _own(db, user, schedule_id), payload.enabled)
+    live_events.after_commit(db, live_events.SCHEDULES, user_id=user.id)
     db.commit()
     return _out(db, row)
 
@@ -67,6 +70,7 @@ def run_schedule_now(schedule_id: int, db: Session = Depends(get_db),
         schedules.run_now(db, row, Config.from_env())
     except schedules.ScheduleError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    live_events.after_commit(db, live_events.SCHEDULES, user_id=user.id)
     db.commit()
     return _out(db, row)
 
@@ -74,5 +78,6 @@ def run_schedule_now(schedule_id: int, db: Session = Depends(get_db),
 @router.delete("/{schedule_id}", status_code=204)
 def delete_schedule(schedule_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> Response:
     db.delete(_own(db, user, schedule_id))
+    live_events.after_commit(db, live_events.SCHEDULES, user_id=user.id)
     db.commit()
     return Response(status_code=204)

@@ -43,6 +43,11 @@ def record(db: Session, kind: str, *, user_id: int | None = None, account: str =
         db.execute(delete(SecurityEvent).where(SecurityEvent.at <= now - timedelta(days=SECURITY_LOG_DAYS)))
         db.add(SecurityEvent(at=now, kind=kind, user_id=user_id, account=account[:300], address=address[:300],
                              detail=detail[:DETAIL_CHARS]))
+        from src.core import live_events
+
+        live_events.after_commit(db, live_events.SECURITY, admins=True)
+        if kind in (ACCOUNT_LOCKED, UNLOCKED):          # the Users table shows the "locked" tag
+            live_events.after_commit(db, live_events.USERS, admins=True)
     except Exception as exc:  # noqa: BLE001 — the request goes on without its log row
         log.warning("security log: %s not recorded: %s", kind, exc)
 

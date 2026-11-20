@@ -260,6 +260,9 @@ def after_run(config: Config, job_id: str, *, compare_fn: Callable[[str, str, Co
                 changes = (compare_fn or compare)(_answer(session, previous), _answer(session, job), config)
             status = QUIET if not first and not changes else OK
         row.last_status = status
+        from src.core import live_events
+
+        live_events.after_commit(session, live_events.SCHEDULES, user_id=row.user_id)
         chat = session.get(ChatThreadRow, row.thread_id)
         if chat is not None and status != QUIET:      # a quiet run tells nobody: that is its point
             chat.unread, chat.updated_at = True, _now()

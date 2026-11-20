@@ -29,8 +29,8 @@ from src.llm.model_registry import sync_models_from_ollama
 from web.brain_routes import router as brain_router
 from web.headers import SecurityHeaders
 from web.limits import RequestLimits
-from web.routers import (auth, history, jobs, library, models, schedules, servers, skills, specialists, system, usage,
-                         users)
+from web.routers import (auth, events, history, jobs, library, models, schedules, servers, skills, specialists, system,
+                         usage, users)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -107,7 +107,7 @@ app.add_middleware(SecurityHeaders)
 
 # One router per domain (web/routers/*). brain_router carries its own /api/brain prefix.
 for module in (system, auth, users, specialists, skills, servers, models, jobs, history, library, schedules,
-               usage):
+               usage, events):
     app.include_router(module.router)
 app.include_router(brain_router)
 

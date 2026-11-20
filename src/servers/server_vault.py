@@ -154,7 +154,9 @@ def add(user_id: int, *, label: str, host: str, port: int, username: str, passwo
             raise VaultError(f"at most {MAX_SERVERS_PER_USER} devices per user")
         session.add(row)
         session.flush()
-        return _login(row)
+        added = _login(row)
+    _changed(user_id)
+    return added
 
 
 def list_servers(user_id: int, kind: str | None = "ssh") -> list[ServerLogin]:
@@ -265,6 +267,7 @@ def update(user_id: int, login: ServerLogin) -> ServerLogin:
         session.flush()
         saved = _login(row)
     _forget({login.id})        # a connection kept open with the old login closes now
+    _changed(user_id)
     return saved
 
 
@@ -276,7 +279,9 @@ def set_mode(user_id: int, server_id: str, mode: str) -> ServerLogin:
         if row is None:
             raise VaultError("device not found")
         row.mode = mode
-        return _login(row)
+        changed = _login(row)
+    _changed(user_id)
+    return changed
 
 
 def remove(user_id: int, server_id: str) -> bool:
@@ -285,6 +290,7 @@ def remove(user_id: int, server_id: str) -> bool:
                                                           DeviceRow.id == server_id)).rowcount > 0
     if removed:
         _forget({server_id})
+        _changed(user_id)
     return removed
 
 
@@ -294,7 +300,16 @@ def clear(user_id: int) -> int:
         ids = set(session.scalars(select(DeviceRow.id).where(DeviceRow.user_id == user_id)))
         count = session.execute(delete(DeviceRow).where(DeviceRow.user_id == user_id)).rowcount
     _forget(ids)
+    if count:
+        _changed(user_id)
     return count
+
+
+def _changed(user_id: int) -> None:
+    """The user's open Devices pages reload their list (BACKLOG L29). Called after the change is committed."""
+    from src.core import live_events
+
+    live_events.publish(live_events.DEVICES, user_id=user_id)
 
 
 def _forget(server_ids: set[str]) -> None:

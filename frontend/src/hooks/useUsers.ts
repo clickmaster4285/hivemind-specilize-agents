@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { useLiveTopic } from "@/hooks/useLiveEvents";
 import { createUser, deactivateUser, deleteUser, listUsers, unlockUser, updateUser } from "@/lib/api";
 import type { ManagedUser, UserCreateInput, UserUpdateInput } from "@/lib/types";
 
@@ -18,6 +19,9 @@ export function useUsers(active: boolean) {
       setUsers([]);
     }
   }, []);
+
+  // another admin, a sign-up or a lock changed the list: reload it (live notice, BACKLOG L29)
+  useLiveTopic(["users", "signup"], load, active);
 
   // the list loads when Settings opens; a reply arriving after it closed is ignored
   useEffect(() => {

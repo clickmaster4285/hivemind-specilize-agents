@@ -17,6 +17,7 @@ import {
   SCHEDULES_PATH,
   SETTINGS_PATH,
   pageRoot,
+  settingsTabPath,
 } from "@/lib/routes";
 import { groupThreads, threadDate, type ThreadView } from "@/lib/threadGroups";
 import type { ChatThread } from "@/lib/threads";
@@ -31,6 +32,8 @@ type Props = {
   onToggleCollapsed: () => void;
   /** the page open now, to highlight its nav entry (a form under it, like /settings/users/3, counts as it) */
   pathname: string;
+  /** admins: sign-ups waiting for approval — a badge on the account button and its Settings row (live, L29) */
+  signupsWaiting?: number;
   onGo: (path: string) => void;
   onNewChat: () => void;
   onOpenThread: (thread: ChatThread) => void;
@@ -105,6 +108,7 @@ export default function ChatSidebar({
   collapsed,
   onToggleCollapsed,
   pathname,
+  signupsWaiting = 0,
   onGo,
   onNewChat,
   onOpenThread,
@@ -162,7 +166,8 @@ export default function ChatSidebar({
         username={username}
         role={role}
         collapsed={collapsed}
-        onOpenSettings={() => onGo(SETTINGS_PATH)}
+        waiting={signupsWaiting}
+        onOpenSettings={() => onGo(signupsWaiting ? settingsTabPath("users") : SETTINGS_PATH)}
         onSignOut={onSignOut}
       />
     </aside>
@@ -170,16 +175,31 @@ export default function ChatSidebar({
 }
 
 /** The account button at the bottom (name, role) and its menu, like ChatGPT / Claude / DeepSeek (L24 U4). */
+/** The count of sign-ups waiting, as a small copper pill. */
+function WaitingBadge({ count, className = "" }: { count: number; className?: string }) {
+  if (!count) return null;
+  return (
+    <span
+      className={`rounded-full bg-copper px-1.5 py-0.5 text-[0.65rem] font-semibold leading-none text-on-copper ${className}`}
+      aria-label={`${count} sign-up${count === 1 ? "" : "s"} waiting for approval`}
+    >
+      {count}
+    </span>
+  );
+}
+
 function AccountMenu({
   username,
   role,
   collapsed,
+  waiting,
   onOpenSettings,
   onSignOut,
 }: {
   username: string;
   role: string;
   collapsed: boolean;
+  waiting: number;
   onOpenSettings: () => void;
   onSignOut: () => void;
 }) {
@@ -200,6 +220,7 @@ function AccountMenu({
             <button type="button" role="menuitem" className={menuRow} onClick={() => { setOpen(false); onOpenSettings(); }}>
               <IconSettings />
               Settings
+              <WaitingBadge count={waiting} className="ml-auto" />
             </button>
             <div className="my-1 border-t border-line" />
             <button type="button" role="menuitem" className={menuRow} onClick={() => { setOpen(false); onSignOut(); }}>
@@ -217,8 +238,9 @@ function AccountMenu({
         aria-expanded={open}
         title={collapsed ? username : undefined}
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-copper text-[0.8rem] font-semibold text-ink">
+        <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-copper text-[0.8rem] font-semibold text-ink">
           {initial}
+          <WaitingBadge count={waiting} className="absolute -right-2 -top-1.5 ring-2 ring-panel" />
         </span>
         {collapsed ? null : (
           <span className="min-w-0 flex-1">

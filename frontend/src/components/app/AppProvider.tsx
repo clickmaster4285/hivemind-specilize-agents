@@ -5,13 +5,14 @@
  * the page content (children) changes when you move between / and /settings — and the open chat
  * survives that move. Everything the old ControlDeck did lives here; pages read it with useApp().
  */
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useScheduledResults } from "@/hooks/useScheduledResults";
 import { useChat, type SendOptions } from "@/hooks/useChat";
 import { useHealth } from "@/hooks/useHealth";
 import { useHistory } from "@/hooks/useHistory";
+import { useLiveEvents, useLiveTopic } from "@/hooks/useLiveEvents";
 import { useModels } from "@/hooks/useModels";
 import { usePendingImages } from "@/hooks/usePendingImages";
 import { useSkills } from "@/hooks/useSkills";
@@ -19,7 +20,7 @@ import { useSpecialists } from "@/hooks/useSpecialists";
 import { useThreadMemory } from "@/hooks/useThreadMemory";
 import { useWindowEvent } from "@/hooks/useWindowEvent";
 import type { MemoryBusy } from "@/components/chat/ChatMemory";
-import { chooseOptions, compactThread, confirmCommand, continueThread, summarizeThread, type ImageProfile } from "@/lib/api";
+import { chooseOptions, compactThread, confirmCommand, continueThread, listUsers, summarizeThread, type ImageProfile } from "@/lib/api";
 import { chatImagesToPending, COMPACT_COMMAND, errorText, IMAGE_QUESTION, type EditStrength } from "@/lib/chat";
 import { saveText } from "@/lib/download";
 import { newId } from "@/lib/id";
@@ -95,6 +96,34 @@ function useAppState() {
     void loadHistory(signedInId).then(() => refreshJobs());
   }, [signedInId, loadHistory, refreshJobs]);
   useScheduledResults(signedInId !== null, onNewResults);
+
+  // Live notices (BACKLOG L29): one stream per tab while signed in. A chat started, finished, renamed or moved in
+  // another tab or device updates this sidebar; the open chat stays as it is.
+  useLiveEvents(signedInId !== null);
+  const { refreshMeta } = history;
+  useLiveTopic(["chats", "projects"], () => refreshMeta().then(() => refreshJobs()), signedInId !== null);
+
+  // Admins: how many sign-ups wait for approval — the badge on Settings in the sidebar, live.
+  const isAdmin = auth.user?.role === "admin";
+  const [signupsWaiting, setSignupsWaiting] = useState(0);
+  const countSignups = useCallback(
+    () =>
+      listUsers()
+        .then((list) => setSignupsWaiting(list.filter((u) => u.status === "pending").length))
+        .catch(() => undefined),      // the badge just stays as it was
+    [],
+  );
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    listUsers()
+      .then((list) => !cancelled && setSignupsWaiting(list.filter((u) => u.status === "pending").length))
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+  useLiveTopic(["users", "signup"], countSignups, isAdmin);
 
   // A diagram that failed to draw asks the assistant to fix it (MermaidDiagram sends "multeagent:ask").
   useWindowEvent<string>("multeagent:ask", (text) => {
@@ -231,6 +260,7 @@ function useAppState() {
   return {
     auth, health, models, specialists, skills, history, images, chat,
     memory: threadMemory.memory,
+    signupsWaiting: isAdmin ? signupsWaiting : 0,
     query, setQuery, queryRef,
     runMode, setRunMode, imageProfile, setImageProfile, editStrength, setEditStrength,
     deep,

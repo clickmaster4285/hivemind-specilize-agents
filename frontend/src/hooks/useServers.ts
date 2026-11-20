@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { useLiveTopic } from "@/hooks/useLiveEvents";
 import { addServer, listServers, removeServer, setServerMode, updateServer } from "@/lib/api";
 import type { ServerInfo, ServerLoginInput, ServerMode } from "@/lib/types";
 
@@ -19,6 +20,9 @@ export function useServers(active: boolean) {
       setServers([]);
     }
   }, []);
+
+  // saved or changed in another tab: reload the list (live notice, BACKLOG L29)
+  useLiveTopic(["devices"], load, active);
 
   // the list loads when Settings opens; a reply arriving after it closed is ignored
   useEffect(() => {

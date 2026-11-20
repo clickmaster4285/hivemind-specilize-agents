@@ -119,6 +119,13 @@ export function useHistory() {
     setProjectId(activeProjectId(uid));
   }, []);
 
+  /** The chat titles, pins and projects again — no migration, the open chat stays (a live notice, L29). */
+  const refreshMeta = useCallback(async () => {
+    const hist = await fetchHistory();
+    setThreadMeta(hist.threads);
+    setProjects(hist.projects);
+  }, []);
+
   const selectThread = useCallback((id: string | null) => {
     setActiveThreadIdState(id);
     if (userId !== null) setActiveThreadId(userId, id);
@@ -252,6 +259,7 @@ export function useHistory() {
     addJob,
     dropJobs,
     loadHistory,
+    refreshMeta,
     noteThread,
     patchMeta,
     markSeen,

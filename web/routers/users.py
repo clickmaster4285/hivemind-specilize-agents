@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.core import abuse, modules, security_log, signup
+from src.core import abuse, live_events, modules, security_log, signup
 from src.core.abuse import ADDRESS_KEY, Lock, account_key
 from src.core.accounts import AccountError, check_password, clean_email, clean_text, clean_username
 from src.core.auth import get_db, hash_password, may_use, require_admin, user_modules
@@ -99,6 +99,7 @@ def create_user(
     """Admin provisions an account (active at once; self sign-ups wait in the list instead). The new user can
     sign in and chat — their queries land in the jobs table under their own user_id, so per-user and (via
     the team tag) per-group query analytics work from first login. Rejects duplicate usernames."""
+    live_events.after_commit(db, live_events.USERS, admins=True)
     username = _checked(clean_username, db, payload.username)
     _checked(check_password, payload.password)
     email = _checked(clean_email, db, payload.email)
@@ -128,6 +129,7 @@ def update_user(
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
     """Admin edits an account. Guards stop you from locking admin out of the system."""
+    live_events.after_commit(db, live_events.USERS, admins=True)
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -174,6 +176,7 @@ def deactivate_user(
     """"Delete" = deactivate: the account can no longer sign in, but its chats and queries are kept
     (that search data is the point of having accounts). Re-enable with PATCH status=active.
     A sign-up still waiting for approval is rejected instead: deleted (it has no chats yet)."""
+    live_events.after_commit(db, live_events.USERS, admins=True)
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -200,6 +203,7 @@ def delete_user(
 ) -> dict[str, Any]:
     """Delete an account for good (src/core/account_delete.py): the person, their chats and everything theirs.
     "Deactivate" (DELETE /{user_id}) is the undoable one. The admin confirms by typing the username."""
+    live_events.after_commit(db, live_events.USERS, admins=True)
     from src.core.account_delete import AccountBusy, after_commit, delete_account, delete_knowledge_base_rows
     from src.core.config import Config
 

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { useLiveTopic } from "@/hooks/useLiveEvents";
+
 import { listSecurityEvents } from "@/lib/api";
 import type { SecurityLog } from "@/lib/types";
 import { btn } from "@/lib/ui";
@@ -29,6 +31,8 @@ export default function SecurityLogPanel() {
   const [kind, setKind] = useState("");
   const [log, setLog] = useState<SecurityLog | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fresh, setFresh] = useState(0);          // a new entry was logged (live notice, BACKLOG L29)
+  useLiveTopic(["security"], () => setFresh((n) => n + 1), open);
 
   useEffect(() => {
     if (!open) return;
@@ -37,7 +41,7 @@ export default function SecurityLogPanel() {
       .then((r) => { if (!cancelled) { setLog(r); setError(null); } })
       .catch((err: unknown) => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)); });
     return () => { cancelled = true; };
-  }, [open, kind]);
+  }, [open, kind, fresh]);
 
   return (
     <details

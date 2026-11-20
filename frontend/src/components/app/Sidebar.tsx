@@ -23,6 +23,7 @@ export default function Sidebar({ collapsed, onToggleCollapsed }: { collapsed: b
       collapsed={collapsed}
       onToggleCollapsed={onToggleCollapsed}
       pathname={pathname || ""}
+      signupsWaiting={app.signupsWaiting}
       onGo={(path) => router.push(path)}
       onNewChat={newChat}
       onOpenThread={openChat}

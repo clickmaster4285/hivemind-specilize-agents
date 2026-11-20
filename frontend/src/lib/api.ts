@@ -665,7 +665,12 @@ export async function streamJobEvents(
   if (!response.ok) throw new Error(await readError(response));
   if (!response.body) throw new Error("Empty event stream");
 
-  const reader = response.body.getReader();
+  await readEventStream(response.body, (data) => onEvent(data as JobEvent));
+}
+
+/** Read a Server-Sent Events body: each `data:` message, parsed as JSON; comment lines (keep-alives) skipped. */
+async function readEventStream(body: ReadableStream<Uint8Array>, onData: (data: unknown) => void): Promise<void> {
+  const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   try {
@@ -682,12 +687,29 @@ export async function streamJobEvents(
           .map((line) => line.slice(5).trim())
           .join("");
         if (!data) continue;
-        onEvent(JSON.parse(data) as JobEvent);
+        onData(JSON.parse(data));
       }
     }
   } catch (err) {
     throw new Error(networkHint(err));
   }
+}
+
+/** The app-wide live stream (BACKLOG L29): calls onType with each notice's type ("hello", "devices", "chats"…)
+ *  until the stream ends or `signal` aborts. Resolves when the server closes it; throws on a failed connect. */
+export async function streamLiveEvents(onType: (type: string) => void, signal: AbortSignal): Promise<void> {
+  let response: Response;
+  try {
+    response = await apiFetch("/api/events", { signal });
+  } catch (err) {
+    throw new Error(networkHint(err));
+  }
+  if (!response.ok) throw new Error(await readError(response));
+  if (!response.body) throw new Error("Empty event stream");
+  await readEventStream(response.body, (data) => {
+    const type = (data as { type?: unknown })?.type;
+    if (typeof type === "string") onType(type);
+  });
 }
 
 /** How full a chat's memory is (summary + recent exchanges vs the history budget), and the room before a fold. */

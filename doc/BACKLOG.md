@@ -20,7 +20,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L4](#l4-enforce-local-only-no-cloud---done-2026-11-02) | Local-only (no cloud) | ✅ 2026-11-02 |  |
 | [L5](#l5-router-heuristics) | Router heuristics | open | revisit with specialists |
 | [L5b](#l5b-the-model-does-not-know-todays-date---fixed-in-b4-datetime-in-every-chat-prompt) | Model knows today's date | ✅ (B4) |  |
-| [L5c](#l5c-citation-checker-answer-quality---built-2026-10-19) | Citation checker | ✅ 2026-10-19 |  |
+| [L5c](#l5c-citation-checker-answer-quality---built-2026-10-19) | Citation checker | ✅ KB 2026-10-19; web + Deep 2026-11-20 | live look at a web and a Deep answer |
 | [L6](#l6-cleanup---done-2026-11-02) | Cleanup | ✅ 2026-11-02 |  |
 | [L7](#l7-sdxl-memory-is-double-the-expected-size--slow-images---resolved-2026-10-16) | SDXL memory / slow images | ✅ 2026-10-16 |  |
 | [L8](#l8-serving-throughput-revisit-vllm--only-if-we-go-multi-user-on-linux--gpu) | vLLM serving | not now | only for many users on Linux + GPU |
@@ -45,6 +45,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L28](#l28-one-place-for-each-fact--2026-11-18-issues_log-o97) | One place for each fact (clean-up) | ✅ 2026-11-18 |  |
 | [L27](#l27-server-work-like-a-developer--2026-11-18-issues_log-o93o96) | Server work like a developer: guided deploy, look-questions, logins kept open | built 2026-11-18 | live check on the uk server |
 | [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H1, H2, H3 built (2026-11-18) | NousResearch hermes-agent (MIT) |
+| [L29](#l29-live-updates-without-a-reload--planned-2026-11-20-issues_log-o120) | Live updates without a reload (one SSE stream) | built 2026-11-20 | API restart + user's look with two tabs |
 
 ---
 
@@ -757,4 +758,28 @@ every message logged in again. How it works: [SERVER_ACCESS_DECISION.md §9](SER
 - [x] O108 cards above the answer; O109 commands folded; O110 Run now while busy; O111 image edits keep the subject; O112 eval — built 2026-11-19
 - [ ] Live check of O100–O112 (the user): API restart, eval, a uk-server chat, Run now while busy, an image change
 - [x] H2 skills from tasks — built 2026-11-17: "Save as skill" (✦) under every answer → `POST /api/skills/draft` (src/llm/skill_draft.py) → the skill editor opens filled in; saved only by the user
+
+### L29. Live updates without a reload — built 2026-11-20 (ISSUES_LOG O120)
+
+Only the chat is live (Server-Sent Events per job, `/api/jobs/{id}/events`); every other list loads once. The user
+asked for the rest to follow without a reload (2026-11-20).
+
+- **Transport: Server-Sent Events, not WebSockets or WebRTC.** Updates flow one way (API → browser); the browser's
+  own actions are ordinary API calls. SSE is what the chat already uses, passes the Next.js `/api` proxy with the
+  sign-in cookie, reconnects by itself, and needs no new package. WebRTC is browser-to-browser media — not this.
+- **One stream per signed-in tab:** `GET /api/events`, opened after sign-in, closed at sign-out. The API sends small
+  notices only — never the data itself, so nothing is sent to someone who may not see it:
+  `users` (admins), `signup` (admins: a sign-up is waiting), `devices` (that user), `chats`, `projects`,
+  `schedules` (that user), `security` (admins). A keep-alive line every ~20 s.
+- **Each page reloads only its own list** when its notice arrives (the Users table, Devices, the sidebar's chat
+  list…); the sidebar shows a badge on Settings while a sign-up waits.
+- **One process today** (API + worker threads in `main.py --gui`): an in-memory publish / subscribe is enough.
+  A separate worker process later would need Postgres `LISTEN / NOTIFY` behind the same `publish()`.
+- Left for later: the chat's own per-job stream stays as it is; a member's own page does not yet follow an admin
+  changing their modules (they see it at the next sign-in or reload).
+- **Built 2026-11-20:** `src/core/live_events.py`, `web/routers/events.py`; publishers in `jobs.py` (created,
+  finished, cancelled, deleted), `history_store.py`, `users.py` + `signup.py`, `security_log.record`,
+  `server_vault` (add, edit, mode, remove, access taken away), schedules; `frontend/src/lib/liveEvents.ts`,
+  `hooks/useLiveEvents.ts`. The stream re-checks the sign-in every minute and ends for a signed-out, deactivated or
+  deleted account. Tests: `tests/test_live_events.py`.
 

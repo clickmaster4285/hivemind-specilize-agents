@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from src.core import security_log
+from src.core import live_events, security_log
 from src.tools.attachments import UploadRefused, save_images
 from src.core.config import Config
 from src.core.conversation import normalize_conversation
@@ -214,6 +214,7 @@ def create_job(
     )
     session.add(job)
     session.flush()
+    live_events.after_commit(session, live_events.CHATS, user_id=user.id)     # the sidebar of the user's other tabs
     # Make (or keep) this chat's metadata row so history can show its title across devices.
     thread_id = str(payload.get("thread_id") or "").strip() or None
     if thread_id:
@@ -325,6 +326,9 @@ def set_job_status(
         values["finished_at"] = _utcnow()
     session.execute(update(Job).where(Job.id == job_id).values(**values))
     session.flush()
+    owner = session.scalar(select(Job.user_id).where(Job.id == job_id))
+    if owner is not None:           # a chat started or finished: the user's other tabs update their chat list
+        live_events.after_commit(session, live_events.CHATS, user_id=owner)
 
 
 def get_job(session: Session, job_id: str, *, include_deleted: bool = False) -> Job | None:
@@ -345,6 +349,7 @@ def soft_delete_job(session: Session, job: Job) -> Job:
         job.finished_at = job.finished_at or _utcnow()
         append_event(session, job.id, {"type": "job_cancelled", "job_id": job.id, "reason": "soft_deleted"})
     session.flush()
+    live_events.after_commit(session, live_events.CHATS, user_id=job.user_id)
     return job
 
 
@@ -371,6 +376,7 @@ def cancel_job(session: Session, job: Job) -> Job:
     job.finished_at = _utcnow()
     session.flush()
     append_event(session, job.id, {"type": "job_cancelled", "job_id": job.id})
+    live_events.after_commit(session, live_events.CHATS, user_id=job.user_id)
     return job
 
 

@@ -91,6 +91,10 @@ def sign_up(db: Session, *, username: str, email: str, phone: str | None, passwo
                 phone=clean_text(phone), status=USER_PENDING, signup_address=address,
                 modules_json=invite.modules_json if invite else DEFAULT_MODULES_JSON,
                 invited_by=invite.created_by if invite else None)
+    from src.core import live_events
+
+    live_events.after_commit(db, live_events.SIGNUP, admins=True)     # the admins' badge and Users table
+    live_events.after_commit(db, live_events.USERS, admins=True)
     db.add(user)
     if invite is not None:
         invite.used_at = utcnow()

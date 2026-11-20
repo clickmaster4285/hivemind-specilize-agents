@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useApp } from "@/components/app/AppProvider";
 import PageHeader from "@/components/app/PageHeader";
+import { useLiveTopic } from "@/hooks/useLiveEvents";
 import { useOpenChat } from "@/hooks/useOpenChat";
 import { ApiError, deleteSchedule, listSchedules, runScheduleNow, setScheduleEnabled, type Schedule } from "@/lib/api";
 import { errorText } from "@/lib/chat";
@@ -32,6 +33,8 @@ export default function SchedulesPage() {
   const [error, setError] = useState<string | null>(null);
   const [waiting, setWaiting] = useState<Set<number>>(new Set());
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const [fresh, setFresh] = useState(0);          // changed in another tab, or a run finished (BACKLOG L29)
+  useLiveTopic(["schedules"], () => setFresh((n) => n + 1));
 
   useEffect(() => {
     const pending = timers.current;
@@ -44,7 +47,7 @@ export default function SchedulesPage() {
       .then((r) => { if (!cancelled) setRows(r); })
       .catch((err: unknown) => { if (!cancelled) setError(errorText(err)); });
     return () => { cancelled = true; };
-  }, []);
+  }, [fresh]);
   if (!app.auth.user) return null; // the shell shows the login when signed out
 
   async function toggle(s: Schedule) {

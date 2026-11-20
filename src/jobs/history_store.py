@@ -20,6 +20,14 @@ from src.core.models_db import ChatThreadRow, Feedback, ProjectRow
 _UNSET: Any = object()
 
 
+def _changed(session: Session, user_id: int, *topics: str) -> None:
+    """The user's other tabs reload these lists once this change is committed (BACKLOG L29)."""
+    from src.core import live_events
+
+    for topic in topics:
+        live_events.after_commit(session, topic, user_id=user_id)
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -81,6 +89,7 @@ def touch_thread(session: Session, user_id: int, thread_id: str, *, title: str |
         if title and row.title in ("", "New chat"):
             row.title = title.strip()[:200] or row.title
         row.updated_at = _utcnow()
+    _changed(session, user_id, "chats")
     return row
 
 
@@ -108,6 +117,7 @@ def upsert_thread(
         row.project_id = project_id or None
     row.deleted_at = None
     row.updated_at = _utcnow()
+    _changed(session, user_id, "chats")
     return row
 
 
@@ -120,6 +130,7 @@ def delete_thread(session: Session, user_id: int, thread_id: str) -> bool:
         row.deleted_at = _utcnow()
     row.pinned = False
     row.updated_at = _utcnow()
+    _changed(session, user_id, "chats")
     return True
 
 
@@ -128,6 +139,7 @@ def create_project(session: Session, user_id: int, name: str) -> ProjectRow:
 
     row = ProjectRow(id=str(uuid4()), user_id=user_id, name=name.strip()[:200] or "Untitled project")
     session.add(row)
+    _changed(session, user_id, "projects")
     return row
 
 
@@ -136,6 +148,7 @@ def rename_project(session: Session, user_id: int, project_id: str, name: str) -
     if row is None or row.deleted_at is not None:
         return None
     row.name = name.strip()[:200] or row.name
+    _changed(session, user_id, "projects")
     return row
 
 
@@ -189,6 +202,7 @@ def import_history(
         if t.get("deleted_at") or t.get("deletedAt"):
             row.deleted_at = _utcnow()
         count += 1
+    _changed(session, user_id, "chats", "projects")
     return {"imported": True, "threads": count}
 
 
@@ -204,4 +218,5 @@ def delete_project(session: Session, user_id: int, project_id: str) -> bool:
     ).all():
         thread.project_id = None
         thread.updated_at = _utcnow()
+    _changed(session, user_id, "chats", "projects")
     return True
