@@ -10,16 +10,14 @@ const SEARCH_PAUSE_MS = 300;
 /** Decisions that mean the server was not changed: shown muted. */
 const NOT_RUN = new Set(["cancelled", "refused"]);
 
-/** Settings → Users: what the agent ran (or was refused) on servers, for every user — the audit trail, kept after an
- *  account is deleted (ISSUES_LOG O123). Folded until opened; searchable by user, server, host or command. */
+/** Settings → Server commands (admins): what the agent ran (or was refused) on servers, for every user — the audit
+ *  trail, kept after an account is deleted (ISSUES_LOG O123). Searchable by user, server, host or command. */
 export default function CommandLogPanel() {
-  const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [rows, setRows] = useState<CommandLogRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
       listCommandLog(search.trim())
@@ -30,15 +28,12 @@ export default function CommandLogPanel() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [open, search]);
+  }, [search]);
 
   return (
-    <details
-      className="mt-4 rounded-lg border border-line bg-panel-2 p-3"
-      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
-    >
-      <summary className="cursor-pointer text-sm font-semibold">Server commands</summary>
-      <p className="m-0 mt-1 text-xs text-muted">
+    <>
+      <h4 className="m-0 text-base font-semibold [font-family:var(--font-display)]">Server commands</h4>
+      <p className="m-0 text-xs text-muted">
         Every change the agent made, or was refused, on a server — who, where, what. Kept when an account is deleted.
       </p>
       <input
@@ -51,7 +46,7 @@ export default function CommandLogPanel() {
       {error ? <p className="m-0 mt-2 text-xs text-danger">{error}</p> : null}
       {rows && !rows.length ? <p className="m-0 mt-2 text-xs text-muted">Nothing here.</p> : null}
       {rows?.length ? (
-        <div className="mt-2 max-h-96 overflow-auto">
+        <div className="mt-2 max-h-[70vh] overflow-auto">
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 bg-panel-2 text-left text-muted">
               <tr>
@@ -91,6 +86,6 @@ export default function CommandLogPanel() {
           </table>
         </div>
       ) : null}
-    </details>
+    </>
   );
 }

@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 import jwt
 from fastapi import Depends, HTTPException, Request, Response, status
 from passlib.context import CryptContext
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from src.core import modules
@@ -46,6 +46,13 @@ SESSION_MAX_AGE = timedelta(days=30)
 # while an account must replace an admin-chosen password, only these calls work (the page shows the change form)
 PASSWORD_CHANGE_PATHS = frozenset({"/api/auth/me", "/api/auth/password", "/api/auth/logout", "/api/events"})
 PASSWORD_CHANGE_HEADER = "X-Password-Change"
+# How a session is named in My account → Sessions, from the browser's User-Agent: the first match wins, so the
+# browsers built on Chrome come before it (Edge says "Chrome/… Edg/…") and Chrome before Safari (it says both).
+UA_BROWSERS = (("Edg/", "Edge"), ("OPR/", "Opera"), ("Firefox/", "Firefox"), ("Chrome/", "Chrome"),
+               ("Safari/", "Safari"))
+UA_SYSTEMS = (("Windows", "Windows"), ("Android", "Android"), ("iPhone", "iPhone"), ("iPad", "iPad"),
+              ("Mac OS X", "macOS"), ("CrOS", "ChromeOS"), ("Linux", "Linux"))
+DEVICE_CHARS = 120
 
 
 def hash_password(password: str) -> str:
@@ -107,9 +114,20 @@ def token_digest(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _issue_refresh(db: Session, user_id: int, family: str, config: Config, started: datetime) -> str:
+def device_name(user_agent: str | None) -> str:
+    """"Chrome on Windows" from a User-Agent; "Unknown device" when it says neither (a script, curl)."""
+    ua = user_agent or ""
+    browser = next((name for mark, name in UA_BROWSERS if mark in ua), "")
+    system = next((name for mark, name in UA_SYSTEMS if mark in ua), "")
+    name = f"{browser} on {system}" if browser and system else browser or system
+    return (name or "Unknown device")[:DEVICE_CHARS]
+
+
+def _issue_refresh(db: Session, user_id: int, family: str, config: Config, started: datetime, *,
+                   device: str = "", address: str = "") -> str:
     token = secrets.token_urlsafe(REFRESH_TOKEN_BYTES)
     db.add(RefreshToken(user_id=user_id, family=family, token_hash=token_digest(token), session_started_at=started,
+                        device=device, address=address,
                         expires_at=min(utcnow() + timedelta(days=config.refresh_token_days),
                                        started + SESSION_MAX_AGE)))
     return token
@@ -134,6 +152,31 @@ def revoke_user_sessions(db: Session, user_id: int, *, keep_family: str | None =
     return len(families)
 
 
+def list_sessions(db: Session, user_id: int) -> list[dict[str, Any]]:
+    """This account's live sign-ins, newest activity first: one per family — when it began, when it was last
+    renewed, the device and the address it was made from. One query (GROUP BY family)."""
+    rows = db.execute(
+        select(RefreshToken.family, func.min(func.coalesce(RefreshToken.session_started_at, RefreshToken.created_at)),
+               func.max(RefreshToken.created_at), func.max(RefreshToken.device), func.max(RefreshToken.address))
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None), RefreshToken.expires_at > utcnow())
+        .group_by(RefreshToken.family)
+        .order_by(func.max(RefreshToken.created_at).desc())
+    ).all()
+    return [{"id": family, "started_at": as_utc(started).isoformat(), "last_active_at": as_utc(last).isoformat(),
+             "device": device or "Unknown device", "address": address or ""}
+            for family, started, last, device, address in rows]
+
+
+def end_session_of(db: Session, user_id: int, family: str) -> bool:
+    """End one sign-in of this account (My account → Sessions → Sign out). False when it is not theirs or gone."""
+    owned = db.scalar(select(RefreshToken.id).where(RefreshToken.user_id == user_id, RefreshToken.family == family,
+                                                    RefreshToken.revoked_at.is_(None)).limit(1))
+    if owned is None:
+        return False
+    _revoke_family(db, family)
+    return True
+
+
 def session_family(request: Request) -> str | None:
     """The caller's own sign-in (its family id), from the access cookie — kept when they end their other sessions."""
     token = request.cookies.get(ACCESS_COOKIE)
@@ -143,12 +186,13 @@ def session_family(request: Request) -> str | None:
         return None
 
 
-def start_session(db: Session, user: User, config: Config | None = None) -> tuple[str, str]:
+def start_session(db: Session, user: User, config: Config | None = None, *, device: str = "",
+                  address: str = "") -> tuple[str, str]:
     """A new sign-in: (access token, refresh token). The user's expired tokens are cleared on the way."""
     config = config or Config.from_env()
     db.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id, RefreshToken.expires_at < utcnow()))
     family = str(uuid.uuid4())
-    refresh = _issue_refresh(db, user.id, family, config, utcnow())
+    refresh = _issue_refresh(db, user.id, family, config, utcnow(), device=device, address=address)
     db.commit()
     return create_access_token(user, family, config), refresh
 
@@ -177,7 +221,8 @@ def refresh_session(db: Session, token: str, config: Config | None = None,
         return user, create_access_token(user, row.family, config), None
     row.used_at = now
     # rows made before session_started_at existed: their own time is the best guess of when the sign-in began
-    refresh = _issue_refresh(db, user.id, row.family, config, as_utc(row.session_started_at or row.created_at))
+    refresh = _issue_refresh(db, user.id, row.family, config, as_utc(row.session_started_at or row.created_at),
+                             device=row.device or "", address=row.address or "")
     db.commit()
     return user, create_access_token(user, row.family, config), refresh
 

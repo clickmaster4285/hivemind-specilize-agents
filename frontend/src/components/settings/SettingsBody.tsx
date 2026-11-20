@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { WIDE_PAGE_WIDTH } from "@/components/app/PageHeader";
 import AccountSection from "@/components/settings/AccountSection";
+import CommandLogPanel from "@/components/settings/users/CommandLogPanel";
 import UsageSection from "@/components/settings/UsageSection";
 import UsersSection from "@/components/settings/users/UsersSection";
 import { useUsers } from "@/hooks/useUsers";
@@ -35,7 +36,7 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
   // Devices to /devices, and Models was dropped (one model, picked per message) — the user's asks, 2026-11-17.
   // The first visible tab is the default.
   const tabs: { id: SettingsTab; label: string }[] = [
-    ...(isAdmin ? [{ id: "users" as const, label: "Users" }] : []),
+    ...(isAdmin ? [{ id: "users" as const, label: "Users" }, { id: "commands" as const, label: "Server commands" }] : []),
     ...(has("usage") ? [{ id: "usage" as const, label: "Usage" }] : []),
     { id: "agents", label: "Agents" },
     { id: "account", label: "My account" },
@@ -76,6 +77,13 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
       {tab === "usage" && has("usage") ? (
         <section className={panel}>
           <UsageSection />
+        </section>
+      ) : null}
+
+      {/* Server commands (admins): the audit trail of what the agent ran on servers (ISSUES_LOG O123) */}
+      {tab === "commands" && isAdmin ? (
+        <section className={panel}>
+          <CommandLogPanel />
         </section>
       ) : null}
 

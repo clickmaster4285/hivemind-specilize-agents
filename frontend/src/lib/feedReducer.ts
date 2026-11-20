@@ -15,7 +15,7 @@ import type {
   JobArtifact,
   ToolStep,
 } from "@/lib/types";
-import { formatAgentOutput, formatToolResult, summarizeArgs } from "@/lib/format";
+import { formatAgentOutput, formatSeconds, formatToolResult, summarizeArgs } from "@/lib/format";
 
 const DOC_KINDS = new Set([
   "document",
@@ -227,11 +227,13 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
   const type = String(event.type || "");
 
   if (type === "job_queued") {
-    return upsertStatus(
-      prev,
-      "Queued",
-      `~${Number(event.estimated_wait_seconds || 0).toFixed(0)}s wait`,
-    );
+    return upsertStatus(prev, "Queued", `about ${formatSeconds(Number(event.estimated_wait_seconds || 0))} wait`);
+  }
+  if (type === "queue_position") {
+    // live while it waits (BACKLOG L30 T3): its place, and the wait from measured answer times
+    const place = Number(event.position || 1);
+    const wait = formatSeconds(Number(event.wait_seconds || 0));
+    return upsertStatus(prev, "Queued", place <= 1 ? `next — about ${wait}` : `${place} in line — about ${wait}`);
   }
   if (type === "route_decided") {
     const requested = String(event.requested_mode || "auto");

@@ -22,6 +22,7 @@ import {
   upsertStatus,
 } from "@/lib/feedReducer";
 import { newId } from "@/lib/id";
+import { announceIfAway } from "@/lib/notify";
 import type { ChatThread } from "@/lib/threads";
 import type { ChatImage, FeedItem, JobEvent, RunMode } from "@/lib/types";
 import type { HistoryApi } from "@/hooks/useHistory";
@@ -51,6 +52,9 @@ export type SendOptions = {
  * The open conversation: its messages (feed), the running job, sending, streaming and Stop.
  * `options` are read when a message is sent; `onSent` clears the composer.
  */
+// a notification shows this much of the question it answers
+const NOTIFY_CHARS = 80;
+
 export function useChat(history: HistoryApi, options: JobOptions, onSent: () => void) {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [title, setTitle] = useState("New chat");
@@ -253,6 +257,8 @@ export function useChat(history: HistoryApi, options: JobOptions, onSent: () => 
         if (event.type === "answer_written") setAnswered(true);
         applyEvent(event);
       });
+      const asked = trimmed || IMAGE_QUESTION;
+      announceIfAway("Your answer is ready", asked.length > NOTIFY_CHARS ? `${asked.slice(0, NOTIFY_CHARS)}…` : asked);
       await history.refreshJobs();
     } catch (err) {
       if (sendGen.current === gen) setFeed((prev) => upsertStatus(prev, "Error", errorText(err), true));

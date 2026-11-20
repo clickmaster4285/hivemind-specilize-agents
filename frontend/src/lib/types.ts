@@ -325,7 +325,9 @@ export type UsageSummary = {
   all_users: boolean;
   since: string;
   total: UsageTotals;
-  users: (UsageTotals & { user_id: number | null; username: string; answers: number })[];
+  users: (UsageTotals & { user_id: number | null; username: string; team: string | null; answers: number })[];
+  /** the users' usage added up by team (admins: every team; a member: their own) */
+  teams: (UsageTotals & { team: string; people: number; answers: number })[];
   steps: (UsageTotals & { step: string })[];
 };
 

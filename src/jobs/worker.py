@@ -31,7 +31,7 @@ from src.jobs.jobs import append_event, claim_next_job, get_job, queue_depth, re
 
 log = logging.getLogger(__name__)
 
-_worker_thread: threading.Thread | None = None
+_worker_threads: list[threading.Thread] = []
 _stop = threading.Event()
 
 
@@ -582,11 +582,14 @@ def worker_loop(config: Config | None = None, poll_seconds: float = 1.0) -> None
 
 
 def start_inprocess_worker(config: Config | None = None) -> None:
-    global _worker_thread
-    if _worker_thread and _worker_thread.is_alive():
+    """Start config.worker_threads workers in this process (BACKLOG L30 T3). Each claims the next job (SKIP LOCKED on
+    Postgres, so two never take the same one); model calls take turns on the GPU through llm_lock, so a job that
+    waits for a click, a web page or an SSH command no longer holds the others up."""
+    global _worker_threads
+    if any(t.is_alive() for t in _worker_threads):
         return
     config = config or Config.from_env()
-    # Free jobs orphaned 'running' by a previous process (restart/crash) before the worker starts, so a
+    # Free jobs orphaned 'running' by a previous process (restart/crash) before the workers start, so a
     # stale job can't block the user's per-user active-job limit (the 409 "already has N active jobs").
     try:
         with session_scope(config) as session:
@@ -596,12 +599,9 @@ def start_inprocess_worker(config: Config | None = None) -> None:
     except Exception as exc:  # noqa: BLE001 — never block worker start on this
         log.warning("orphan-job reclaim failed: %s", exc)
     _stop.clear()
-    _worker_thread = threading.Thread(
-        target=worker_loop,
-        kwargs={"config": config or Config.from_env()},
-        name="multeagent-worker",
-        daemon=True,
-    )
-    _worker_thread.start()
-
-
+    _worker_threads = [threading.Thread(target=worker_loop, kwargs={"config": config},
+                                        name=f"multeagent-worker-{n}", daemon=True)
+                       for n in range(1, config.worker_threads + 1)]
+    for thread in _worker_threads:
+        thread.start()
+    log.info("%d job workers started", len(_worker_threads))

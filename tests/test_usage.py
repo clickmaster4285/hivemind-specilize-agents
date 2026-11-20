@@ -130,3 +130,17 @@ def test_totals_per_answer_and_per_user(db):
     assert everyone["total"]["prompt_tokens"] == 550
     mine = usage.summary(db, since, user_id=1)
     assert [u["answers"] for u in mine["users"]] == [1] and mine["total"]["output_tokens"] == 15
+
+
+def test_usage_is_added_up_per_team(db):
+    db.add_all([User(id=1, username="ana", password_hash="x", team="IT"),
+                User(id=2, username="bo", password_hash="x", team="IT"),
+                User(id=3, username="cy", password_hash="x", team="marketing"),
+                User(id=4, username="di", password_hash="x")])
+    for job, user, p, o in [("a", 1, 100, 10), ("b", 2, 200, 20), ("c", 3, 50, 5), ("d", 4, 10, 1)]:
+        db.add(LlmUsage(job_id=job, user_id=user, step="assistant", model="m", prompt_tokens=p, output_tokens=o,
+                        duration_ms=500))
+    db.flush()
+    teams = usage.summary(db, datetime.now(timezone.utc) - timedelta(days=1))["teams"]
+    assert [(t["team"], t["people"], t["answers"], t["prompt_tokens"]) for t in teams] == [
+        ("IT", 2, 2, 300), ("marketing", 1, 1, 50), ("No team", 1, 1, 10)]

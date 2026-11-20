@@ -103,6 +103,9 @@ class RefreshToken(Base):
     # when the sign-in began, copied to each token of the family: a sign-in lasts at most auth.SESSION_MAX_AGE
     # however often it is refreshed (older rows of the family are cleaned up, so they cannot tell)
     session_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # where the sign-in was made (My account → Sessions): "Chrome on Windows", the caller's address; copied forward
+    device: Mapped[str] = mapped_column(String(120), default="")
+    address: Mapped[str] = mapped_column(String(ADDRESS_CHARS), default="")
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

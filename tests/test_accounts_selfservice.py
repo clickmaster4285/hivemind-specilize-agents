@@ -216,3 +216,41 @@ def test_an_expired_link_does_not_work(db, admin):
     db.commit()
     with pytest.raises(HTTPException):
         auth_routes.reset_info(token, db=db)
+
+
+# ── my sessions on other devices ────────────────────────────────────────────
+
+@pytest.mark.parametrize("ua, name", [
+    ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0 Safari/537.36", "Chrome on Windows"),
+    ("Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/131.0 Safari/537.36 Edg/131.0", "Edge on Windows"),
+    ("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Safari/604.1",
+     "Safari on iPhone"),
+    ("Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0", "Firefox on Linux"),
+    ("curl/8.5.0", "Unknown device"),
+    (None, "Unknown device"),
+])
+def test_a_session_is_named_by_its_browser_and_system(ua, name):
+    assert auth.device_name(ua) == name
+
+
+def test_my_sessions_list_each_device_once_and_one_can_be_ended(db):
+    mia = _member(db)
+    here, _ = start_session(db, mia, device="Chrome on Windows", address="192.168.88.20")
+    _other_access, other_refresh = start_session(db, mia, device="Safari on iPhone", address="192.168.88.31")
+    auth.refresh_session(db, other_refresh)                          # renewed: still one session, same device
+    listed = auth_routes.my_sessions(_request(access=here), user=mia, db=db)
+    assert len(listed) == 2
+    assert {(s["device"], s["address"], s["current"]) for s in listed} == {
+        ("Chrome on Windows", "192.168.88.20", True), ("Safari on iPhone", "192.168.88.31", False)}
+    phone = next(s for s in listed if not s["current"])
+    assert auth_routes.end_my_session(phone["id"], user=mia, db=db) == {"ok": True}
+    assert [s["device"] for s in auth_routes.my_sessions(_request(access=here), user=mia, db=db)] == ["Chrome on Windows"]
+
+
+def test_someone_elses_session_cannot_be_ended(db):
+    mia, bo = _member(db, "mia"), _member(db, "bo")
+    start_session(db, bo, device="Firefox on Linux")
+    bos = auth.list_sessions(db, bo.id)[0]["id"]
+    with pytest.raises(HTTPException) as exc:
+        auth_routes.end_my_session(bos, user=mia, db=db)
+    assert exc.value.status_code == 404 and len(auth.list_sessions(db, bo.id)) == 1

@@ -181,16 +181,6 @@ def run_image_gen(
     output = NO_CHECKPOINT
     if path is not None and path.is_file():
         try:
-            if config.image_unload_ollama:
-                unloaded = unload_ollama_models(config)
-                if unloaded:
-                    _emit(
-                        on_progress,
-                        {
-                            "type": "status",
-                            "message": f"Freed Ollama VRAM: {', '.join(unloaded)}",
-                        },
-                    )
             client = ImageServiceClient(config)
             if client.health() is None:
                 _emit(on_progress, {"type": "status", "message": "Starting the image service (first image takes longer)…"})
@@ -204,6 +194,12 @@ def run_image_gen(
                 checkpoint=ckpt_name,
             )
             with image_slot(config):
+                # inside the GPU lock: with several workers (BACKLOG L30 T3) a chat call between the unload and the
+                # picture would load the chat model back and both would not fit in VRAM
+                if config.image_unload_ollama:
+                    unloaded = unload_ollama_models(config)
+                    if unloaded:
+                        _emit(on_progress, {"type": "status", "message": f"Freed Ollama VRAM: {', '.join(unloaded)}"})
                 if use_inpaint:
                     if not init_images:
                         raise ValueError("Inpaint needs a source image attachment.")

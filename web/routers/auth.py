@@ -28,7 +28,10 @@ from src.core.auth import (
     REFRESH_COOKIE,
     check_credentials,
     clear_session_cookies,
+    device_name,
     end_session,
+    end_session_of,
+    list_sessions,
     get_current_user,
     get_db,
     refresh_session,
@@ -121,7 +124,8 @@ def login(payload: LoginPayload, request: Request, response: Response,
     if user.status != USER_ACTIVE:
         raise HTTPException(status_code=403, detail="This account is disabled. Ask an admin to re-enable it.")
     user.last_login_at = utcnow()  # so the admin can see who is actually active
-    access, refresh = start_session(db, user)
+    access, refresh = start_session(db, user, device=device_name(request.headers.get("user-agent")),
+                                    address=client_address(request.scope))
     set_session_cookies(response, request, access, refresh)
     return {"user": _user_view(user)}
 
@@ -226,6 +230,24 @@ def logout_everywhere(response: Response, user: User = Depends(get_current_user)
     db.commit()
     clear_session_cookies(response)
     return {"ok": True, "sessions_ended": ended}
+
+
+@router.get("/sessions")
+def my_sessions(request: Request, user: User = Depends(get_current_user),
+                db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+    """My sign-ins on every browser and device; `current` marks this one."""
+    here = session_family(request)
+    return [{**s, "current": s["id"] == here} for s in list_sessions(db, user.id)]
+
+
+@router.delete("/sessions/{family}")
+def end_my_session(family: str, user: User = Depends(get_current_user),
+                   db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Sign out one of my sign-ins (another device's, or this one)."""
+    if not end_session_of(db, user.id, family):
+        raise HTTPException(status_code=404, detail="That sign-in has already ended")
+    db.commit()
+    return {"ok": True}
 
 
 # ── reset links: made by an admin (users.reset_link), opened while signed out ─────────────────────────────

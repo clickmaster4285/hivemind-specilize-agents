@@ -105,16 +105,31 @@ def job_totals(session: Session, job_id: str) -> dict[str, Any] | None:
             "steps": [{"step": r.step, **_sums([r])} for r in rows]}
 
 
+NO_TEAM = "No team"
+
+
+def _per_team(per_user: list[Any]) -> list[dict[str, Any]]:
+    """The users' rows added up by team (`team` is free text on the account), biggest first."""
+    groups: dict[str, list[Any]] = {}
+    for row in per_user:
+        groups.setdefault(row.team or NO_TEAM, []).append(row)
+    teams = [{"team": team, "people": len(rows), "answers": sum(r.answers for r in rows), **_sums(rows)}
+             for team, rows in groups.items()]
+    return sorted(teams, key=lambda t: t["prompt_tokens"] + t["output_tokens"], reverse=True)
+
+
 def summary(session: Session, since: datetime, user_id: int | None = None) -> dict[str, Any]:
-    """Usage since a time, per user (everyone, or only `user_id`) and per step, plus the overall total."""
+    """Usage since a time, per user (everyone, or only `user_id`), per team (added up from the users' rows — no
+    second query) and per step, plus the overall total."""
     from src.core.models_db import LlmUsage, User
 
     scope = [LlmUsage.created_at >= since] + ([LlmUsage.user_id == user_id] if user_id is not None else [])
     biggest = func.sum(LlmUsage.prompt_tokens + LlmUsage.output_tokens).desc()
     per_user = session.execute(
-        select(LlmUsage.user_id, User.username, func.count(func.distinct(LlmUsage.job_id)).label("answers"), *_cols())
+        select(LlmUsage.user_id, User.username, User.team, func.count(func.distinct(LlmUsage.job_id)).label("answers"),
+               *_cols())
         .outerjoin(User, User.id == LlmUsage.user_id).where(*scope)
-        .group_by(LlmUsage.user_id, User.username).order_by(biggest)
+        .group_by(LlmUsage.user_id, User.username, User.team).order_by(biggest)
     ).all()
     per_step = session.execute(
         select(LlmUsage.step, *_cols()).where(*scope).group_by(LlmUsage.step).order_by(biggest)
@@ -122,7 +137,8 @@ def summary(session: Session, since: datetime, user_id: int | None = None) -> di
     return {
         "since": since.isoformat(),
         "total": _sums(per_user),
-        "users": [{"user_id": r.user_id, "username": r.username or "—", "answers": r.answers, **_sums([r])}
-                  for r in per_user],
+        "users": [{"user_id": r.user_id, "username": r.username or "—", "team": r.team, "answers": r.answers,
+                   **_sums([r])} for r in per_user],
+        "teams": _per_team(per_user),
         "steps": [{"step": r.step, **_sums([r])} for r in per_step],
     }

@@ -39,6 +39,8 @@ router = APIRouter(prefix="/api/jobs", tags=["jobs"])
 # a quiet stream (the model is loading) still sends a comment line this often: proxies close a connection
 # that stays silent — the Next.js rewrite after 30 s
 SSE_HEARTBEAT_SECONDS = 15
+# a queued question's place and wait are sent again this often while it waits (only when they changed)
+QUEUE_UPDATE_SECONDS = 5
 
 
 def _owned_job(db: Session, job_id: str, user: User, *, forbid_status: int = 403) -> Job:
@@ -272,6 +274,19 @@ def _check_owned(job_id: str, user: User) -> None:
         _owned_job(db, job_id, user)
 
 
+def _queue_update(job_id: str) -> dict[str, Any] | None:
+    """A queued job's place in the queue and expected wait (jobs.queue_state), or None once it is not queued."""
+    from src.core.config import Config
+    from src.core.db import session_scope
+    from src.jobs.jobs import queue_state
+
+    with session_scope() as session:
+        job = get_job(session, job_id)
+        if job is None or job.status != "queued":
+            return None
+        return queue_state(session, Config.from_env(), job)
+
+
 def _read_new(job_id: str, after_seq: int) -> tuple[str | None, list[tuple[int, str]]]:
     """(the job's status — None when it is gone, its events after `after_seq`) in a short session of its own, run in
     a worker thread: the stream holds no database connection between reads and never blocks the event loop (O121)."""
@@ -298,6 +313,8 @@ async def job_events_stream(job_id: str, user: User = Depends(stream_user)) -> S
         sent_live: dict[str, str] = {}      # agent_id → text already streamed
         finished: set[str] = set()          # agents whose final answer was sent: no more live text
         last_sent = time.monotonic()
+        queue_checked = 0.0
+        queue_shown: dict[str, Any] | None = None
         while True:
             # read the live text BEFORE the stored events: text cleared just before a final event
             # then cannot be sent after it
@@ -306,6 +323,12 @@ async def job_events_stream(job_id: str, user: User = Depends(stream_user)) -> S
             if status is None:
                 yield f"data: {json.dumps({'type': 'fatal', 'error': 'Job missing'})}\n\n"
                 break
+            if status == "queued" and time.monotonic() - queue_checked >= QUEUE_UPDATE_SECONDS:
+                queue_checked = time.monotonic()
+                where = await asyncio.to_thread(_queue_update, job_id)
+                if where and where != queue_shown:        # place and wait, live (BACKLOG L30 T3)
+                    queue_shown = where
+                    yield f"data: {json.dumps({'type': 'queue_position', **where})}\n\n"
             for seq, event_json in payloads:
                 last_seq = seq
                 if '"agent_done"' in event_json:

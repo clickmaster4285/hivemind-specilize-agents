@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 
 import { useApp } from "@/components/app/AppProvider";
 import PasswordForm from "@/components/auth/PasswordForm";
+import SessionsPanel from "@/components/settings/SessionsPanel";
 import { changePassword, updateMe } from "@/lib/api";
 import { errorText } from "@/lib/chat";
 import { btn, formFieldCompact } from "@/lib/ui";
@@ -78,11 +79,12 @@ export default function AccountSection() {
       </div>
 
       <div className={box}>
-        <h5 className={heading}>Sign out everywhere</h5>
+        <h5 className={heading}>Sessions</h5>
         <p className="m-0 text-xs text-muted">
-          Ends every sign-in of your account — other browsers, other devices and this one. Use it if you signed in on
-          a shared computer or think someone has your password (then change it too).
+          Where your account is signed in. Sign out one you do not recognise — or all of them, if you signed in on a
+          shared computer or think someone has your password (then change it too).
         </p>
+        <SessionsPanel />
         <button type="button" className={`${btn("danger", "ghost", "sm")} self-start`}
                 onClick={() => {
                   if (confirm("Sign out of every browser and device, this one too?")) {

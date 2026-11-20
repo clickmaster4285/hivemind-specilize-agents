@@ -30,6 +30,7 @@ from src.core.config import Config
 from src.core.db import session_scope
 from src.core.loops import start_loop
 from src.core.models_db import USER_ACTIVE, ChatThreadRow, Job, ScheduleRow, User, as_utc
+from src.jobs.jobs import LIVE_PRIORITY, SCHEDULED_PRIORITY
 
 log = logging.getLogger("jobs.schedules")
 
@@ -294,7 +295,7 @@ def _start(session, row: ScheduleRow, config: Config, now: datetime, start_job: 
         return False
     try:
         job = start_job(session, user=user, query=row.prompt, mode="auto", config=config,
-                        payload=_run_payload(row))
+                        payload=_run_payload(row), priority=SCHEDULED_PRIORITY)
     except ValueError as exc:                     # busy, queue full, daily quota, refused
         row.last_error = str(exc)
         row.next_run_at = min(as_utc(row.next_run_at), now + timedelta(minutes=RETRY_MINUTES))
@@ -313,8 +314,9 @@ def run_now(session, row: ScheduleRow, config: Config, *, now: datetime | None =
     if chat is None or chat.deleted_at is not None:
         raise ScheduleError("this schedule's chat was deleted")
     try:
+        # a person clicked: it is their live question (its place in the queue and their one active question)
         job = (start_job or create_job)(session, user=user, query=row.prompt, mode="auto", config=config,
-                                        payload=_run_payload(row))
+                                        payload=_run_payload(row), priority=LIVE_PRIORITY)
     except ValueError as exc:                     # busy, queue full, daily quota
         raise ScheduleError(str(exc)) from exc
     row.last_run_at, row.last_job_id, row.last_error = now or _now(), job.id, ""

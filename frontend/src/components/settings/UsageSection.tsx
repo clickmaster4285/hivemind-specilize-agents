@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { getUsage } from "@/lib/api";
 import { errorText } from "@/lib/chat";
+import { saveCsv } from "@/lib/download";
 import { compactCount, formatSeconds } from "@/lib/format";
 import type { UsageSummary, UsageTotals } from "@/lib/types";
 
@@ -37,8 +38,9 @@ function Cells({ u }: { u: UsageTotals }) {
   );
 }
 
-/** Settings → Usage: tokens the model read (in) and wrote (out), model calls and model time — per user
- *  (admins see everyone, members themselves) and per step of the app (BACKLOG L11). */
+/** Settings → Usage: tokens the model read (in) and wrote (out), model calls and model time — per team and per user
+ *  (admins see everyone, members themselves) and per step of the app (BACKLOG L11, L30 T2); a CSV of the users'
+ *  rows for a spreadsheet. */
 export default function UsageSection() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<UsageSummary | null>(null);
@@ -63,10 +65,26 @@ export default function UsageSection() {
   const total = data?.total;
   const answers = data?.users.reduce((n, u) => n + u.answers, 0) ?? 0;
 
+  function downloadCsv() {
+    if (!data) return;
+    saveCsv(
+      ["User", "Team", "Answers", "Tokens in", "Tokens out", "Model calls", "Model seconds"],
+      data.users.map((u) => [u.username, u.team ?? "", u.answers, u.prompt_tokens, u.output_tokens, u.calls, u.seconds]),
+      `multeagent-usage-${days}d-${new Date().toISOString().slice(0, 10)}.csv`,
+    );
+  }
+
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h4 className="text-base font-semibold [font-family:var(--font-display)]">Usage</h4>
+        <div className="flex flex-wrap items-center gap-1">
+        {data?.users.length ? (
+          <button type="button" onClick={downloadCsv}
+                  className="mr-2 rounded-full border border-line px-3 py-1 text-xs text-muted hover:text-text">
+            Download CSV
+          </button>
+        ) : null}
         <div className="flex gap-1" role="radiogroup" aria-label="Period">
           {PERIODS.map((p) => (
             <button
@@ -85,6 +103,7 @@ export default function UsageSection() {
             </button>
           ))}
         </div>
+        </div>
       </div>
       <p className="text-xs leading-relaxed text-muted">
         <strong>In</strong> = tokens the model read (your question, chat history, sources); <strong>out</strong> =
@@ -100,12 +119,40 @@ export default function UsageSection() {
         </div>
       ) : null}
       {data && !data.users.length ? <p className="text-sm text-muted">No model calls in this period.</p> : null}
+      {data?.all_users && data.teams.length > 1 ? (
+        <div className="overflow-x-auto rounded-lg border border-line">
+          <table className="w-full text-sm">
+            <thead className="bg-panel-2">
+              <tr>
+                <th className={th}>Team</th>
+                <th className={th}>People</th>
+                <th className={th}>Answers</th>
+                <th className={th}>In</th>
+                <th className={th}>Out</th>
+                <th className={th}>Calls</th>
+                <th className={th}>Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.teams.map((t) => (
+                <tr key={t.team} className="border-t border-line">
+                  <td className="px-3 py-2">{t.team}</td>
+                  <td className={td}>{t.people}</td>
+                  <td className={td}>{t.answers}</td>
+                  <Cells u={t} />
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
       {data?.all_users && data.users.length ? (
         <div className="overflow-x-auto rounded-lg border border-line">
           <table className="w-full text-sm">
             <thead className="bg-panel-2">
               <tr>
                 <th className={th}>User</th>
+                <th className={th}>Team</th>
                 <th className={th}>Answers</th>
                 <th className={th}>In</th>
                 <th className={th}>Out</th>
@@ -117,6 +164,7 @@ export default function UsageSection() {
               {data.users.map((u) => (
                 <tr key={u.user_id ?? "none"} className="border-t border-line">
                   <td className="px-3 py-2">{u.username}</td>
+                  <td className="px-3 py-2 text-muted">{u.team || "—"}</td>
                   <td className={td}>{u.answers}</td>
                   <Cells u={u} />
                 </tr>

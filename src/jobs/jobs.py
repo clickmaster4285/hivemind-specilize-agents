@@ -19,7 +19,7 @@ from src.jobs.history_store import touch_thread
 from src.llm.job_start import classify_query
 from src.llm.prompt_filter import BLOCK, MASK, check_prompt, mask_text
 from src.llm.model_registry import force_vision_model, resolve_model_plan
-from src.core.models_db import Job, JobEvent, User
+from src.core.models_db import Job, JobEvent, User, as_utc
 
 log = logging.getLogger(__name__)
 
@@ -64,9 +64,24 @@ def reclaim_orphaned_jobs(session: Session) -> int:
     return len(stale)
 
 
-def count_active_for_user(session: Session, user_id: int, *, ignore: set[str] | frozenset[str] = frozenset()) -> int:
-    """The user's queued and running jobs, less `ignore` (jobs whose answer is written, live.finishing_jobs)."""
-    stmt = select(func.count()).select_from(Job).where(Job.user_id == user_id, Job.status.in_(ACTIVE), _not_deleted())
+# Queue order: lower first. A person's question goes before scheduled runs (BACKLOG L30 T3): ten 09:00 schedules
+# no longer put the people asking at 09:00 behind them.
+LIVE_PRIORITY = 100
+SCHEDULED_PRIORITY = 200
+# The wait shown to a queued question is measured from the last finished answers; until there are some, this guess
+MEASURED_JOBS = 50
+DEFAULT_JOB_SECONDS = 45.0
+# a running job already past the usual length is assumed to need at least this much more
+MIN_REMAINING_SECONDS = 10.0
+
+
+def count_active_for_user(session: Session, user_id: int, *, ignore: set[str] | frozenset[str] = frozenset(),
+                          scheduled: bool = False) -> int:
+    """The user's queued and running jobs, less `ignore` (jobs whose answer is written, live.finishing_jobs). Live
+    questions and scheduled runs are counted apart (`scheduled`): a run never blocks its owner from asking."""
+    kind = Job.priority > LIVE_PRIORITY if scheduled else Job.priority <= LIVE_PRIORITY
+    stmt = select(func.count()).select_from(Job).where(Job.user_id == user_id, Job.status.in_(ACTIVE), _not_deleted(),
+                                                       kind)
     if ignore:
         stmt = stmt.where(Job.id.not_in(ignore))
     return int(session.scalar(stmt) or 0)
@@ -84,10 +99,39 @@ def count_jobs_today(session: Session, user_id: int) -> int:
     )
 
 
+def typical_job_seconds(session: Session) -> float:
+    """How long an answer takes here: the median of the last MEASURED_JOBS finished ones (a few very long deep
+    researches do not make every wait look long)."""
+    rows = session.execute(
+        select(Job.started_at, Job.finished_at)
+        .where(Job.status == "succeeded", Job.started_at.is_not(None), Job.finished_at.is_not(None))
+        .order_by(Job.finished_at.desc()).limit(MEASURED_JOBS)
+    ).all()
+    lengths = sorted((as_utc(end) - as_utc(start)).total_seconds() for start, end in rows)
+    return lengths[len(lengths) // 2] if lengths else DEFAULT_JOB_SECONDS
+
+
+def queue_state(session: Session, config: Config, job: Job | None = None) -> dict[str, Any]:
+    """Where a queued job stands: its place (1 = next), the jobs running, and the wait in seconds — the work ahead
+    of it (queued before it, and what the running ones still need) shared over the GPU's slots, since the model
+    answers one call at a time per slot. Without a job: the wait a new question would have."""
+    typical = typical_job_seconds(session)
+    queued = select(func.count()).select_from(Job).where(Job.status == "queued", _not_deleted())
+    if job is not None:
+        queued = queued.where((Job.priority < job.priority)
+                              | ((Job.priority == job.priority) & (Job.created_at < job.created_at)))
+    ahead = int(session.scalar(queued) or 0)
+    now = _utcnow()
+    running = [as_utc(started) for (started,) in session.execute(
+        select(Job.started_at).where(Job.status == "running", Job.started_at.is_not(None), _not_deleted())).all()]
+    remaining = sum(max(typical - (now - started).total_seconds(), MIN_REMAINING_SECONDS) for started in running)
+    wait = (ahead * typical + remaining) / max(1, config.llm_slots)
+    return {"position": ahead + 1, "running": len(running), "wait_seconds": round(wait)}
+
+
 def estimate_wait_seconds(session: Session, config: Config) -> float:
-    depth = queue_depth(session)
-    # Rough heuristic: ~45s per queued job / llm slot
-    return depth * 45.0 / max(1, config.llm_slots)
+    """The wait a new question would have now (GET /api/status, the queued card)."""
+    return float(queue_state(session, config)["wait_seconds"])
 
 
 LEGACY_MODES = frozenset({"debate", "mixed"})
@@ -101,7 +145,7 @@ def create_job(
     mode: str,
     payload: dict[str, Any],
     config: Config | None = None,
-    priority: int = 100,
+    priority: int = LIVE_PRIORITY,
 ) -> Job:
     config = config or Config.from_env()
     requested_mode = (mode or "auto").strip().lower()
@@ -111,8 +155,11 @@ def create_job(
         raise ValueError("mode must be auto, chat or agentic")
     from src.jobs import live
 
-    # a job whose answer is written only adds optional extras, which stop for this question (O52)
-    if count_active_for_user(session, user.id, ignore=live.finishing_jobs()) >= config.max_active_jobs_per_user:
+    # a job whose answer is written only adds optional extras, which stop for this question (O52); a scheduled
+    # run is counted against other scheduled runs only
+    scheduled = priority > LIVE_PRIORITY
+    if count_active_for_user(session, user.id, ignore=live.finishing_jobs(),
+                             scheduled=scheduled) >= config.max_active_jobs_per_user:
         raise ValueError(
             f"User already has {config.max_active_jobs_per_user} active job(s). Wait or cancel."
         )

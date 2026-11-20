@@ -19,6 +19,9 @@ DEV_JWT_SECRET = "change-me-multeagent-dev-secret-32b+"
 load_dotenv(ROOT / ".env")
 
 
+# more side-by-side jobs than this only queue their model calls at the one GPU, each holding memory meanwhile
+MAX_WORKER_THREADS = 8
+
 def _bool(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -66,6 +69,9 @@ class Config:
     llm_slots: int
     image_slots: int
     max_active_jobs_per_user: int
+    # jobs run side by side (BACKLOG L30 T3): one waiting for a click, a web read or an SSH command no longer holds
+    # everyone up; model calls still take turns on the GPU (llm_lock.llm_slot)
+    worker_threads: int
     queue_depth_limit: int
     model_fast: str
     model_strong: str
@@ -214,6 +220,7 @@ class Config:
             llm_slots=max(1, int(os.getenv("LLM_SLOTS", "1"))),
             image_slots=max(1, int(os.getenv("IMAGE_SLOTS", "1"))),
             max_active_jobs_per_user=max(1, int(os.getenv("MAX_ACTIVE_JOBS_PER_USER", "1"))),
+            worker_threads=max(1, min(MAX_WORKER_THREADS, int(os.getenv("WORKER_THREADS", "3")))),
             queue_depth_limit=max(1, int(os.getenv("QUEUE_DEPTH_LIMIT", "40"))),
             model_fast=os.getenv("MODEL_FAST", "qwen3.5:9b"),
             model_strong=os.getenv("MODEL_STRONG", "qwen3.5:9b"),

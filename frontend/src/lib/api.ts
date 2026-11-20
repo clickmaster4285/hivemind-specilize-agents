@@ -753,6 +753,24 @@ export async function updateMe(fields: { email?: string; phone?: string }): Prom
   return request("/api/auth/me", { method: "PATCH", body: JSON.stringify(fields) });
 }
 
+/** One of my sign-ins (My account → Sessions): the device and address it was made from. */
+export type MySession = {
+  id: string;
+  device: string;
+  address: string;
+  started_at: string;
+  last_active_at: string;
+  current: boolean;
+};
+
+export async function listMySessions(): Promise<MySession[]> {
+  return request("/api/auth/sessions");
+}
+
+export async function endMySession(id: string): Promise<void> {
+  await request(`/api/auth/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 /** Sign out every browser and device of this account, this one too. */
 export async function logoutEverywhere(): Promise<{ sessions_ended: number }> {
   return request("/api/auth/logout-all", { method: "POST" });

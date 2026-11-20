@@ -131,21 +131,25 @@ def _verify(text: str, passages: list[Any], *, client: LLMClient, model: str, jo
     """Check an answer against the sources it was written from (src/brain/verify.py) after it is written:
     knowledge-base passages, or the web pages of a web answer (BACKLOG L5c).
 
-    Never breaks the answer: a failed or stopped check just shows no verification line."""
+    Never breaks the answer: a failed or stopped check just shows no verification line. It gives way like the
+    suggestions do (BACKLOG L30 T3): a question asked meanwhile — anyone's — stops it at once, so the GPU answers
+    people before it checks; a check cut short is not shown (half of it would mislead)."""
     from src.brain.verify import verify_answer
 
-    if not passages or live.is_stopped(job_id):
+    keep_going = live.yields_to_questions(job_id)
+    if not passages or not keep_going():
         return None
     status(f"Checking the {what} against its sources…")
     try:
         checked = verify_answer(text, passages,
-                                chat=lambda **kw: client.chat(model=model, max_retries=0, **kw),
-                                should_continue=lambda: not live.is_stopped(job_id),
+                                chat=lambda **kw: client.chat(model=model, max_retries=0, should_continue=keep_going,
+                                                              **kw),
+                                should_continue=keep_going,
                                 on_group=lambda i, n: status(f"Checking the {what} against its sources ({i}/{n})…"))
     except Exception as exc:  # noqa: BLE001 — the answer is already written; only the badge is lost
         log.warning("answer check failed: %s", exc)
         return None
-    if checked is None or live.is_stopped(job_id):
+    if checked is None or not keep_going():
         return None
     checked.pop("claims", None)             # the chat needs counts + the unconfirmed sentences only
     return checked

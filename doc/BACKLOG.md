@@ -46,7 +46,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L27](#l27-server-work-like-a-developer--2026-11-18-issues_log-o93o96) | Server work like a developer: guided deploy, look-questions, logins kept open | built 2026-11-18 | live check on the uk server |
 | [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H1, H2, H3 built (2026-11-18) | NousResearch hermes-agent (MIT) |
 | [L29](#l29-live-updates-without-a-reload--planned-2026-11-20-issues_log-o120) | Live updates without a reload (one SSE stream) | built 2026-11-20 | API restart + user's look with two tabs |
-| [L30](#l30-a-team-of-10-or-more--planned-2026-11-20-issues_log-o121o125) | A team of 10+ users: capacity, accounts, admin, sharing, operations | T1, T2 built | API restart, services install; then T3 queue |
+| [L30](#l30-a-team-of-10-or-more--planned-2026-11-20-issues_log-o121o125) | A team of 10+ users: capacity, accounts, admin, sharing, operations | T1–T3 built | API restart, services install; T4 sharing needs the user's design yes |
 | [L31](#l31-a-knowledge-base-that-learns-from-the-web--built-2026-11-20) | Knowledge base learns from web answers | pages built 2026-11-20 | API restart (migration 004); answers reused later |
 
 ---
@@ -814,15 +814,22 @@ queue wait so far under 12 s.
 - [x] Admin changes in the security log: created, changed (each field), approved, password changed, reset link
 - [x] Users table: search, filters (status, role, team), sorting (name, last sign-in, questions), last sign-in
       column, bulk activate / deactivate / team / quota in one transaction (`POST /api/auth/users/bulk`)
-- [ ] Usage per team and a usage CSV export — next
+- [x] Usage per team (added up from the users' rows, no extra query) and Download CSV (RFC 4180, formula-safe)
+- [x] My account → Sessions: each sign-in's device ("Chrome on Windows") and address, Sign out one of them
+      (`refresh_tokens.device` / `address`, carried over on each renewal); Server commands is a Settings tab
 
-**T3 — the queue with 10 people asking (O125)**
-- [ ] A job waiting for a confirm / choice click gives the worker back (or a 60 s limit)
-- [ ] A second lane for jobs that do not need the GPU (scans, server reads), the GPU still behind `llm_slot`
-- [ ] Honest wait: the user's place in the queue and the time from measured job lengths, updated live
-- [ ] Scheduled runs after live questions (priority) and not counted as the owner's one active question
-- [ ] The answer check gives way to waiting questions, like suggestions do
-- [ ] Notify (browser notification + tab title) when an answer finishes while the user is elsewhere
+**T3 — the queue with 10 people asking (O125)** — built 2026-11-20
+- [x] Several workers (`WORKER_THREADS`, default 3, max 8): a job waiting for a click, a web read, an SSH command
+      or a scan no longer holds the others up; model calls still take turns on the GPU (`llm_lock.llm_slot`) — one
+      change covers "the confirm card blocks everyone" and "a second lane for non-GPU jobs". The VRAM unload before
+      a picture now happens inside the GPU lock (with several workers a chat call could load the model back between)
+- [x] Honest wait (`jobs.queue_state`): place in line + the work ahead (queued before it, what running jobs still
+      need) from the median of the last 50 answers, over the GPU's slots; sent live every 5 s while queued
+- [x] Scheduled runs after people's questions (priority 200) and never counted as the owner's one active
+      question; "Run now" stays a live question
+- [x] The answer check gives way to a new question (anyone's) like the suggestions; a cut-short check is not shown
+- [x] A finished answer marks the tab title ("✓") while the person is elsewhere, and a browser notification when
+      they already allowed them
 
 **T4 — sharing in a team** (each needs the user's yes on the design first)
 - [ ] Team devices: an admin's saved server that chosen members may use, never see; every use logged — instead of

@@ -16,6 +16,7 @@ from src.core.config import Config
 from src.core.db import Base
 from src.core.models_db import USER_DISABLED, ChatThreadRow, Job, ScheduleRow, User, as_utc
 from src.jobs import schedules
+from src.jobs.jobs import SCHEDULED_PRIORITY
 from src.jobs.schedules import DAY, HOUR, RETRY_MINUTES, WEEK, ScheduleError, next_run
 from src.llm import assistant
 from src.llm.router import Route
@@ -136,10 +137,10 @@ class _Starts:
         self.calls: list[dict] = []
         self.refuse = refuse
 
-    def __call__(self, session, *, user, query, mode, payload, config):
+    def __call__(self, session, *, user, query, mode, payload, config, priority):
         if self.refuse:
             raise ValueError(self.refuse)
-        self.calls.append({"user": user.id, "query": query, "payload": payload})
+        self.calls.append({"user": user.id, "query": query, "payload": payload, "priority": priority})
         job = Job(id=f"job-{len(self.calls)}", user_id=user.id, mode=mode, status="queued", query=query,
                   payload_json=json.dumps(payload))
         session.add(job)
@@ -154,7 +155,8 @@ def test_a_due_schedule_starts_one_job_in_its_chat_and_moves_on(db, config):
     assert schedules.run_due(config, now=at, start_job=starts) == 1
     assert starts.calls == [{"user": 1, "query": "Top tech news today",
                              "payload": {"thread_id": row.thread_id, "scheduled": True, "schedule_id": row.id,
-                                         "client_time_zone": "Asia/Karachi"}}]
+                                         "client_time_zone": "Asia/Karachi"},
+                             "priority": SCHEDULED_PRIORITY}]                  # after people's questions (L30 T3)
     assert (row.last_job_id, as_utc(row.last_run_at), as_utc(row.next_run_at)) == ("job-1", at, _utc(2026, 11, 19, 3))
     assert schedules.run_due(config, now=at + timedelta(seconds=30), start_job=starts) == 0     # never twice
 
