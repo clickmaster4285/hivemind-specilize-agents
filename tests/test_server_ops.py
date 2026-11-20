@@ -66,7 +66,7 @@ class FakeShell:
     def detect_sudo(self):
         pass
 
-    def detect_access(self):
+    def detect_access(self, silence=None):
         return "root"
 
     def raw(self, command, stdin_text=None, silence=None):
@@ -385,13 +385,34 @@ def test_a_silent_command_times_out_and_the_job_goes_on(monkeypatch):
     assert "`pm2 restart all` — timed out" in so._commands_block(result.runs)
 
 
-def test_a_server_silent_on_the_access_check_is_a_plain_error(monkeypatch):
+def test_a_server_silent_on_the_access_check_twice_is_a_plain_error(monkeypatch):
     shell = FakeShell({})
-    shell.detect_access = lambda: (_ for _ in ()).throw(la.CommandTimeout("no output"))
+    waits: list[int] = []
+    shell.detect_access = lambda silence: waits.append(silence) or (_ for _ in ()).throw(la.CommandTimeout("no output"))
     _patch_session(monkeypatch, shell)
     login = so.ServerLogin(id="1", label="uk", host="94.0.0.1", port=22, username="root", password="p")
-    with pytest.raises(so.AuditError, match="did not answer the first check"):
+    with pytest.raises(so.AuditError, match="did not answer the first check .* twice"):
         so.RemoteSession(login)
+    assert waits == [so.LOGIN_CHECK_SILENCE] * so.LOGIN_CHECK_TRIES      # a longer wait, and one fresh login
+
+
+def test_a_session_slow_to_start_gets_a_fresh_login(monkeypatch):
+    """O64 part 2 (usa server, 2026-11-20): `id -u` silent right after login; the same request 6 s later fine."""
+    shell = FakeShell({})
+    answers = iter([la.CommandTimeout("no output for 60 s"), "root"])
+
+    def detect_access(silence):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    shell.detect_access = detect_access
+    logins: list[int] = []
+    monkeypatch.setattr(so, "connect", lambda login: logins.append(1) or (FakeClient(), "fp"))
+    monkeypatch.setattr(so, "Shell", lambda client, password=None, os_family="linux": shell)
+    login = so.ServerLogin(id="1", label="usa", host="209.0.0.1", port=22, username="root", password="p")
+    assert so.RemoteSession(login).shell is shell and len(logins) == 2
 
 
 def test_commands_are_listed_in_markdown_not_html():

@@ -293,6 +293,11 @@ def _access_line(shell: Shell) -> str:
     return "You have root." if shell.root else f"You run as a normal user (sudo: {shell.sudo})."
 
 
+# The first command after a login also waits for the server to set the session up (systemd-logind can take ~25 s,
+# its own D-Bus timeout); a silent one gets one fresh login before the job reports it (ISSUES_LOG O64 part 2)
+LOGIN_CHECK_SILENCE = 60
+LOGIN_CHECK_TRIES = 2
+
 class RemoteSession:
     """A logged-in SSH connection. `run` enforces read-only; `execute` runs anything (used after approval)."""
 
@@ -302,18 +307,24 @@ class RemoteSession:
         self.runs: list[CommandRun] = []
 
     def _log_in(self) -> None:
-        """Connect and learn what the account may do (root, sudo). A server that logs us in but then does not
-        answer that first check is reported in plain words, not as a bare TimeoutError (O64)."""
-        self.client, _ = connect(self.login)
-        self.shell = Shell(self.client, password=self.login.password, os_family=self.login.os_family)
-        try:
-            self.shell.detect_access()
-        except CommandTimeout as exc:
-            self.client.close()
-            logger.warning("server_ops: %s logged in but the access check got %s", self.login.host, exc)
-            raise AuditError(f"logged in to {self.login.shown}, but it did not answer the first check (who am I, "
-                             f"may I use sudo) within {COMMAND_TIMEOUT} s. The server may be very busy; "
-                             "try again in a minute") from exc
+        """Connect and learn what the account may do (root, sudo). The first command waits longer than the others
+        and a silent one gets a fresh login once: right after login a server can take ~25 s to set up the session
+        (seen 2026-11-20 on the usa server: `id -u` silent for 25 s, the same request 6 s later fine — ISSUES_LOG
+        O64 part 2). Still silent after that: said in plain words, not as a bare TimeoutError."""
+        for attempt in range(1, LOGIN_CHECK_TRIES + 1):
+            self.client, _ = connect(self.login)
+            self.shell = Shell(self.client, password=self.login.password, os_family=self.login.os_family)
+            try:
+                self.shell.detect_access(LOGIN_CHECK_SILENCE)
+                return
+            except CommandTimeout as exc:
+                self.client.close()
+                logger.warning("server_ops: %s logged in but the access check got %s (try %d of %d)",
+                               self.login.host, exc, attempt, LOGIN_CHECK_TRIES)
+                if attempt == LOGIN_CHECK_TRIES:
+                    raise AuditError(f"logged in to {self.login.shown}, but it did not answer the first check (who "
+                                     f"am I, may I use sudo) in {LOGIN_CHECK_SILENCE} s, twice. The server may be "
+                                     "very busy; try again in a minute") from exc
 
     def _reconnect(self) -> None:
         """A long operate/diagnose session can be dropped by the server (idle, MaxStartups). Log back in

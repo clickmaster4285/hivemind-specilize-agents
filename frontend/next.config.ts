@@ -6,9 +6,6 @@ const apiOrigin = process.env.MULTEAGENT_API_ORIGIN ;
 const API_PROXY_TIMEOUT_MS = 300_000;
 
 const nextConfig: NextConfig = {
-  // a check build (NEXT_DIST_DIR=.next-check npx next build) must never overwrite the .next a running production
-  // server reads from — that broke every page's CSS once (2026-11-20)
-  distDir: process.env.NEXT_DIST_DIR || ".next",
   allowedDevOrigins: ['192.168.88.36'],
   // the dev badge sat on the account button at the sidebar's bottom-left (L24 U4)
   devIndicators: { position: "bottom-right" },

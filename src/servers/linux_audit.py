@@ -184,8 +184,10 @@ class Shell:
             raise CommandTimeout(f"no output for {silence} s") from exc
         return stdout.channel.recv_exit_status(), out, err
 
-    def detect_sudo(self) -> None:
-        code, out, _ = self.raw("id -u")
+    def detect_sudo(self, silence: int = COMMAND_TIMEOUT) -> None:
+        """silence: how long the first command may wait — right after login the server may still be setting up the
+        session (ISSUES_LOG O64)."""
+        code, out, _ = self.raw("id -u", silence=silence)
         self.root = code == 0 and out.strip() == "0"
         if self.root:
             return
@@ -200,12 +202,12 @@ class Shell:
                                 ".IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))")
         self.is_admin = code == 0 and out.strip().lower() == "true"
 
-    def detect_access(self) -> str:
+    def detect_access(self, silence: int = COMMAND_TIMEOUT) -> str:
         """Learn what the account may do, and return a short label for the report."""
         if self.os_family == "windows":
             self.detect_admin()
             return "administrator" if self.is_admin else "standard user"
-        self.detect_sudo()
+        self.detect_sudo(silence)
         return "root" if self.root else f"sudo: {self.sudo}"
 
     def run(self, key: str) -> tuple[int, str, str]:
