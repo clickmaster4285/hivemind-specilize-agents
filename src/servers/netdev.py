@@ -1,5 +1,5 @@
 """network_device — read a router or switch (BACKLOG L19 D2): MikroTik RouterOS and Cisco IOS over SSH; switches
-that have no usable command line (TP-Link, D-Link, Netgear…) over SNMP (src/servers/snmp.py, the device saved on
+that have no usable command line (TP-Link, D-Link, Netgear, Hikvision…) over SNMP (src/servers/snmp.py, the device saved on
 port 161 with its community string).
 
 Read-only: each platform has a fixed list of print/show commands (PLATFORMS below) and nothing else is ever

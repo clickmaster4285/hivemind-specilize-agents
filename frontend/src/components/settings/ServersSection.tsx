@@ -147,7 +147,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           >
             <option value="ssh">Server (SSH)</option>
             <option value="nvr">Camera recorder (NVR / DVR — Hikvision, Dahua)</option>
-            <option value="network">Router / switch (MikroTik, Cisco, TP-Link, D-Link, Netgear…)</option>
+            <option value="network">Router / switch (MikroTik, Cisco, TP-Link, D-Link, Netgear, Hikvision…)</option>
           </select>
         </label>
         {form.kind === "network" ? (
@@ -163,7 +163,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
               }}
             >
               <option value="ssh">SSH — MikroTik, Cisco</option>
-              <option value="snmp">SNMP — TP-Link, D-Link, Netgear and other managed switches</option>
+              <option value="snmp">SNMP — TP-Link, D-Link, Netgear, Hikvision and other managed switches</option>
             </select>
           </label>
         ) : null}

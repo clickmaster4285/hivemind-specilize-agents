@@ -1,6 +1,6 @@
 """SNMPv2c reader for switches and routers — GET and GETBULK walks, read-only by construction.
 
-TP-Link / D-Link / Netgear managed switches answer SNMPv2c with a community string; this is how
+TP-Link / D-Link / Netgear / Hikvision managed switches answer SNMPv2c with a community string; this is how
 netdev reads their ports, MAC tables and uptime (BACKLOG L19 D2). Only GET and GETBULK PDUs can
 be built here — there is no SET builder, so nothing in this module can change a device.
 The BER helpers come from net_scan; this module adds a full value decoder (counters, MACs,
