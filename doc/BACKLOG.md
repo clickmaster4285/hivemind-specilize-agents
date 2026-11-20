@@ -46,7 +46,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L27](#l27-server-work-like-a-developer--2026-11-18-issues_log-o93o96) | Server work like a developer: guided deploy, look-questions, logins kept open | built 2026-11-18 | live check on the uk server |
 | [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H1, H2, H3 built (2026-11-18) | NousResearch hermes-agent (MIT) |
 | [L29](#l29-live-updates-without-a-reload--planned-2026-11-20-issues_log-o120) | Live updates without a reload (one SSE stream) | built 2026-11-20 | API restart + user's look with two tabs |
-| [L30](#l30-a-team-of-10-or-more--planned-2026-11-20-issues_log-o121o125) | A team of 10+ users: capacity, accounts, admin, sharing, operations | T1–T3 built | API restart, services install; T4 sharing needs the user's design yes |
+| [L30](#l30-a-team-of-10-or-more--planned-2026-11-20-issues_log-o121o125) | A team of 10+ users: capacity, accounts, admin, sharing, operations | T1–T5 built (roles postponed) | API restart, services install; remote access choice; O32 |
 | [L31](#l31-a-knowledge-base-that-learns-from-the-web--built-2026-11-20) | Knowledge base learns from web answers | pages built 2026-11-20 | API restart (migration 004); answers reused later |
 
 ---
@@ -846,20 +846,24 @@ queue wait so far under 12 s.
       routes — cancel / confirm / delete stay the owner's), sees it under "Shared with me" and may "Continue in my
       own chat" (a new chat from its summary). A project link covers its chats, also later ones. A new link replaces
       the old one; Stop sharing ends the link and every reader's access. `src/jobs/sharing.py`
-- [x] **Team knowledge — built 2026-11-20:** a *team* scope in the knowledge base (migration 005: RLS reads a team
-      row only when `brain.team` matches, writes only as the system); `brain.db.connect` sets the team from the
-      signed-in account, so every search finds its team's documents with no caller changed. Admins add PDF (pypdf),
-      Word, Markdown, text, HTML in Settings → Team knowledge (`src/brain/team_docs.py`); members see their team's
-      list. Uploads by team leads wait for the postponed roles
+- [ ] **Team knowledge — built and removed 2026-11-20** (user: "no need of this — projects and share links cover
+      documents"): code, tab and the `/api/auth/people` list removed; the applied migration 005 stays and
+      `006_drop_team_scope.sql` undoes it (no team document had been uploaded)
 
-**T5 — operations**
-- [ ] Monitoring: health, disk, GPU, database size, queue depth, last backup — an alert when one is wrong
-- [ ] Remote access only over a VPN (WireGuard / Tailscale) or HTTPS; `Secure` cookies from config; the real
-      client address behind a proxy (else every remote user shares one rate-limit bucket)
-- [ ] Database password (O32), the default admin password changed; password rule: common passwords refused
-- [ ] Log rotation (logrotate), old job events purged, dependency scan of our own code (`trivy fs`), pinned
-      versions; Alembic at the next schema change
-- [ ] Brain refresh at night (`BRAIN_REFRESH_WINDOW=01-06`); daily quota resets at local midnight
+**T5 — operations** — built 2026-11-20 (user: alerts in a Logs tab, not email / Telegram)
+- [x] Settings → **Logs** (admins): Health & alerts — database, knowledge base, model, job workers, questions
+      (waiting, failed in 24 h), disk, backups (age, copy off the disk), GPU, dependency scan — each ok / warn / bad
+      with what to do (`src/core/health.py`); App log (warnings and errors of logs/api.log); Security log and Server
+      commands moved here
+- [x] Log rotation: `deploy/logrotate/multeagent` (daily or 50 MB, 14 kept, compressed), installed with the services
+- [x] Dependency scan: `deploy/scan-deps.sh` (Trivy over the installed .venv packages and package-lock.json),
+      weekly timer `multeagent-depscan` — first run: 5 medium, 2 low, nothing high or critical
+- [x] Housekeeping (`src/core/maintenance.py`, every 6 h): stored messages of chats deleted 30+ days ago, spent
+      reset links; knowledge-base refresh at night by default (`BRAIN_REFRESH_WINDOW` 01-06)
+- [ ] Remote access: options explained ([SECURITY.md](SECURITY.md) Part 4 — Tailscale Funnel recommended); the
+      user chooses; then the real client address behind the tunnel and Secure cookies
+- [ ] Database password (O32) and the default admin password — the user's
+- [ ] Pinned versions, Alembic at the next schema change — later
 
 Already good (keep): ownership checks on every job, chat, schedule, skill and library route (no IDOR found);
 admin routes behind `require_admin`, modules checked by the API; one active question per user and first-in-first-out

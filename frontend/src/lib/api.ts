@@ -821,16 +821,10 @@ export async function setDeviceShares(id: string, shares: DeviceShare[]): Promis
 
 // ── sharing chats and projects read-only (BACKLOG L30 T4) ───────────────────────────────────────────────────
 
-/** Someone I can share with: name and team only. */
-export type Person = { id: number; username: string; team: string | null };
 /** A chat shared with me. */
 export type SharedChat = { thread_id: string; title: string; owner: string; project: string | null; updated_at: string | null };
 /** My chat's / project's share link: whether it is live, and who opened it. */
 export type ShareLinkState = { shared: boolean; readers: string[]; token?: string };
-
-export async function listPeople(): Promise<Person[]> {
-  return request("/api/auth/people");
-}
 
 const linkPath = (kind: "chat" | "project", id: string) =>
   `/api/${kind === "chat" ? "threads" : "projects"}/${encodeURIComponent(id)}/link`;
@@ -873,22 +867,17 @@ export async function continueSharedChat(
   });
 }
 
-// ── team knowledge (BACKLOG L30 T4) ──────────────────────────────────────────────────────────────────────────
+// ── Settings → Logs (BACKLOG L30 T5; admins) ────────────────────────────────────────────────────────────────
 
-export type TeamDoc = { id: number; title: string; file: string; uploaded_by: string; bytes: number; uploaded_at: string; chunks: number };
+export type HealthCheck = { name: string; status: "ok" | "warn" | "bad"; detail: string; fix: string };
+export type AppLogLine = { at: string; level: "warning" | "error" | "critical"; where: string; message: string };
 
-/** A team's documents (a member: their own team's; an admin: the team asked for). */
-export async function listTeamDocs(team?: string): Promise<{ team: string; documents: TeamDoc[] }> {
-  return request(`/api/brain/team-docs${team ? `?team=${encodeURIComponent(team)}` : ""}`);
+/** Every part of the system ok / warn / bad, with what to do (admins). */
+export async function getSystemHealth(): Promise<{ checks: HealthCheck[]; problems: number }> {
+  return request("/api/admin/health");
 }
 
-/** Admin: add a file (base64) to a team's knowledge — read and embedded now, so a long PDF takes a while. */
-export async function uploadTeamDoc(team: string, filename: string, data: string): Promise<{ chunks: number; replaced: boolean }> {
-  return request("/api/brain/team-docs", { method: "POST", body: JSON.stringify({ team, filename, data }) },
-                 { timeoutMs: 300_000 });
-}
-
-export async function removeTeamDoc(team: string, id: number): Promise<void> {
-  await request(`/api/brain/team-docs/${id}?team=${encodeURIComponent(team)}`, { method: "DELETE" });
+export async function getAppLog(level: "warning" | "error"): Promise<{ lines: AppLogLine[] }> {
+  return request(`/api/admin/app-log?level=${level}`);
 }
 

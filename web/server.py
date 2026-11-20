@@ -29,8 +29,8 @@ from src.llm.model_registry import sync_models_from_ollama
 from web.brain_routes import router as brain_router
 from web.headers import SecurityHeaders
 from web.limits import RequestLimits
-from web.routers import (auth, events, history, jobs, library, models, schedules, servers, skills, specialists, system,
-                         usage, users)
+from web.routers import (auth, events, history, jobs, library, logs, models, schedules, servers, skills, specialists,
+                         system, usage, users)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -65,6 +65,9 @@ async def lifespan(_app: FastAPI):
 
     start_seo_tracker(config)
     # Scheduled tasks (BACKLOG L26 H1): a saved question asks itself again in its chat on time
+    from src.core import maintenance
+
+    maintenance.start(config)              # trims what grows without end (BACKLOG L30 T5)
     from src.jobs.schedules import start_scheduler as start_task_scheduler
 
     start_task_scheduler(config)
@@ -107,7 +110,7 @@ app.add_middleware(SecurityHeaders)
 
 # One router per domain (web/routers/*). brain_router carries its own /api/brain prefix.
 for module in (system, auth, users, specialists, skills, servers, models, jobs, history, library, schedules,
-               usage, events):
+               usage, events, logs):
     app.include_router(module.router)
 app.include_router(brain_router)
 

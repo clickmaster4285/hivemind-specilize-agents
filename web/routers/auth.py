@@ -232,15 +232,6 @@ def logout_everywhere(response: Response, user: User = Depends(get_current_user)
     return {"ok": True, "sessions_ended": ended}
 
 
-@router.get("/people")
-def people(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    """Who I can share a chat or project with (BACKLOG L30 T4): the active accounts' name and team — nothing else
-    (no email, phone or role)."""
-    rows = db.execute(select(User.id, User.username, User.team).where(User.status == USER_ACTIVE, User.id != user.id)
-                      .order_by(User.username)).all()
-    return [{"id": i, "username": name, "team": team} for i, name, team in rows]
-
-
 @router.get("/sessions")
 def my_sessions(request: Request, user: User = Depends(get_current_user),
                 db: Session = Depends(get_db)) -> list[dict[str, Any]]:

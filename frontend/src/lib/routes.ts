@@ -18,7 +18,7 @@ export const SHARE_LINK_PREFIX = "/s/";
 export const shareLinkPath = (token: string) => `${SHARE_LINK_PREFIX}${encodeURIComponent(token)}`;
 export const sharedChatPath = (id: string) => `${SHARED_PATH}/${encodeURIComponent(id)}`;
 export const devicePath = (id: string) => `${DEVICES_PATH}/${encodeURIComponent(id)}`;
-export type SettingsTab = "users" | "commands" | "usage" | "agents" | "knowledge" | "account";
+export type SettingsTab = "users" | "logs" | "usage" | "agents" | "account";
 export const settingsTabPath = (tab: SettingsTab) => `${SETTINGS_PATH}?tab=${tab}`;
 export const userPath = (id: number | "new") => `${SETTINGS_PATH}/users/${id}`;
 export const agentPath = (id: string) => `${SETTINGS_PATH}/agents/${encodeURIComponent(id)}`;

@@ -10,7 +10,7 @@ const SEARCH_PAUSE_MS = 300;
 /** Decisions that mean the server was not changed: shown muted. */
 const NOT_RUN = new Set(["cancelled", "refused"]);
 
-/** Settings → Server commands (admins): what the agent ran (or was refused) on servers, for every user — the audit
+/** Settings → Logs → Server commands (admins): what the agent ran (or was refused) on servers, for every user — the audit
  *  trail, kept after an account is deleted (ISSUES_LOG O123). Searchable by user, server, host or command. */
 export default function CommandLogPanel() {
   const [search, setSearch] = useState("");
@@ -32,7 +32,6 @@ export default function CommandLogPanel() {
 
   return (
     <>
-      <h4 className="m-0 text-base font-semibold [font-family:var(--font-display)]">Server commands</h4>
       <p className="m-0 text-xs text-muted">
         Every change the agent made, or was refused, on a server — who, where, what. Kept when an account is deleted.
       </p>

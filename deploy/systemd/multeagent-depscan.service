@@ -1,0 +1,13 @@
+# Vulnerability scan of MulteAgent's own dependencies (deploy/scan-deps.sh); result in logs/dep-scan.json, shown in
+# Settings → Logs → Health. Started by multeagent-depscan.timer.
+[Unit]
+Description=MulteAgent dependency scan
+
+[Service]
+Type=oneshot
+User=@USER@
+WorkingDirectory=@ROOT@
+Environment=TRIVY=@HOME@/.local/bin/trivy
+ExecStart=@ROOT@/deploy/scan-deps.sh
+StandardOutput=append:@ROOT@/logs/depscan.log
+StandardError=append:@ROOT@/logs/depscan.log

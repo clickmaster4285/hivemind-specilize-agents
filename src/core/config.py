@@ -21,6 +21,7 @@ load_dotenv(ROOT / ".env")
 
 # more side-by-side jobs than this only queue their model calls at the one GPU, each holding memory meanwhile
 MAX_WORKER_THREADS = 8
+DEFAULT_REFRESH_WINDOW = "01-06"         # local hours the knowledge base may refresh its sources
 
 def _bool(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
@@ -114,7 +115,7 @@ class Config:
     brain_no_evidence: str = "general"
     # Automatic refresh of sources whose refresh_every has passed (runs inside the API process)
     brain_scheduler: bool = True
-    brain_refresh_window: str = ""      # local hours "01-06" (night only); empty = any time
+    brain_refresh_window: str = ""      # local hours "01-06" (the default from the environment); empty = any time
     brain_scheduler_minutes: int = 30   # how often to look for due sources
     # on demand: a source used by an answer and not checked for this many hours is refreshed right away
     brain_fresh_hours: float = 24.0
@@ -274,7 +275,9 @@ class Config:
                 "refuse" if (os.getenv("BRAIN_NO_EVIDENCE") or "").strip().lower() == "refuse" else "general"
             ),
             brain_scheduler=_bool("BRAIN_SCHEDULER", True),
-            brain_refresh_window=(os.getenv("BRAIN_REFRESH_WINDOW") or "").strip(),
+            # night by default (BACKLOG L30 T5): the refresh embeds on the CPU, which chat recall needs by day;
+            # BRAIN_REFRESH_WINDOW= (empty) lets it run any time
+            brain_refresh_window=os.getenv("BRAIN_REFRESH_WINDOW", DEFAULT_REFRESH_WINDOW).strip(),
             brain_scheduler_minutes=max(5, int(os.getenv("BRAIN_SCHEDULER_MINUTES", "30"))),
             brain_fresh_hours=max(0.1, float(os.getenv("BRAIN_FRESH_HOURS", "24"))),
             verify_answers=os.getenv("VERIFY_ANSWERS", "true").strip().lower() not in {"0", "false", "no", "off"},

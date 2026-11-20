@@ -7,12 +7,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from psycopg.rows import dict_row
 
-from src.core.auth import get_current_user, require_admin
+from src.core.auth import get_current_user
 from src.brain.db import BrainDBError, connect
 from src.brain.embed import EmbedError
 from src.brain.retrieve import MAX_PASSAGES, search
 from src.core.models_db import User
-from web.schemas import TeamDocPayload
 
 router = APIRouter(prefix="/api/brain", tags=["brain"])
 
@@ -85,60 +84,4 @@ def brain_stats(user: User = Depends(get_current_user)) -> dict[str, Any]:
             "chunks": sum(r["chunks"] for r in sources),
         },
     }
-
-
-# ── team knowledge (BACKLOG L30 T4): documents for one team ───────────────────────────────────────────────────
-
-def _team_for(user: User, team: str | None) -> str:
-    """Admins look at any team's documents; a member only at their own team's."""
-    wanted = (team or "").strip() if user.role == "admin" else (user.team or "")
-    if not wanted:
-        raise HTTPException(status_code=400, detail="Choose a team" if user.role == "admin" else "You are in no team")
-    return wanted
-
-
-@router.get("/team-docs")
-def team_documents(team: str | None = None, user: User = Depends(get_current_user)) -> dict[str, Any]:
-    """A team's documents (members see their own team's; admins choose the team)."""
-    from src.brain import team_docs
-    from src.core.config import Config
-
-    wanted = _team_for(user, team)
-    try:
-        return {"team": wanted, "documents": team_docs.listing(Config.from_env(), wanted)}
-    except BrainDBError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.post("/team-docs", status_code=201)
-def upload_team_document(payload: TeamDocPayload, admin: User = Depends(require_admin)) -> dict[str, Any]:
-    """Add a file (PDF, Word, Markdown, text, HTML) to a team's knowledge; the same name again replaces it. Its text
-    is read and embedded now (a long PDF takes a while), then the team's searches find it."""
-    import base64
-    import binascii
-
-    from src.brain import team_docs
-    from src.core.config import Config
-
-    try:
-        data = base64.b64decode(payload.data, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise HTTPException(status_code=400, detail="The file did not arrive whole — try again") from exc
-    try:
-        return team_docs.add(Config.from_env(), payload.team.strip(), payload.filename.strip(), data,
-                             uploaded_by=admin.username)
-    except team_docs.TeamDocError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except (BrainDBError, EmbedError) as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-
-
-@router.delete("/team-docs/{doc_id}")
-def remove_team_document(doc_id: int, team: str, admin: User = Depends(require_admin)) -> dict[str, Any]:
-    from src.brain import team_docs
-    from src.core.config import Config
-
-    if not team_docs.remove(Config.from_env(), team.strip(), doc_id):
-        raise HTTPException(status_code=404, detail="That document is not in this team's knowledge")
-    return {"ok": True}
 

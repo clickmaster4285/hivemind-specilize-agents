@@ -5,8 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { WIDE_PAGE_WIDTH } from "@/components/app/PageHeader";
 import AccountSection from "@/components/settings/AccountSection";
-import TeamKnowledgeSection from "@/components/settings/TeamKnowledgeSection";
-import CommandLogPanel from "@/components/settings/users/CommandLogPanel";
+import LogsSection from "@/components/settings/LogsSection";
 import UsageSection from "@/components/settings/UsageSection";
 import UsersSection from "@/components/settings/users/UsersSection";
 import { useUsers } from "@/hooks/useUsers";
@@ -37,10 +36,9 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
   // Devices to /devices, and Models was dropped (one model, picked per message) — the user's asks, 2026-11-17.
   // The first visible tab is the default.
   const tabs: { id: SettingsTab; label: string }[] = [
-    ...(isAdmin ? [{ id: "users" as const, label: "Users" }, { id: "commands" as const, label: "Server commands" }] : []),
+    ...(isAdmin ? [{ id: "users" as const, label: "Users" }, { id: "logs" as const, label: "Logs" }] : []),
     ...(has("usage") ? [{ id: "usage" as const, label: "Usage" }] : []),
     { id: "agents", label: "Agents" },
-    { id: "knowledge", label: "Team knowledge" },
     { id: "account", label: "My account" },
   ];
   const tab = tabs.find((t) => t.id === asked)?.id ?? tabs[0].id;
@@ -82,17 +80,10 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
         </section>
       ) : null}
 
-      {/* Server commands (admins): the audit trail of what the agent ran on servers (ISSUES_LOG O123) */}
-      {tab === "commands" && isAdmin ? (
+      {/* Logs (admins, BACKLOG L30 T5): health and alerts, the app log, the security log, server commands */}
+      {tab === "logs" && isAdmin ? (
         <section className={panel}>
-          <CommandLogPanel />
-        </section>
-      ) : null}
-
-      {/* Team knowledge (everyone sees their team's; admins add files, BACKLOG L30 T4) */}
-      {tab === "knowledge" ? (
-        <section className={panel}>
-          <TeamKnowledgeSection />
+          <LogsSection />
         </section>
       ) : null}
 

@@ -398,6 +398,28 @@ Every number is a named constant; changing one is a one-line edit plus an API re
 
 ## Part 4 — Known limits and what is next
 
+**Reaching the app from outside the office (no domain, no VPS, no certificate to install — the user, 2026-11-20)**
+
+A public HTTPS address that every browser already trusts, with nothing installed on the other people's PCs, comes
+from a *tunnel*: a small program on this PC opens an outgoing connection to a provider, which gives a fixed
+`https://` address and forwards it to `http://localhost:3000`. No port is opened on the router.
+
+| Option | Fixed address, free | Certificate | Notes |
+|---|---|---|---|
+| **Tailscale Funnel** (recommended) | yes — `https://<pc-name>.<tailnet>.ts.net` | Let's Encrypt, done by Tailscale | No interstitial page; the free plan allows it; also gives a private VPN for staff later |
+| **ngrok** | one free static domain — `https://<name>.ngrok-free.app` | ngrok's | The free plan shows a "you are visiting an ngrok site" page once per browser |
+| **Cloudflare Tunnel** | only with your own domain on Cloudflare; without one, a *quick tunnel* gets a new random address each start | Cloudflare's | Best once a domain exists |
+| Caddy | needs a domain (or its own CA, which every PC would have to trust) | — | Not an option without a domain |
+
+Before it is opened to the internet (both to do once a choice is made):
+- **The real caller's address:** through a tunnel every visitor reaches the UI from `127.0.0.1`, so they would
+  share one rate-limit bucket and one sign-in lock (`frontend/server.mjs`, `src/core/abuse.py`). The UI server must
+  take the tunnel's `X-Forwarded-For` / `CF-Connecting-IP` instead, from the tunnel program only.
+- **Secure cookies:** the tunnel speaks HTTPS to the browser but plain http to the app, so cookies must be marked
+  `Secure` from the configuration, not from the request.
+
+
+
 **Accepted limits**
 - **Styles are not locked down** (`'unsafe-inline'`, 1.7 / 2.7): needed by React and Mermaid. An injected style
   can change how a page looks, but it can't run code.

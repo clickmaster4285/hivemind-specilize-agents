@@ -209,14 +209,6 @@ class SoftDeleteJobsPayload(BaseModel):
     job_ids: list[str] = Field(default_factory=list)
 
 
-class TeamDocPayload(BaseModel):
-    """One file for a team's knowledge (BACKLOG L30 T4), base64 like a chat picture."""
-
-    team: str = Field(min_length=1, max_length=40)
-    filename: str = Field(min_length=1, max_length=200)
-    data: str = Field(min_length=1)
-
-
 class SharedLinkPayload(BaseModel):
     """A share link's token, opened by someone signed in (BACKLOG L30 T4)."""
 

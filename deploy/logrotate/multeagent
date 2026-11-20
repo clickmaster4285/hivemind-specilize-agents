@@ -1,0 +1,14 @@
+# MulteAgent logs (BACKLOG L30 T5): installed to /etc/logrotate.d/multeagent by deploy/install-services.sh, which
+# fills @ROOT@ and @USER@. Daily, or sooner past 50 MB; 14 kept, older ones compressed. copytruncate: the API, the UI
+# and the backup keep writing to the same open file (systemd's append:), so it is copied and emptied, not moved.
+@ROOT@/logs/*.log {
+    su @USER@ @USER@
+    daily
+    maxsize 50M
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

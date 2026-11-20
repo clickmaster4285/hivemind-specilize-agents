@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-import time
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import psycopg
@@ -49,47 +48,17 @@ def app_url(config: Config) -> str:
     return urlunsplit(parts._replace(netloc=netloc))
 
 
-TEAM_CACHE_SECONDS = 60          # an account's team, looked up per search: a changed team counts within a minute
-_teams: dict[str, tuple[float, str]] = {}
-
-
-def team_of(account_id: str | None) -> str:
-    """The team of a signed-in account (an app user id), for team knowledge (BACKLOG L30 T4); "" for none."""
-    if not account_id or not account_id.isdigit():
-        return ""
-    now = time.monotonic()
-    cached = _teams.get(account_id)
-    if cached and now - cached[0] < TEAM_CACHE_SECONDS:
-        return cached[1]
-    try:
-        from sqlalchemy import select
-
-        from src.core.db import session_scope
-        from src.core.models_db import User
-
-        with session_scope() as session:
-            team = session.scalar(select(User.team).where(User.id == int(account_id))) or ""
-    except Exception:  # noqa: BLE001 — no app database (a script, a test): public and private rows only
-        team = ""
-    _teams[account_id] = (now, team)
-    return team
-
-
 @contextmanager
 def connect(
     config: Config | None = None,
     *,
     account_id: str | None = None,
     system: bool = False,
-    team: str | None = None,
 ) -> Iterator[psycopg.Connection]:
     """One transaction as brain_app, with the row-level-security context set.
 
-    account_id: whose private rows may be read/written (None = public rows only); their team's rows are readable
-                too (looked up, team_of).
-    system:     True only for the ingestion service and the API's uploads, which write public and team knowledge.
-    team:       the team whose rows this transaction may read (the upload of a team document); default: the
-                account's own team.
+    account_id: whose private rows may be read/written (None = public rows only).
+    system:     True only for the ingestion service, which writes public knowledge.
     Commits when the block finishes, rolls back if it raises.
     """
     config = config or Config.from_env()
@@ -102,8 +71,7 @@ def connect(
         with conn.transaction():
             # is_local=true: settings end with the transaction, never leak to another request
             conn.execute(
-                "SELECT set_config('brain.account_id', %s, true), set_config('brain.system', %s, true), "
-                "set_config('brain.team', %s, true)",
-                (account_id or "", "on" if system else "off", team if team is not None else team_of(account_id)),
+                "SELECT set_config('brain.account_id', %s, true), set_config('brain.system', %s, true)",
+                (account_id or "", "on" if system else "off"),
             )
             yield conn

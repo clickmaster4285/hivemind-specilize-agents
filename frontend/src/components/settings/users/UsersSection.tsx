@@ -4,7 +4,6 @@ import Link from "next/link";
 
 import BlockedComputers from "@/components/settings/users/BlockedComputers";
 import InvitesPanel from "@/components/settings/users/InvitesPanel";
-import SecurityLogPanel from "@/components/settings/users/SecurityLogPanel";
 import UsersTable from "@/components/settings/users/UsersTable";
 import type { UsersApi } from "@/hooks/useUsers";
 import { userPath } from "@/lib/routes";
@@ -69,7 +68,6 @@ export default function UsersSection({ users }: { users: UsersApi }) {
 
       <UsersTable users={users} accounts={accounts} />
 
-      <SecurityLogPanel />
     </>
   );
 }

@@ -126,12 +126,3 @@ def test_continue_in_my_own_chat_starts_from_the_shared_chats_summary(db, monkey
     assert (mine.user_id, mine.title, mine.summary) == (ANA, "DNS plan (continued)", "summary of t1 by 1")
     assert out["summary"] == "summary of t1 by 1" and db.get(ChatThreadRow, "t1").user_id == OWNER
 
-
-def test_the_people_list_shows_only_names_and_teams_of_active_colleagues(db):
-    from web.routers.auth import people
-
-    db.get(User, BO).status = "former"
-    db.get(User, ANA).team = "IT"
-    db.commit()
-    assert people(user=_u(db, BO), db=db) == [{"id": ANA, "username": "ana", "team": "IT"},
-                                              {"id": OWNER, "username": "olga", "team": None}]

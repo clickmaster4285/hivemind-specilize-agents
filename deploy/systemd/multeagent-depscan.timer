@@ -1,0 +1,11 @@
+# Weekly dependency scan, Monday 03:30 (after the 02:30 backup); a missed run happens at the next start.
+[Unit]
+Description=Weekly MulteAgent dependency scan
+
+[Timer]
+OnCalendar=Mon *-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
