@@ -65,9 +65,9 @@ export default function RepeatDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-backdrop p-4 backdrop-blur-[4px]" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-backdrop p-4 backdrop-blur-xs" onClick={onClose}>
       <form
-        className="flex w-[min(520px,100%)] flex-col gap-3 rounded-2xl border border-line bg-panel px-[1.1rem] pt-4 pb-[1.1rem] shadow-shadow"
+        className="flex w-[min(32.5rem,100%)] flex-col gap-3 rounded-2xl border border-line bg-panel px-[1.1rem] pt-4 pb-[1.1rem] shadow-shadow"
         onClick={(e) => e.stopPropagation()}
         onSubmit={save}
       >

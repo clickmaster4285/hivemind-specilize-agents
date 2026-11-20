@@ -135,7 +135,7 @@ export default function AuthScreen({ error, captchaRequired, onSignIn }: Props) 
   return (
     <div className="grid min-h-screen place-items-center p-4">
       <form
-        className="flex w-full max-w-[400px] flex-col gap-4 rounded-2xl border border-line bg-panel px-6 py-7 shadow-shadow"
+        className="flex w-full max-w-[25rem] flex-col gap-4 rounded-2xl border border-line bg-panel px-6 py-7 shadow-shadow"
         onSubmit={signingUp ? submitSignUp : submitSignIn}
       >
         <div className="mb-1 flex items-center gap-[0.85rem]">

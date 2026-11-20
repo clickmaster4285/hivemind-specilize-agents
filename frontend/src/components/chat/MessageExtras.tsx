@@ -637,7 +637,7 @@ function ClaimList({ title, claims }: { title: string; claims: { text: string; c
 export function ScheduleNote({ item }: { item: FeedItem }) {
   const r = item.scheduleResult;
   if (item.pending || !r) return null;
-  const box = "mt-[0.6rem] mb-[0.2rem] rounded-[8px] border px-[0.7rem] py-[0.45rem] text-[0.82rem]";
+  const box = "mt-[0.6rem] mb-[0.2rem] rounded-lg border px-[0.7rem] py-[0.45rem] text-[0.82rem]";
   if (r.status === "failed") {
     return (
       <div className={`${box} border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-[color-mix(in_srgb,var(--danger)_7%,var(--panel-2))] text-text`}>
@@ -672,7 +672,7 @@ export function VerificationNote({ item }: { item: FeedItem }) {
     ? `✓ All ${v.checked} statements confirmed by the sources`
     : `${problems ? "⚠" : "✓"} ${v.supported} of ${v.checked} statements confirmed by the sources` +
       (problems ? ` · ${problems} not supported` : "");
-  const box = "mt-[0.6rem] mb-[0.2rem] rounded-[8px] px-[0.7rem] py-[0.4rem] text-[0.78rem] text-muted";
+  const box = "mt-[0.6rem] mb-[0.2rem] rounded-lg px-[0.7rem] py-[0.4rem] text-[0.78rem] text-muted";
   const okBorder = "border border-[color-mix(in_srgb,var(--teal)_35%,var(--line))]";
   const warnBox =
     "border border-[color-mix(in_srgb,var(--danger)_45%,var(--line))] bg-[color-mix(in_srgb,var(--danger)_7%,var(--panel-2))]";
@@ -742,7 +742,7 @@ export function SourceList({ item }: { item: FeedItem }) {
                     >
                       {ico ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={ico} alt="" className="h-4 w-4 shrink-0 rounded-[3px]" loading="lazy" />
+                        <img src={ico} alt="" className="h-4 w-4 shrink-0 rounded-[0.1875rem]" loading="lazy" />
                       ) : null}
                       <span className="min-w-0 group-hover:underline">{s.title}</span>
                     </a>

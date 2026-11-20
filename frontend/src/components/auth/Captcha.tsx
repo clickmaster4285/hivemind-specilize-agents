@@ -47,9 +47,9 @@ export default function Captcha({ round, onChange }: Props) {
       <div className="flex items-center gap-2">
         {challenge ? (
           // eslint-disable-next-line @next/next/no-img-element -- a data URL from our API, not a file to optimise
-          <img src={challenge.image} alt="CAPTCHA characters" className="h-[60px] rounded-md border border-line" />
+          <img src={challenge.image} alt="CAPTCHA characters" className="h-15 rounded-md border border-line" />
         ) : (
-          <span className="grid h-[60px] w-[180px] place-items-center rounded-md border border-line">…</span>
+          <span className="grid h-15 w-45 place-items-center rounded-md border border-line">…</span>
         )}
         <button type="button" className={btn("ghost", "sm")} onClick={() => setAsked((n) => n + 1)}>
           New image

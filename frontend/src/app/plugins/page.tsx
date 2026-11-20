@@ -63,7 +63,7 @@ export default function PluginsPage() {
         <section className="mt-7">
           <h2 className="m-0 text-[1rem] font-semibold">Connectors</h2>
           <p className="mt-1 text-[0.82rem] text-muted">Not available yet — these are planned.</p>
-          <ul className="m-0 mt-3 grid list-none grid-cols-2 gap-x-6 p-0 max-[700px]:grid-cols-1">
+          <ul className="m-0 mt-3 grid list-none grid-cols-2 gap-x-6 p-0 max-[43.75rem]:grid-cols-1">
             {connectors.map((p) => (
               <li key={p.name} className="flex items-center justify-between gap-3 border-b border-line py-3">
                 <span className="min-w-0">

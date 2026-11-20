@@ -22,7 +22,7 @@ export default function ConfirmCard({ item, onConfirm }: Props) {
   if (!c) return null;
   const answered = c.answered;
   return (
-    <div className={`my-[0.6rem] rounded-[10px] border border-[color-mix(in_srgb,var(--danger)_50%,var(--line))] bg-[color-mix(in_srgb,var(--danger)_8%,var(--panel-2))] px-[0.9rem] py-[0.7rem] ${answered ? "opacity-70" : ""}`}>
+    <div className={`my-[0.6rem] rounded-[0.625rem] border border-[color-mix(in_srgb,var(--danger)_50%,var(--line))] bg-[color-mix(in_srgb,var(--danger)_8%,var(--panel-2))] px-[0.9rem] py-[0.7rem] ${answered ? "opacity-70" : ""}`}>
       <p className="mb-[0.4rem] text-text">
         Run this on <strong>{c.server}</strong>?
       </p>

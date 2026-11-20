@@ -89,11 +89,11 @@ export default function SkillModal(props: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-backdrop p-4 backdrop-blur-[4px]"
+      className="fixed inset-0 z-50 grid place-items-center bg-backdrop p-4 backdrop-blur-xs"
       onClick={onClose}
     >
       <form
-        className="flex max-h-[92vh] w-[min(680px,100%)] flex-col gap-3 overflow-y-auto rounded-2xl border border-line bg-panel px-[1.1rem] pt-4 pb-[1.1rem] shadow-shadow"
+        className="flex max-h-[92vh] w-[min(42.5rem,100%)] flex-col gap-3 overflow-y-auto rounded-2xl border border-line bg-panel px-[1.1rem] pt-4 pb-[1.1rem] shadow-shadow"
         onClick={(e) => e.stopPropagation()}
         onSubmit={save}
       >

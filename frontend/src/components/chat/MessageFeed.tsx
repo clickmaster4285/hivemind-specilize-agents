@@ -19,7 +19,7 @@ import { composerColumn, msgAction } from "@/lib/ui";
 // the content lives in a centered, comfortably-wide column inside it.
 const scrollCls =
   "flex-1 min-h-0 w-full overflow-y-auto overflow-x-hidden px-6 pt-4 pb-5 [overscroll-behavior:contain]";
-const colCls = "mx-auto flex w-full max-w-[1040px] flex-col gap-5";
+const colCls = "mx-auto flex w-full max-w-[65rem] flex-col gap-5";
 // Within this many pixels of the end counts as "at the bottom": the streamed answer is followed only then, so
 // scrolling up to read is not undone by each new piece of text (ISSUES_LOG O80).
 const BOTTOM_SLACK_PX = 48;

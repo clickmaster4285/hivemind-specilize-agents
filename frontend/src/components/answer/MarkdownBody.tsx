@@ -143,7 +143,7 @@ function CiteCluster({ sources }: { sources: CiteSrc[] }) {
         onMouseEnter={(e) => open(e.currentTarget)}
         onMouseLeave={scheduleClose}
       >
-        {ico ? <img src={ico} alt="" className="h-[0.85rem] w-[0.85rem] shrink-0 rounded-[2px]" loading="lazy" /> : null}
+        {ico ? <img src={ico} alt="" className="h-[0.85rem] w-[0.85rem] shrink-0 rounded-xs" loading="lazy" /> : null}
         <span className="truncate text-[0.72rem] text-text">{name}</span>
         {extra > 0 ? <span className="shrink-0 text-[0.68rem] font-semibold text-teal">+{extra}</span> : null}
       </a>
@@ -167,7 +167,7 @@ function CiteCluster({ sources }: { sources: CiteSrc[] }) {
                     rel="noreferrer noopener"
                     className="flex items-start gap-2 rounded-[0.45rem] px-[0.45rem] py-[0.4rem] no-underline hover:bg-[color-mix(in_srgb,var(--teal)_10%,transparent)]"
                   >
-                    {sico ? <img src={sico} alt="" className="mt-[0.1rem] h-4 w-4 shrink-0 rounded-[3px]" loading="lazy" /> : null}
+                    {sico ? <img src={sico} alt="" className="mt-[0.1rem] h-4 w-4 shrink-0 rounded-[0.1875rem]" loading="lazy" /> : null}
                     <span className="min-w-0 flex-1">
                       <span className="block text-[0.66rem] text-muted">{s.publisher || h}</span>
                       <span className="block overflow-hidden text-[0.78rem] leading-[1.25] text-text [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [display:-webkit-box]">

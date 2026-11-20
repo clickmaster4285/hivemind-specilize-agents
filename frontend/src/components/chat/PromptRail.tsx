@@ -28,7 +28,7 @@ export default function PromptRail({ prompts, active, onJump }: Props) {
         {prompts.map((p) => (
           <li key={p.id}>
             <button type="button" aria-label={preview(p.text)} onClick={() => onJump(p.id)}
-              className={`block h-[2px] rounded-full ${p.id === current ? "w-4 bg-copper" : "w-3 bg-muted hover:bg-text"}`} />
+              className={`block h-0.5 rounded-full ${p.id === current ? "w-4 bg-copper" : "w-3 bg-muted hover:bg-text"}`} />
           </li>
         ))}
       </ul>

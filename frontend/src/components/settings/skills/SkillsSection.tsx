@@ -17,7 +17,7 @@ const hint = "text-xs leading-relaxed text-muted";
 // a skill card in the two-column grid (the user's ask, 2026-11-17): the whole card opens the skill
 const card =
   "group relative flex min-h-[7.5rem] cursor-pointer flex-col gap-1.5 rounded-xl border border-line bg-panel-2 p-3.5 pr-10 hover:border-[color-mix(in_srgb,var(--copper)_45%,var(--line))]";
-const grid = "m-0 grid list-none grid-cols-2 gap-3 p-0 max-[760px]:grid-cols-1";
+const grid = "m-0 grid list-none grid-cols-2 gap-3 p-0 max-[47.5rem]:grid-cols-1";
 const chip = "rounded-full border border-line px-2 py-0.5 text-[0.68rem] text-muted";
 const menuRow = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[0.8rem] text-text hover:bg-hover disabled:opacity-50 disabled:hover:bg-transparent";
 /** The ⋮ menu's width, to open it leftwards from the button so it stays inside the card's column. */

@@ -71,14 +71,14 @@ export const mdPre =
 /** Diagrams sit on a card of fixed colours (not theme tokens), so they export as drawn: the light "paper" card,
  *  and for a Mermaid diagram in the dark theme the dark card (the network diagram stays on paper). */
 export const diagram = {
-  card: "mt-[0.4rem] mb-[0.6rem] rounded-[10px] border border-line bg-[#f7f5f0] p-3 text-[#1d232c]",
+  card: "mt-[0.4rem] mb-[0.6rem] rounded-[0.625rem] border border-line bg-[#f7f5f0] p-3 text-[#1d232c]",
   actions:
     "mt-[0.6rem] flex flex-wrap gap-[0.4rem] border-t border-[#ddd8cc] pt-2 [&_button]:border-[#c9c2b3] [&_button]:text-[#1d232c]",
   loading: "p-[0.6rem] text-[0.85rem]",
   error: "p-[0.6rem] text-[0.85rem] text-[#9b2c1f]",
   code: `${mdPre} text-text`,
   // a Mermaid diagram in the dark theme: drawn with redux-dark-color on the dark panel (O62); exports keep it
-  cardDark: "mt-[0.4rem] mb-[0.6rem] rounded-[10px] border border-line bg-[#1a1f27] p-3 text-[#e7e2d8]",
+  cardDark: "mt-[0.4rem] mb-[0.6rem] rounded-[0.625rem] border border-line bg-[#1a1f27] p-3 text-[#e7e2d8]",
   actionsDark:
     "mt-[0.6rem] flex flex-wrap gap-[0.4rem] border-t border-[#343b48] pt-2 [&_button]:border-[#4a5263] [&_button]:text-[#e7e2d8]",
 };
@@ -87,7 +87,7 @@ export const diagram = {
 /** A hover card (full chat title, date) waits this long, so moving the pointer across titles doesn't flash one. */
 export const HOVER_CARD_DELAY_MS = 450;
 
-export const composerColumn = "mx-auto w-full max-w-[820px] px-4";
+export const composerColumn = "mx-auto w-full max-w-[51.25rem] px-4";
 
 /** A form's text box / select / textarea and its label above it: dialogs (skills, specialists, Repeat…) and the
  *  sign-in screen. One definition: it was copied in 5 components (ISSUES_LOG O97). */

@@ -41,7 +41,7 @@ export default function ChoiceCard({ item, onChoose }: Props) {
   const ticks = c.options.filter((o) => o.id !== STOP_ID);
 
   return (
-    <div className={`my-[0.6rem] rounded-[10px] border border-[color-mix(in_srgb,var(--copper)_50%,var(--line))] bg-[color-mix(in_srgb,var(--copper)_7%,var(--panel-2))] px-[0.9rem] py-[0.7rem] ${answered ? "opacity-75" : ""}`}>
+    <div className={`my-[0.6rem] rounded-[0.625rem] border border-[color-mix(in_srgb,var(--copper)_50%,var(--line))] bg-[color-mix(in_srgb,var(--copper)_7%,var(--panel-2))] px-[0.9rem] py-[0.7rem] ${answered ? "opacity-75" : ""}`}>
       <p className="mb-[0.5rem] text-text">
         <Bolded text={c.question} />
         {c.server ? <span className="ml-1 text-[0.8rem] text-muted">· {c.server}</span> : null}

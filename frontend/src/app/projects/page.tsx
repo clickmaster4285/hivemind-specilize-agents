@@ -55,7 +55,7 @@ export default function ProjectsPage() {
           {history.projects.length ? "No project matches." : "No projects yet. Make one to group related chats."}
         </p>
       ) : (
-        <ul className="m-0 mt-6 grid list-none grid-cols-2 gap-4 p-0 max-[700px]:grid-cols-1">
+        <ul className="m-0 mt-6 grid list-none grid-cols-2 gap-4 p-0 max-[43.75rem]:grid-cols-1">
           {projects.map((p) => {
             const chats = chatsOf(p.id);
             const active = history.projectId === p.id;

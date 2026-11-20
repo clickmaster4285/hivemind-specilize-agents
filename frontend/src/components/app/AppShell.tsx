@@ -53,13 +53,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className={`grid h-full max-h-dvh max-w-[100vw] overflow-hidden transition-[grid-template-columns] duration-200 max-[900px]:grid-cols-1 max-[900px]:grid-rows-[minmax(12rem,38vh)_1fr] ${
-        collapsed ? "grid-cols-[60px_1fr]" : "grid-cols-[272px_1fr]"
+      className={`grid h-full max-h-dvh max-w-[100vw] overflow-hidden transition-[grid-template-columns] duration-200 max-[56.25rem]:grid-cols-1 max-[56.25rem]:grid-rows-[minmax(12rem,38vh)_1fr] ${
+        collapsed ? "grid-cols-[3.75rem_1fr]" : "grid-cols-[17rem_1fr]"
       }`}
     >
       <ChatUrlSync />
       <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
-      <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[color-mix(in_srgb,var(--ink)_35%,transparent)] max-[900px]:h-auto">
+      <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[color-mix(in_srgb,var(--ink)_35%,transparent)] max-[56.25rem]:h-auto">
         <Navbar />
         <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</main>
       </div>

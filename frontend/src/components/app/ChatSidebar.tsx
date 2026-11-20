@@ -114,7 +114,7 @@ export default function ChatSidebar({
 
   return (
     <aside
-      className={`flex h-full min-h-0 flex-col gap-2 overflow-hidden border-r border-line bg-glass py-3 max-[900px]:h-auto max-[900px]:max-h-none max-[900px]:border-r-0 max-[900px]:border-b ${
+      className={`flex h-full min-h-0 flex-col gap-2 overflow-hidden border-r border-line bg-glass py-3 max-[56.25rem]:h-auto max-[56.25rem]:max-h-none max-[56.25rem]:border-r-0 max-[56.25rem]:border-b ${
         collapsed ? "items-stretch px-[0.45rem]" : "px-[0.7rem]"
       }`}
       aria-label="Chat navigation"
