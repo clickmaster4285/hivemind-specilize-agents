@@ -1,8 +1,11 @@
-"""network_device — read a router or switch (BACKLOG L19 D2): MikroTik RouterOS now, Cisco IOS next.
+"""network_device — read a router or switch (BACKLOG L19 D2): MikroTik RouterOS and Cisco IOS over SSH; switches
+that have no usable command line (TP-Link, D-Link, Netgear…) over SNMP (src/servers/snmp.py, the device saved on
+port 161 with its community string).
 
 Read-only: each platform has a fixed list of print/show commands (PLATFORMS below) and nothing else is ever
-sent. The platform is the one the device names in its SSH banner. Login and host-key pinning are the
-server tools' (linux_audit.connect). Output from the device is untrusted text: parsed, never executed.
+sent; SNMP sends only GET / GETBULK. The platform is the one the device names in its SSH banner. Login and
+host-key pinning are the server tools' (linux_audit.connect). Output from the device is untrusted text: parsed,
+never executed.
 """
 
 from __future__ import annotations
@@ -44,7 +47,16 @@ MIKROTIK = Platform("MikroTik RouterOS", "ROSSSH", {
     "arp": "/ip arp print terse without-paging",
     "log": "/log print without-paging",
 })
-PLATFORMS = (MIKROTIK,)
+# Cisco IOS / IOS-XE: an exec channel is not paged, so no `terminal length 0` is needed (it would need a shell)
+CISCO = Platform("Cisco IOS", "Cisco", {
+    "version": "show version",
+    "ports": "show interfaces status",
+    "ip": "show ip interface brief",
+    "macs": "show mac address-table",
+    "arp": "show arp",
+    "log": "show logging",
+})
+PLATFORMS = (MIKROTIK, CISCO)
 
 
 @dataclass
@@ -56,6 +68,7 @@ class DeviceReport:
     interfaces: list[dict[str, str]] = field(default_factory=list)
     leases: list[dict[str, str]] = field(default_factory=list)
     arp: list[dict[str, str]] = field(default_factory=list)
+    macs: list[dict[str, str]] = field(default_factory=list)      # a switch's MAC table: who is on which port
     log: list[str] = field(default_factory=list)
 
 
@@ -112,7 +125,88 @@ def _mikrotik(outputs: dict[str, str], host: str) -> DeviceReport:
     )
 
 
-READERS: dict[str, Callable[[dict[str, str], str], DeviceReport]] = {MIKROTIK.name: _mikrotik}
+# ── Cisco IOS output ───────────────────────────────────────────────────
+
+CISCO_MAC_RE = re.compile(r"\b([0-9a-f]{4})\.([0-9a-f]{4})\.([0-9a-f]{4})\b", re.I)
+MAC_ROW_RE = re.compile(r"^\s*(\d+|All)\s+([0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})\s+(\S+)\s+(\S+)", re.I | re.M)
+ARP_ROW_RE = re.compile(r"^Internet\s+(\S+)\s+\S+\s+([0-9a-f]{4}\.[0-9a-f]{4}\.[0-9a-f]{4})\s+\S+\s+(\S+)",
+                        re.I | re.M)
+LOG_LINE_RE = re.compile(r"%[A-Z0-9_]+-\d-[A-Z0-9_]+:")       # an IOS message: %LINK-3-UPDOWN: …
+
+
+def cisco_mac(text: str) -> str:
+    """0011.2233.4455 → 00:11:22:33:44:55, the form every other table here uses."""
+    m = CISCO_MAC_RE.search(text)
+    digits = "".join(m.groups()).lower() if m else ""
+    return ":".join(digits[i:i + 2] for i in range(0, 12, 2)) if digits else ""
+
+
+def parse_version(text: str) -> dict[str, str]:
+    def find(pattern: str) -> str:
+        m = re.search(pattern, text, re.M | re.I)
+        return m.group(1).strip() if m else ""
+    return {"name": find(r"^(\S+) uptime is"), "uptime": find(r"uptime is (.+)$"),
+            "version": find(r"Version ([^,\s]+)"),
+            "model": find(r"^Model number\s*:\s*(\S+)") or find(r"^cisco (\S+)"),
+            "serial": find(r"^System serial number\s*:\s*(\S+)") or find(r"Processor board ID (\S+)")}
+
+
+def parse_columns(text: str) -> list[dict[str, str]]:
+    """A fixed-width IOS table (`show interfaces status`): the header's word positions cut every row, so a blank
+    Name column or a two-word Status stays in its own column."""
+    lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+    head = next((i for i, line in enumerate(lines) if line.lstrip().startswith("Port") and "Status" in line), None)
+    if head is None:
+        return []
+    starts = [m.start() for m in re.finditer(r"\S+", lines[head])]
+    names = lines[head].split()
+    rows = []
+    for line in lines[head + 1:]:
+        cells = [line[a:b].strip() for a, b in zip(starts, [*starts[1:], len(line) + 1])]
+        if cells and cells[0]:
+            rows.append(dict(zip(names, cells)))
+    return rows
+
+
+def parse_ip_brief(text: str) -> list[dict[str, str]]:
+    """`show ip interface brief`: Interface, IP, OK?, Method, Status (may be "administratively down"), Protocol."""
+    rows = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) < 6 or parts[0] == "Interface":
+            continue
+        rows.append({"name": parts[0], "ip": parts[1], "status": " ".join(parts[4:-1]), "protocol": parts[-1]})
+    return rows
+
+
+def _port_status(status: str) -> str:
+    status = status.lower()
+    return "disabled" if "disabled" in status or "administratively" in status else \
+        "up" if status in ("connected", "up") else "down"
+
+
+def _cisco(outputs: dict[str, str], host: str) -> DeviceReport:
+    version = parse_version(outputs["version"])
+    ports = parse_columns(outputs["ports"])            # a switch; a router answers this with an error
+    interfaces = ([{"name": r.get("Port", ""), "type": r.get("Type", ""), "status": _port_status(r.get("Status", "")),
+                    "vlan": r.get("Vlan", ""), "speed": r.get("Speed", ""), "description": r.get("Name", "")}
+                   for r in ports] if ports else
+                  [{"name": r["name"], "type": r["ip"] if r["ip"] != "unassigned" else "", "status":
+                    _port_status(r["status"]), "vlan": "", "speed": "", "description": ""}
+                   for r in parse_ip_brief(outputs["ip"])])
+    return DeviceReport(
+        host=host, platform=CISCO.name, name=version["name"],
+        info={k: version[k] for k in ("model", "version", "serial", "uptime")},
+        interfaces=interfaces,
+        macs=[{"vlan": v, "mac": cisco_mac(mac), "type": kind.lower(), "port": port}
+              for v, mac, kind, port in MAC_ROW_RE.findall(outputs["macs"])],
+        arp=[{"ip": ip, "mac": cisco_mac(mac), "interface": iface}
+             for ip, mac, iface in ARP_ROW_RE.findall(outputs["arp"])],
+        log=[line.rstrip() for line in outputs["log"].splitlines() if LOG_LINE_RE.search(line)][-LOG_LINES:],
+    )
+
+
+READERS: dict[str, Callable[[dict[str, str], str], DeviceReport]] = {MIKROTIK.name: _mikrotik, CISCO.name: _cisco}
 
 
 # ── reading a device ───────────────────────────────────────────────────
@@ -133,7 +227,13 @@ def read_device(login: ServerLogin, *,
         if platform is None:
             raise DeviceError(f"{login.host} calls itself '{banner}' — not a platform MulteAgent can read yet "
                               f"({', '.join(p.name for p in PLATFORMS)})")
-        outputs = {section: _run(client, command) for section, command in platform.commands.items()}
+        outputs = {}
+        for section, command in platform.commands.items():
+            transport = client.get_transport()
+            if not getattr(transport, "is_active", lambda: True)():   # some IOS close the session after a command
+                client.close()
+                client, _fp = open_session(login)
+            outputs[section] = _run(client, command)
     finally:
         client.close()
     return READERS[platform.name](outputs, login.host), fingerprint
@@ -150,9 +250,17 @@ def test_login(login: ServerLogin) -> dict[str, str]:
 
 # ── as a chat job ──────────────────────────────────────────────────────
 
-SHEETS = (("Interfaces", "interfaces", ("name", "type", "status", "mac")),
+# section title, report field, the columns it may have — a column no row fills is left out (a Cisco switch has
+# VLAN and speed per port, a MikroTik a MAC)
+SHEETS = (("Interfaces", "interfaces", ("name", "description", "type", "status", "vlan", "speed", "mac")),
           ("DHCP leases", "leases", ("ip", "mac", "host", "status")),
-          ("ARP", "arp", ("ip", "mac", "interface")))
+          ("ARP", "arp", ("ip", "mac", "interface")),
+          ("MAC table", "macs", ("vlan", "mac", "type", "port")))
+MACS_IN_CHAT = 30         # a switch can know hundreds of addresses: the chat shows the first ones, the .xlsx all
+
+
+def _filled(rows: list[dict[str, str]], columns: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(c for c in columns if any(r.get(c) for r in rows)) or columns[:1]
 
 
 def _table(rows: list[dict[str, str]], columns: tuple[str, ...]) -> str:
@@ -165,9 +273,15 @@ def markdown(rep: DeviceReport) -> str:
     about = " · ".join(f"{k} {v}" for k, v in rep.info.items() if v)
     up = sum(i["status"] == "up" for i in rep.interfaces)
     parts = [f"**{rep.name or rep.host}** ({rep.host}, {rep.platform}) — {about}.",
-             f"**Interfaces** — {up} of {len(rep.interfaces)} up\n\n" + _table(rep.interfaces, SHEETS[0][2])]
+             f"**Interfaces** — {up} of {len(rep.interfaces)} up\n\n"
+             + _table(rep.interfaces, _filled(rep.interfaces, SHEETS[0][2]))]
     if rep.leases:
         parts.append(f"**DHCP leases** — {len(rep.leases)} devices\n\n" + _table(rep.leases, SHEETS[1][2]))
+    if rep.macs:
+        ports = len({m["port"] for m in rep.macs})
+        more = f" (first {MACS_IN_CHAT}; all in the .xlsx)" if len(rep.macs) > MACS_IN_CHAT else ""
+        parts.append(f"**Who is connected (MAC table)** — {len(rep.macs)} addresses on {ports} ports{more}\n\n"
+                     + _table(rep.macs[:MACS_IN_CHAT], _filled(rep.macs, SHEETS[3][2])))
     parts.append(f"**ARP table** — {len(rep.arp)} entries (all in the .xlsx).")
     if rep.log:
         recent = "\n".join(rep.log[-LOG_LINES_IN_CHAT:]).replace("```", "'''")    # device text cannot close the block
@@ -185,7 +299,10 @@ def xlsx_bytes(rep: DeviceReport) -> bytes:
     wb.active.title = "Device"
     for key, value in (("Address", rep.host), ("Name", rep.name), ("Platform", rep.platform), *rep.info.items()):
         wb.active.append([key, value])
-    for title, attr, columns in SHEETS:
+    for title, attr, wanted in SHEETS:
+        if not getattr(rep, attr) and attr != "interfaces":
+            continue                                   # a router has no MAC table, a switch no DHCP leases
+        columns = _filled(getattr(rep, attr), wanted)
         ws = wb.create_sheet(title)
         ws.append([c.capitalize() for c in columns])
         for row in getattr(rep, attr):
