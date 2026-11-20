@@ -2,8 +2,9 @@
 link; the other opens it, views it, and can chat on if they want").
 
 The owner makes a link for a chat — or a project, which covers every chat in it, also ones added later. Anyone
-signed in who opens it becomes a reader: they read it under "Shared with me" (messages, sources, files), never change
-it, and may "Continue in my own chat" (a new chat of theirs from its summary). A new link replaces the old one;
+signed in who opens it becomes a reader: they read it (messages, sources, files), never change
+it — the link opens the chat read-only — and may "Continue in my own chat" (a new chat of theirs from its summary;
+there is no "Shared with me" list: the user's choice, 2026-11-20). A new link replaces the old one;
 "Stop sharing" ends the link and every reader's access at once. Only the token's SHA-256 is stored.
 """
 
@@ -80,13 +81,10 @@ def make_link(session: Session, owner: User, kind: Kind, object_id: str) -> str:
     return token
 
 
-def stop_sharing(session: Session, owner: User, kind: Kind, object_id: str) -> set[int]:
-    """End the link and every reader's access (the caller commits). → the readers, to tell them."""
+def stop_sharing(session: Session, owner: User, kind: Kind, object_id: str) -> None:
+    """End the link and every reader's access (the caller commits)."""
     _owned(session, owner, kind, object_id)
-    readers = set(session.scalars(select(ChatShare.user_id).where(_column(kind) == object_id,
-                                                                  ChatShare.user_id.is_not(None))))
     session.execute(delete(ChatShare).where(_column(kind) == object_id, ChatShare.owner_id == owner.id))
-    return readers
 
 
 def open_link(session: Session, user: User, token: str) -> dict[str, Any]:
@@ -111,18 +109,3 @@ def open_link(session: Session, user: User, token: str) -> dict[str, Any]:
     if newest is None:
         raise ShareError("This project has no chats yet")
     return {"thread_id": newest, "own": user.id == owner.id}
-
-
-def shared_with_me(session: Session, user: User) -> list[dict[str, Any]]:
-    """Every chat this user may read through a link they opened — the chat's, or its project's — newest first."""
-    rows = session.scalars(select(ChatShare).where(ChatShare.user_id == user.id)).all()
-    direct = {r.thread_id for r in rows if r.thread_id}
-    projects = {r.project_id for r in rows if r.project_id}
-    found = select(ChatThreadRow, User.username, ProjectRow.name).join(User, User.id == ChatThreadRow.user_id) \
-        .outerjoin(ProjectRow, ProjectRow.id == ChatThreadRow.project_id) \
-        .where(ChatThreadRow.deleted_at.is_(None), User.status != USER_FORMER, ChatThreadRow.user_id != user.id,
-               or_(ChatThreadRow.id.in_(direct or {""}), ChatThreadRow.project_id.in_(projects or {""})))
-    return [{"thread_id": t.id, "title": t.title, "owner": owner, "project": project,
-             "updated_at": t.updated_at.isoformat() if t.updated_at else None}
-            for t, owner, project in session.execute(found.order_by(ChatThreadRow.updated_at.desc())).all()]
-

@@ -843,8 +843,8 @@ queue wait so far under 12 s.
 - [x] **Sharing chats and projects — built 2026-11-20, changed the same day to links** (user: "we don't have to
       manage team and people, just share and send the link"): Share… makes a read-only link (`/s/<token>`, only its
       SHA-256 stored); anyone signed in who opens it becomes a reader (`chat_shares` row, checked by the job read
-      routes — cancel / confirm / delete stay the owner's), sees it under "Shared with me" and may "Continue in my
-      own chat" (a new chat from its summary). A project link covers its chats, also later ones. A new link replaces
+      routes — cancel / confirm / delete stay the owner's): the link opens it read-only, with "Continue in my own
+      chat" (a new chat from its summary). No "Shared with me" list (removed at the user's word, 2026-11-20). A project link covers its chats, also later ones. A new link replaces
       the old one; Stop sharing ends the link and every reader's access. `src/jobs/sharing.py`
 - [ ] **Team knowledge — built and removed 2026-11-20** (user: "no need of this — projects and share links cover
       documents"): code, tab and the `/api/auth/people` list removed; the applied migration 005 stays and

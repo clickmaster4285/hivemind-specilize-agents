@@ -8,7 +8,7 @@ export const DEVICES_PATH = "/devices";
 export const PROJECTS_PATH = "/projects";
 export const LIBRARY_PATH = "/library";
 export const SCHEDULES_PATH = "/schedules";
-export const SHARED_PATH = "/shared";
+// a shared chat, read-only (BACKLOG L30 T4) — opened from a share link; there is no list page
 const CHAT_PREFIX = "/chat/";
 
 // the forms that are pages of their own inside the layout (BACKLOG L19b D5): "new" opens an empty form
@@ -16,7 +16,7 @@ export const NEW_DEVICE_PATH = `${DEVICES_PATH}/new`;
 // a share link (BACKLOG L30 T4): opened while signed in, it lets that person read the chat
 export const SHARE_LINK_PREFIX = "/s/";
 export const shareLinkPath = (token: string) => `${SHARE_LINK_PREFIX}${encodeURIComponent(token)}`;
-export const sharedChatPath = (id: string) => `${SHARED_PATH}/${encodeURIComponent(id)}`;
+export const sharedChatPath = (id: string) => `/shared/${encodeURIComponent(id)}`;
 export const devicePath = (id: string) => `${DEVICES_PATH}/${encodeURIComponent(id)}`;
 export type SettingsTab = "users" | "logs" | "usage" | "agents" | "account";
 export const settingsTabPath = (tab: SettingsTab) => `${SETTINGS_PATH}?tab=${tab}`;
@@ -36,7 +36,6 @@ export const PAGE_TITLES: Record<string, string> = {
   [PROJECTS_PATH]: "Projects",
   [LIBRARY_PATH]: "Library",
   [SCHEDULES_PATH]: "Scheduled",
-  [SHARED_PATH]: "Shared with me",
 };
 
 export function chatPath(id: string): string {

@@ -9,7 +9,7 @@ import { continueSharedChat, getJobHistory, getSharedChat } from "@/lib/api";
 import { attachmentsFromJob, errorText } from "@/lib/chat";
 import { buildFeedFromEvents, mergeArtifactsFromJob, STATUS_ID } from "@/lib/feedReducer";
 import { newId } from "@/lib/id";
-import { chatPath, SHARED_PATH } from "@/lib/routes";
+import { chatPath, NEW_CHAT_PATH } from "@/lib/routes";
 import type { FeedItem } from "@/lib/types";
 import { btn } from "@/lib/ui";
 
@@ -74,7 +74,7 @@ export default function SharedChatPage() {
           <p className="m-0 text-xs text-muted">{head ? `Shared by ${head.owner} · read-only` : "Loading…"}</p>
         </div>
         <div className="flex gap-2">
-          <button type="button" className={btn("ghost", "sm")} onClick={() => router.push(SHARED_PATH)}>← Shared with me</button>
+          <button type="button" className={btn("ghost", "sm")} onClick={() => router.push(NEW_CHAT_PATH)}>← My chats</button>
           <button type="button" className={btn("primary", "sm")} disabled={busy || !feed} onClick={() => void continueHere()}>
             {busy ? "Summarising…" : "Continue in my own chat"}
           </button>

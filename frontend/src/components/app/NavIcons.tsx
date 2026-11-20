@@ -60,13 +60,6 @@ export const IconLibrary = () => (
     <path d="M14 3v5h5M9 13h6M9 17h4" />
   </Icon>
 );
-export const IconShared = () => (
-  <Icon>
-    <circle cx="8" cy="9" r="3" />
-    <circle cx="17" cy="9" r="2.5" />
-    <path d="M3 19c.6-3 2.6-4.5 5-4.5s4.4 1.5 5 4.5M14 14.6c.9-.4 1.9-.6 3-.6 2 0 3.5 1.2 4 3.5" />
-  </Icon>
-);
 export const IconClock = () => (
   <Icon>
     <circle cx="12" cy="12" r="8.5" />

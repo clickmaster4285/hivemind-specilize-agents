@@ -59,7 +59,6 @@ def test_whoever_opens_the_link_can_read_the_chat_but_not_change_it(db):
     with pytest.raises(HTTPException) as no:
         jobs_routes.soft_delete_job_endpoint("j1", db=db, user=_u(db, ANA))
     assert no.value.status_code == 403
-    assert [c["title"] for c in history_routes.shared_with_me(db=db, user=_u(db, ANA))] == ["DNS plan"]
     assert history_routes.thread_link("t1", db=db, user=_u(db, OWNER)) == {"shared": True, "readers": ["ana"]}
 
 
@@ -68,7 +67,7 @@ def test_a_project_link_covers_its_chats_also_later_ones(db):
     assert _open(db, BO, token)["thread_id"] == "t2"
     db.add(ChatThreadRow(id="t3", user_id=OWNER, title="Later", project_id="proj"))
     db.commit()
-    assert {c["thread_id"] for c in history_routes.shared_with_me(db=db, user=_u(db, BO))} == {"t2", "t3"}
+    assert history_routes.shared_chat("t3", db=db, user=_u(db, BO))["title"] == "Later"
     with pytest.raises(HTTPException):
         history_routes.shared_chat("t1", db=db, user=_u(db, BO))                 # not in the project
 
@@ -101,7 +100,8 @@ def test_only_the_owner_makes_a_link_and_a_deleted_chat_is_no_longer_readable(db
     _open(db, ANA, history_routes.make_thread_link("t1", db=db, user=_u(db, OWNER))["token"])
     db.get(ChatThreadRow, "t1").deleted_at = utcnow()
     db.commit()
-    assert history_routes.shared_with_me(db=db, user=_u(db, ANA)) == []
+    with pytest.raises(HTTPException):
+        history_routes.shared_chat("t1", db=db, user=_u(db, ANA))
     with pytest.raises(HTTPException):
         jobs_routes.job_events_history("j1", db=db, user=_u(db, ANA))
 

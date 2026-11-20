@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
-  IconClock, IconDevices, IconShared, IconFilter, IconFolder, IconLibrary, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch,
+  IconClock, IconDevices, IconFilter, IconFolder, IconLibrary, IconLogout, IconNewChat, IconPanel, IconPlug, IconSearch,
   IconSettings,
 } from "@/components/app/NavIcons";
 import RepeatDialog from "@/components/app/RepeatDialog";
@@ -17,7 +17,6 @@ import {
   PROJECTS_PATH,
   SCHEDULES_PATH,
   SETTINGS_PATH,
-  SHARED_PATH,
   pageRoot,
   settingsTabPath,
 } from "@/lib/routes";
@@ -48,7 +47,6 @@ const PAGES = [
   { path: PROJECTS_PATH, label: "Projects", Icon: IconFolder },
   { path: LIBRARY_PATH, label: "Library", Icon: IconLibrary },
   { path: SCHEDULES_PATH, label: "Scheduled", Icon: IconClock },
-  { path: SHARED_PATH, label: "Shared with me", Icon: IconShared },
   { path: DEVICES_PATH, label: "Devices", Icon: IconDevices, module: "devices" },
   { path: PLUGINS_PATH, label: "Plugins", Icon: IconPlug },
 ];

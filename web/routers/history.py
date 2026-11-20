@@ -216,7 +216,6 @@ def delete_project_endpoint(
 # ── sharing chats and projects by link (BACKLOG L30 T4): the owner's side ──────────────────────────────────
 
 def _link_route(kind: str, object_id: str, user: User, db: Session, action: str) -> dict[str, Any]:
-    from src.core import live_events
     from src.jobs import sharing
 
     try:
@@ -226,8 +225,7 @@ def _link_route(kind: str, object_id: str, user: User, db: Session, action: str)
             token = sharing.make_link(db, user, kind, object_id)
             db.commit()
             return {"token": token, **sharing.link_state(db, user, kind, object_id)}
-        for reader in sharing.stop_sharing(db, user, kind, object_id):     # their "Shared with me" changes
-            live_events.after_commit(db, live_events.CHATS, user_id=reader)
+        sharing.stop_sharing(db, user, kind, object_id)
         db.commit()
         return {"shared": False, "readers": []}
     except sharing.ShareError as exc:
@@ -287,14 +285,6 @@ def open_shared_link(payload: SharedLinkPayload, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     db.commit()
     return found
-
-
-@router.get("/api/shared")
-def shared_with_me(db: Session = Depends(get_db), user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
-    """The chats shared with me — links I opened, to a chat or a project — newest first."""
-    from src.jobs.sharing import shared_with_me as listing
-
-    return listing(db, user)
 
 
 def _shared_thread(db: Session, user: User, thread_id: str) -> ChatThreadRow:

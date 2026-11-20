@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { useApp } from "@/components/app/AppProvider";
 import { openShareLink } from "@/lib/api";
 import { errorText } from "@/lib/chat";
-import { chatPath, sharedChatPath, SHARED_PATH } from "@/lib/routes";
+import { chatPath, NEW_CHAT_PATH, sharedChatPath } from "@/lib/routes";
 import { btn } from "@/lib/ui";
 
 /** /s/<token> — a share link (BACKLOG L30 T4). Signed out, the shell shows the sign-in first and this page runs after
@@ -34,8 +34,8 @@ export default function ShareLinkPage() {
       {problem ? (
         <>
           <p role="alert" className="m-0 text-sm text-danger">{problem}</p>
-          <button type="button" className={btn("ghost", "sm")} onClick={() => router.push(SHARED_PATH)}>
-            Shared with me
+          <button type="button" className={btn("ghost", "sm")} onClick={() => router.push(NEW_CHAT_PATH)}>
+            Go to my chats
           </button>
         </>
       ) : (

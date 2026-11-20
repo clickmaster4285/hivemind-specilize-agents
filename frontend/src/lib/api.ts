@@ -821,8 +821,6 @@ export async function setDeviceShares(id: string, shares: DeviceShare[]): Promis
 
 // ── sharing chats and projects read-only (BACKLOG L30 T4) ───────────────────────────────────────────────────
 
-/** A chat shared with me. */
-export type SharedChat = { thread_id: string; title: string; owner: string; project: string | null; updated_at: string | null };
 /** My chat's / project's share link: whether it is live, and who opened it. */
 export type ShareLinkState = { shared: boolean; readers: string[]; token?: string };
 
@@ -846,10 +844,6 @@ export async function stopShareLink(kind: "chat" | "project", id: string): Promi
 /** I opened a share link: from now on I may read it. → the chat to show, and whether it is my own. */
 export async function openShareLink(token: string): Promise<{ thread_id: string; own: boolean }> {
   return request("/api/shared/open", { method: "POST", body: JSON.stringify({ token }) });
-}
-
-export async function listSharedWithMe(): Promise<SharedChat[]> {
-  return request("/api/shared");
 }
 
 export async function getSharedChat(threadId: string): Promise<{ thread_id: string; title: string; owner: string; jobs: Job[] }> {
