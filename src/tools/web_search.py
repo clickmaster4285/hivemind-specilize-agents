@@ -317,6 +317,28 @@ def answer_from_web(
         return "The web results could not be read. Try again or rephrase the question.", []
     if read is not None:
         read[:] = passages
+    text, sources = answer_from_pages(question, passages, chat=chat, model=model, now=now,
+                                      conversation_block=conversation_block, calculation=calculation, diagram=diagram)
+    logger.info(
+        "web_timing search=%.2fs read=%.2fs synth=%.2fs pages=%d passages=%d",
+        t_search - t0, t_read - t_search, time.perf_counter() - t_read, min(len(hits), MAX_PAGES), len(passages),
+    )
+    return text, sources
+
+
+def answer_from_pages(
+    question: str,
+    passages: list[Passage],
+    *,
+    chat: Callable[..., str],
+    model: str,
+    now: str,
+    conversation_block: str = "",
+    calculation: bool = False,
+    diagram: bool = True,
+) -> tuple[str, list[dict]]:
+    """Write the answer from these pages → (answer with [n] citations, sources for the UI): the pages just read
+    from the web, or pages kept from an earlier web answer (src/brain/learned.py recall)."""
     numbered = "\n\n".join(
         f'<source id="{n}">\n[{n}] {p.title} — {urlsplit(p.url).hostname}'
         + (f" (published {p.published})" if p.published else "")
@@ -328,11 +350,6 @@ def answer_from_web(
     # the date last, so the fixed rules stay a cached prefix (O52)
     text = chat(system=WEB_SYSTEM + diagram_block(diagram) + f"\n\n{date_line(now)}", user=user, model=model,
                 temperature=0.2)
-    # P0 tool-phase split (doc/RESPONSE_QUALITY.md): where the web-search wait goes.
-    logger.info(
-        "web_timing search=%.2fs read=%.2fs synth=%.2fs pages=%d passages=%d",
-        t_search - t0, t_read - t_search, time.perf_counter() - t_read, min(len(hits), MAX_PAGES), len(passages),
-    )
     from src.brain.answer import cited_numbers
 
     cited = cited_numbers(text, len(passages))

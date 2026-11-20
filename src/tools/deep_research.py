@@ -97,9 +97,10 @@ def knowledge_base_passages(question: str, config: Config, *, account_id: str | 
     if not config.brain_enabled or limit <= 0:
         return []
     try:
-        result = kb_search(question, config=config, account_id=account_id, collections=collections)
+        # pages learned from earlier web answers are not "our docs": the report compares the docs with the live web
+        result = kb_search(question, config=config, account_id=account_id, collections=collections, learned="without")
         if collections and not result.enough_evidence:
-            result = kb_search(question, config=config, account_id=account_id)
+            result = kb_search(question, config=config, account_id=account_id, learned="without")
     except Exception as exc:  # noqa: BLE001 — the knowledge base is a bonus here, never a blocker
         logger.info("deep research: knowledge base unavailable: %s", exc)
         return []

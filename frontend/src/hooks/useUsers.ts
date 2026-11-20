@@ -69,7 +69,7 @@ export function useUsers(active: boolean) {
     [load],
   );
 
-  // for good: the account and everything theirs (Deactivate is the undoable one)
+  // the person goes for good, their chats stay anonymised (Deactivate is the undoable one)
   const remove = useCallback(
     async (id: number, confirm: string) => {
       const done = await deleteUser(id, confirm);

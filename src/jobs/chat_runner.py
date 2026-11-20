@@ -20,7 +20,7 @@ from src.llm.ollama_mgmt import model_loaded
 from src.tools.quiz import generate_quiz, wants_quiz
 from src.tools.suggestions import generate_suggestions
 from src.tools.calculator import CALCULATE_TOOL, chat_tools_with_calculator
-from src.tools.web_search import WebSearchError, answer_from_web
+from src.tools.web_search import WebSearchError, answer_from_pages, answer_from_web
 
 log = logging.getLogger(__name__)
 
@@ -94,6 +94,36 @@ def build_refine_note(reason: str) -> str:
     return ("[Revision request: your previous answer to this question was rated not helpful — reason: "
             f"{reason}. Write a better answer that directly fixes this: keep what was right, change what "
             "the reason points to. Do not apologise or mention this rating; just answer better.]")
+
+
+def _recall_learned(question: str, config: Config, *, news: bool) -> list[Any] | None:
+    """Pages kept from an earlier web answer that answer this question (src/brain/learned.py), or None. Never
+    blocks the answer: the knowledge base may be off or down — then the web is searched as before."""
+    if not (config.learn_from_web and config.brain_enabled):
+        return None
+    from src.brain.learned import recall
+
+    try:
+        return recall(question, config, news=news)
+    except Exception as exc:  # noqa: BLE001
+        log.info("learned recall skipped: %s", exc)
+        return None
+
+
+def _learn_in_background(config: Config, pages: list[Any], sources: list[dict[str, Any]], *, question: str,
+                         news: bool) -> None:
+    """Keep the pages this web answer cited, for the next similar question (embedded on the CPU, after the answer)."""
+    if not (config.learn_from_web and config.brain_enabled and pages and sources):
+        return
+    cited = [pages[s["n"] - 1] for s in sources if s.get("cited") and 1 <= s.get("n", 0) <= len(pages)]
+    if not cited:
+        return
+    import threading
+
+    from src.brain.learned import learn
+
+    threading.Thread(target=learn, args=(config, cited), kwargs={"question": question, "news": news},
+                     name="learn-from-web", daemon=True).start()
 
 
 def _verify(text: str, passages: list[Any], *, client: LLMClient, model: str, job_id: str | None,
@@ -340,15 +370,23 @@ def run_chat(
             return web_extra | ({"verification": checked} if checked is not None else {})
 
         def web_answer() -> tuple[str, dict[str, Any]]:
-            """SearXNG + the top pages → (answer, extra): the Web path, and a knowledge-base miss (O50)."""
+            """SearXNG + the top pages → (answer, extra): the Web path, and a knowledge-base miss (O50). Pages kept
+            from an earlier web answer are tried first, and a fresh answer's cited pages are kept (BACKLOG L31)."""
+            kept = _recall_learned(web_query or query, config, news=web_news)
+            if kept:
+                progress("Answering from pages saved from an earlier web search…")
+                web_read[:] = kept
+                text, sources = answer_from_pages(
+                    query, kept, chat=chat_calculating, model=model, now=current_time_text(),
+                    conversation_block=sourced, calculation=web_calculation, diagram=web_diagram)
+                return text, {"grounded": bool(sources), "sources": sources, "learned": True}
             text, sources = answer_from_web(
                 query, config, chat=chat_calculating, model=model, now=current_time_text(),
-                status=lambda message: _emit(
-                    on_progress, {"type": "status", "agent_id": "assistant", "message": message}
-                ),
+                status=progress,
                 conversation_block=sourced, news=web_news, search_query=web_query, calculation=web_calculation,
                 diagram=web_diagram, read=web_read,
             )
+            _learn_in_background(config, web_read, sources, question=web_query or query, news=web_news)
             return text, {"grounded": bool(sources), "sources": sources}
 
         if deep:

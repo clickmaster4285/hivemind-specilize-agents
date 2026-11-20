@@ -16,8 +16,8 @@ import { btn, table } from "@/lib/ui";
 
 /** Settings → Users: sign-ups waiting for approval, sign-up and invites, the accounts and a Create user
  *  button. Creating, editing or reviewing one opens its own page, /settings/users/<id> (BACKLOG L19b D5).
- *  Each account row also has Deactivate / Activate (sign-in blocked, everything kept) and Delete (for good,
- *  after typing the username) — the user's choice 2026-11-20. */
+ *  Each account row also has Deactivate / Activate (sign-in blocked, everything kept) and Delete (the person,
+ *  their chats kept anonymised; after typing the username) — the user's choice 2026-11-20. */
 export default function UsersSection({ users }: { users: UsersApi }) {
   const me = useApp().auth.user;
   const [busy, setBusy] = useState<number | null>(null);
@@ -54,8 +54,9 @@ export default function UsersSection({ users }: { users: UsersApi }) {
 
   function remove(u: ManagedUser) {
     const typed = prompt(
-      `Delete ${u.username} for good?\n\nTheir account, chats, projects, schedules, devices and own skills are removed ` +
-        `and cannot be brought back. To keep their history, use Deactivate instead.\n\nType the username to confirm:`,
+      `Delete ${u.username}?\n\nThey can never sign in again, and their name, email, devices, schedules and own skills ` +
+        `are removed. Their chats are kept, anonymised. To only pause their access, use Deactivate instead.` +
+        `\n\nType the username to confirm:`,
     );
     if (typed === null) return;
     if (typed.trim() !== u.username) {
@@ -65,7 +66,7 @@ export default function UsersSection({ users }: { users: UsersApi }) {
     void act(u, async () => {
       const done = await users.remove(u.id, typed.trim());
       const kb = done.knowledge_base.startsWith("not removed") ? ` Knowledge base: ${done.knowledge_base}.` : "";
-      return `${done.username} was deleted with ${done.questions} questions.${kb}`;
+      return `${done.username} was deleted; their ${done.questions} questions are kept as ${done.kept_as}.${kb}`;
     });
   }
 

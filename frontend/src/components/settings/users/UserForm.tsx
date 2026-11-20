@@ -88,7 +88,7 @@ export default function UserForm({ users, user, onDone }: Props) {
           team: team.trim(),
           email: email.trim(),
           phone: phone.trim(),
-          ...(approve ? { status: "active" as const } : status !== "pending" ? { status } : {}),
+          ...(approve ? { status: "active" as const } : status === "active" || status === "disabled" ? { status } : {}),
           ...(password ? { password } : {}),
         });
       }

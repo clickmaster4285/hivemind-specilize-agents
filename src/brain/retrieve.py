@@ -148,14 +148,33 @@ def rrf_merge(
     return sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
 
 
-def _collection_filter(collections: list[str] | None) -> tuple[str, list]:
+LEARNED_COLLECTION = "web"     # pages kept from web answers (src/brain/learned.py, migration 004)
+# a learned page past its expires_at is never used (news 1 day, versions 7 days, the rest 90 days)
+NOT_EXPIRED = " AND (d.metadata->>'expires_at' IS NULL OR (d.metadata->>'expires_at')::timestamptz > now())"
+Learned = Literal["with", "without", "only"]
+
+
+def _collection_filter(collections: list[str] | None, learned: Learned = "with") -> tuple[str, list]:
+    """Which collections a search reads. learned: "with" — the pages learned from the web come along whatever the
+    collections (they are no specialist's); "without" — left out (deep research compares the knowledge base WITH
+    the live web); "only" — just them (the web path's reuse)."""
+    if learned == "only":
+        return " AND c.collection_id IN (SELECT id FROM brain.collections WHERE slug = %s)", [LEARNED_COLLECTION]
+    if learned == "without":
+        where = " AND c.collection_id NOT IN (SELECT id FROM brain.collections WHERE slug = %s)"
+        if not collections:
+            return where, [LEARNED_COLLECTION]
+        return where + " AND c.collection_id IN (SELECT id FROM brain.collections WHERE slug = ANY(%s))", \
+            [LEARNED_COLLECTION, collections]
     if not collections:
         return "", []
-    return " AND c.collection_id IN (SELECT id FROM brain.collections WHERE slug = ANY(%s))", [collections]
+    return " AND c.collection_id IN (SELECT id FROM brain.collections WHERE slug = ANY(%s))", \
+        [[*collections, LEARNED_COLLECTION]]
 
 
-def _vector_search(conn, vector: Vector, collections: list[str] | None) -> list[tuple[int, float]]:
-    where, params = _collection_filter(collections)
+def _vector_search(conn, vector: Vector, collections: list[str] | None,
+                   learned: Learned = "with") -> list[tuple[int, float]]:
+    where, params = _collection_filter(collections, learned)
     conn.execute(f"SET LOCAL hnsw.ef_search = {HNSW_EF_SEARCH}")
     conn.execute("SET LOCAL hnsw.iterative_scan = relaxed_order")
     # Inner query can use the HNSW index (one table); the join then drops superseded/removed docs.
@@ -164,20 +183,20 @@ def _vector_search(conn, vector: Vector, collections: list[str] | None) -> list[
                 SELECT c.id, c.document_id, 1 - (c.embedding <=> %s) AS similarity
                 FROM brain.chunks c WHERE true{where}
                 ORDER BY c.embedding <=> %s LIMIT %s
-            ) n JOIN brain.documents d ON d.id = n.document_id AND d.status = 'active'
+            ) n JOIN brain.documents d ON d.id = n.document_id AND d.status = 'active'{NOT_EXPIRED}
             ORDER BY n.similarity DESC LIMIT %s""",
         [vector, *params, vector, CANDIDATES * 3, CANDIDATES],
     ).fetchall()
     return [(cid, float(sim)) for cid, sim in rows]
 
 
-def _keyword_search(conn, query_text: str, collections: list[str] | None) -> list[int]:
+def _keyword_search(conn, query_text: str, collections: list[str] | None, learned: Learned = "with") -> list[int]:
     if not query_text:
         return []
-    where, params = _collection_filter(collections)
+    where, params = _collection_filter(collections, learned)
     rows = conn.execute(
         f"""SELECT c.id FROM brain.chunks c
-            JOIN brain.documents d ON d.id = c.document_id AND d.status = 'active',
+            JOIN brain.documents d ON d.id = c.document_id AND d.status = 'active'{NOT_EXPIRED},
                  websearch_to_tsquery('simple', %s) q
             WHERE c.tsv @@ q{where}
             ORDER BY ts_rank_cd(c.tsv, q, 1) DESC, c.id LIMIT %s""",
@@ -232,12 +251,13 @@ def search(
     config: Config | None = None,
     account_id: str | None = None,
     collections: list[str] | None = None,
+    learned: Learned = "with",
     mode: Mode = "hybrid",
     limit: int = MAX_PASSAGES,
     token_budget: int = TOKEN_BUDGET,
     embed: Callable[[str], list[float]] | None = None,
 ) -> SearchResult:
-    """Find the passages that best answer `question`, visible to `account_id`."""
+    """Find the passages that best answer `question`, visible to `account_id`. learned: see _collection_filter."""
     config = config or Config.from_env()
     question = question.strip()
     timings: dict[str, float] = {}
@@ -257,14 +277,14 @@ def search(
     with connect(config, account_id=account_id) as conn:
         if query_vector is not None:
             t = time.perf_counter()
-            vector_hits = _vector_search(conn, query_vector, collections)
+            vector_hits = _vector_search(conn, query_vector, collections, learned)
             timings["vector_ms"] = round((time.perf_counter() - t) * 1000, 1)
         if mode in ("hybrid", "keyword"):
             t = time.perf_counter()
             if strong:
                 # passages containing every strong identifier go first (websearch: space = AND)
-                exact_hits = _keyword_search(conn, " ".join(f'"{term}"' for term in strong), collections)
-            broad = _keyword_search(conn, keyword_query(question), collections)
+                exact_hits = _keyword_search(conn, " ".join(f'"{term}"' for term in strong), collections, learned)
+            broad = _keyword_search(conn, keyword_query(question), collections, learned)
             first = set(exact_hits)
             keyword_hits = exact_hits + [cid for cid in broad if cid not in first]
             timings["keyword_ms"] = round((time.perf_counter() - t) * 1000, 1)

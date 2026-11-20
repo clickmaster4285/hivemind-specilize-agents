@@ -1,5 +1,6 @@
-"""Settings → Users → Delete: an account and everything theirs removed for good (src/core/account_delete.py,
-web/routers/users.delete_user). Deactivate stays the undoable one (test_auth_users.py)."""
+"""Settings → Users → Delete (src/core/account_delete.py, web/routers/users.delete_user): the person can never sign
+in again and their name goes; their chats stay, anonymised (user's choice 2026-11-20). Deactivate stays the
+undoable one (test_auth_users.py)."""
 
 from __future__ import annotations
 
@@ -97,26 +98,48 @@ def _count(session, model, *where) -> int:
     return session.scalar(select(func.count()).select_from(model).where(*where))
 
 
-def test_delete_removes_the_account_and_everything_theirs(session, people, config, tmp_path):
+def test_delete_keeps_the_chats_anonymised_and_removes_what_served_the_person(session, people, config, tmp_path):
+    from web.routers.users import list_users
+
     admin, rita = people
     _fill(session, rita, tmp_path)
     rid = rita.id
     out = delete_user(rid, UserDeletePayload(confirm="rita"), admin=admin, db=session)
-    assert out["status"] == "deleted" and out["questions"] == 1 and out["chat_folders"] == 1
+    assert out["status"] == "deleted" and out["questions"] == 1 and out["kept_as"] == f"former-user-{rid}"
     assert out["knowledge_base"] == "not used"
-    assert session.get(User, rid) is None
-    for model in (Job, JobEvent, ChatThreadRow, ProjectRow, ScheduleRow, DeviceRow, RefreshToken, UserInvite):
+    former = session.get(User, rid)
+    assert (former.username, former.status, former.email, former.team, former.modules_json) == (
+        f"former-user-{rid}", "former", None, None, "[]")
+    # kept, under the anonymous account: the chat, its messages, its project, its files, the usage
+    for model in (Job, JobEvent, ChatThreadRow, ProjectRow):
+        assert _count(session, model) == 1, model.__name__
+    assert session.get(Job, JOB).user_id == rid and (tmp_path / JOB / "images" / "a.png").exists()
+    assert session.scalar(select(LlmUsage)).user_id == rid
+    # gone: what only served the person
+    for model in (ScheduleRow, DeviceRow, RefreshToken, UserInvite):
         assert _count(session, model) == 0, model.__name__
-    assert not (tmp_path / JOB).exists() and (tmp_path / "other").exists()   # only their chat's folder
-    # what stays, without the link to them
-    shared = session.scalar(select(SkillRow).where(SkillRow.name == "shared"))
-    assert shared.created_by is None and _count(session, SkillRow, SkillRow.name == "mine") == 0
-    assert session.scalar(select(User).where(User.username == "friend")).invited_by is None
-    assert session.scalar(select(LlmUsage)).user_id is None                 # usage totals stay right
-    trail = session.scalar(select(CommandLog))                                # O123: the audit trail stays
-    assert trail.user_id is None and trail.username == "rita" and trail.command == "systemctl restart nginx"
+    assert _count(session, SkillRow, SkillRow.name == "mine") == 0
+    assert session.scalar(select(SkillRow).where(SkillRow.name == "shared")).created_by == rid
+    trail = session.scalar(select(CommandLog))                                # O123: the audit trail, real name
+    assert trail.username == "rita" and trail.command == "systemctl restart nginx"
     logged = session.scalar(select(SecurityEvent).where(SecurityEvent.kind == "account_deleted"))
     assert logged.account == "rita" and "by root" in logged.detail
+    # hidden from the Users list, never editable or deletable again, and the name is free for a new account
+    assert "rita" not in {u["username"] for u in list_users(_admin=admin, db=session)}
+    assert all(u["id"] != rid for u in list_users(_admin=admin, db=session))
+    with pytest.raises(HTTPException) as exc:
+        delete_user(rid, UserDeletePayload(confirm=f"former-user-{rid}"), admin=admin, db=session)
+    assert exc.value.status_code == 404
+
+
+def test_a_former_account_cannot_sign_in(session, people, config, tmp_path):
+    from tests.test_auth_users import _login
+
+    admin, rita = people
+    delete_user(rita.id, UserDeletePayload(confirm="rita"), admin=admin, db=session)
+    for name in ("rita", f"former-user-{rita.id}"):
+        with pytest.raises(HTTPException):
+            _login(session, name, "longenough")
 
 
 def test_the_username_must_be_typed_exactly(session, people, config):

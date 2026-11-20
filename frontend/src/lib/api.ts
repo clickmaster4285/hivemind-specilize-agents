@@ -178,11 +178,12 @@ export async function deactivateUser(id: number): Promise<ManagedUser> {
   return request(`/api/auth/users/${id}`, { method: "DELETE" });
 }
 
-/** Delete an account for good: the person, their chats and everything theirs. `confirm` = the username, typed. */
+/** Delete an account: the person can never sign in again and their name goes; their chats stay, anonymised as
+ *  `kept_as`. `confirm` = the username, typed. */
 export async function deleteUser(
   id: number,
   confirm: string,
-): Promise<{ username: string; questions: number; knowledge_base: string }> {
+): Promise<{ username: string; kept_as: string; questions: number; knowledge_base: string }> {
   return request(`/api/auth/users/${id}/delete`, { method: "POST", body: JSON.stringify({ confirm }) });
 }
 

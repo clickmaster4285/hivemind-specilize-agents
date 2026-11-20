@@ -107,7 +107,7 @@ export type Health = {
 };
 
 /** pending = a self sign-up waiting for an admin's approval (cannot sign in yet) */
-export type UserStatus = "active" | "disabled" | "pending";
+export type UserStatus = "active" | "disabled" | "pending" | "former";
 
 export type AuthUser = {
   id: number;

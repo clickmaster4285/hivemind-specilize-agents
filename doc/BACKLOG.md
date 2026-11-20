@@ -47,6 +47,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H1, H2, H3 built (2026-11-18) | NousResearch hermes-agent (MIT) |
 | [L29](#l29-live-updates-without-a-reload--planned-2026-11-20-issues_log-o120) | Live updates without a reload (one SSE stream) | built 2026-11-20 | API restart + user's look with two tabs |
 | [L30](#l30-a-team-of-10-or-more--planned-2026-11-20-issues_log-o121o125) | A team of 10+ users: capacity, accounts, admin, sharing, operations | T1 built | T1: API restart, services install; then T2 |
+| [L31](#l31-a-knowledge-base-that-learns-from-the-web--built-2026-11-20) | Knowledge base learns from web answers | pages built 2026-11-20 | API restart (migration 004); answers reused later |
 
 ---
 
@@ -843,4 +844,27 @@ Already good (keep): ownership checks on every job, chat, schedule, skill and li
 admin routes behind `require_admin`, modules checked by the API; one active question per user and first-in-first-out
 turns; HttpOnly SameSite=Strict cookies, refresh-token reuse detection, a deactivated user cut off at once; only
 port 3000 open to the LAN; `.env` and backups mode 600, long secrets.
+
+### L31. A knowledge base that learns from the web — built 2026-11-20
+
+The user (2026-11-20): "the first time we search the web, the next time we serve it from the knowledge base, so a
+similar question — the same user's or anyone's — is answered faster". Decisions (user, same day): **pages first,
+whole answers later**; **freshness by type**; a deleted person's chats are **kept, anonymised** (ISSUES_LOG O119).
+
+- [x] **Pages** (`src/brain/learned.py`, migration `004_learned_from_web.sql`): after a fresh web answer the pages
+      it cited are embedded on the CPU in the background and kept as public documents of the `learned-from-web`
+      source (collection `web`) — page text only, nothing about who asked. Freshness from the question: news 1 day;
+      "latest", versions, releases, prices 7 days; the rest 90 days (`metadata.expires_at`). Same text again →
+      new expiry; changed text → new version. Expired pages are never searched (`retrieve.NOT_EXPIRED`) and
+      deleted 30 days after expiry.
+- [x] **Reuse:** the Web path tries `learned.recall` first — similarity ≥ 0.70 (stricter than the knowledge base's
+      0.49), at least 2 pages, each young enough for THIS question — and writes the answer from them without
+      searching (`web_search.answer_from_pages`; status "Answering from pages saved from an earlier web search").
+      The knowledge-base path finds them like any document (a specialist's collections include `web`). Deep
+      research leaves them out (it compares our docs with the live web). Saves the 5–8 s of search + reading per
+      repeat; writing the answer takes as long as before. Off switch: `LEARN_FROM_WEB=false`.
+- [ ] **Tune** `RECALL_MIN_SIMILARITY` from the logged "learned recall: yes/no (best similarity …)" lines
+- [ ] **Whole answers** reused for near-identical general questions (no personal chat context) — the user's
+      second step
+- [ ] An admin view of the learned pages (list, remove one) — when the collection grows
 

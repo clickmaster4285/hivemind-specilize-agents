@@ -37,6 +37,7 @@ LOGIN_KEY_CHARS = 300
 USER_ACTIVE = "active"
 USER_DISABLED = "disabled"
 USER_PENDING = "pending"
+USER_FORMER = "former"      # a deleted person's account, kept anonymous as the owner of their chats (account_delete.py)
 
 
 class User(Base):
@@ -50,7 +51,7 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     daily_job_quota: Mapped[int] = mapped_column(Integer, default=50)
-    status: Mapped[str] = mapped_column(String(20), default=USER_ACTIVE)  # USER_ACTIVE | USER_DISABLED | USER_PENDING
+    status: Mapped[str] = mapped_column(String(20), default=USER_ACTIVE)  # USER_ACTIVE | USER_DISABLED | USER_PENDING | USER_FORMER
     # the modules (src/core/modules.py) a member may use, set by an admin; admins have all (auth.may_use)
     modules_json: Mapped[str] = mapped_column(Text, default=DEFAULT_MODULES_JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

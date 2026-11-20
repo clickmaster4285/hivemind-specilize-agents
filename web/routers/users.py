@@ -13,7 +13,7 @@ from src.core import abuse, live_events, modules, security_log, signup
 from src.core.abuse import ADDRESS_KEY, Lock, account_key
 from src.core.accounts import AccountError, check_password, clean_email, clean_text, clean_username
 from src.core.auth import get_db, hash_password, may_use, require_admin, user_modules
-from src.core.models_db import USER_ACTIVE, USER_DISABLED, USER_PENDING, Job, User, UserInvite
+from src.core.models_db import USER_ACTIVE, USER_DISABLED, USER_FORMER, USER_PENDING, Job, User, UserInvite
 from web.schemas import InvitePayload, SignupSettingsPayload, UserCreatePayload, UserDeletePayload, UserUpdatePayload
 
 router = APIRouter(prefix="/api/auth/users", tags=["users"])
@@ -69,6 +69,14 @@ def list_modules(_admin: User = Depends(require_admin)) -> list[dict[str, Any]]:
             for m in modules.MODULES]
 
 
+def _live_user(db: Session, user_id: int) -> User:
+    """An account an admin may act on: a deleted person's anonymous account (status former) is not one."""
+    user = db.get(User, user_id)
+    if user is None or user.status == USER_FORMER:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
+
 def _ensure_an_admin_remains(db: Session) -> None:
     """Refuse a change (after flushing it) that would leave no active admin — avoids locking everyone out."""
     db.flush()
@@ -78,8 +86,9 @@ def _ensure_an_admin_remains(db: Session) -> None:
 
 @router.get("")
 def list_users(_admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    """Admin-only: every account, with how many questions each has asked (per-user query analytics)."""
-    users = db.scalars(select(User).order_by(User.created_at)).all()
+    """Admin-only: every account, with how many questions each has asked (per-user query analytics). A deleted
+    person's anonymous account (status former) is left out."""
+    users = db.scalars(select(User).where(User.status != USER_FORMER).order_by(User.created_at)).all()
     counts = dict(
         db.execute(
             select(Job.user_id, func.count()).where(Job.deleted_at.is_(None)).group_by(Job.user_id)
@@ -130,9 +139,7 @@ def update_user(
 ) -> dict[str, Any]:
     """Admin edits an account. Guards stop you from locking admin out of the system."""
     live_events.after_commit(db, live_events.USERS, admins=True)
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = _live_user(db, user_id)
     if user.id == admin.id:
         if payload.status == USER_DISABLED:
             raise HTTPException(status_code=400, detail="You cannot disable your own account")
@@ -177,9 +184,7 @@ def deactivate_user(
     (that search data is the point of having accounts). Re-enable with PATCH status=active.
     A sign-up still waiting for approval is rejected instead: deleted (it has no chats yet)."""
     live_events.after_commit(db, live_events.USERS, admins=True)
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = _live_user(db, user_id)
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="You cannot deactivate your own account")
     if user.status == USER_PENDING:
@@ -201,15 +206,13 @@ def delete_user(
     admin: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> dict[str, Any]:
-    """Delete an account for good (src/core/account_delete.py): the person, their chats and everything theirs.
-    "Deactivate" (DELETE /{user_id}) is the undoable one. The admin confirms by typing the username."""
+    """Delete an account (src/core/account_delete.py): the person cannot sign in again and their name goes; their
+    chats stay, anonymised. "Deactivate" (DELETE /{user_id}) is the undoable one. The admin types the username."""
     live_events.after_commit(db, live_events.USERS, admins=True)
     from src.core.account_delete import AccountBusy, after_commit, delete_account, delete_knowledge_base_rows
     from src.core.config import Config
 
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = _live_user(db, user_id)
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="You cannot delete your own account")
     if payload.confirm.strip() != user.username:
@@ -222,14 +225,15 @@ def delete_user(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     _ensure_an_admin_remains(db)
     security_log.record(db, security_log.ACCOUNT_DELETED, user_id=user_id, account=username,
-                        detail=f"by {admin.username}: {done.jobs} questions, {done.rows} other rows")
+                        detail=f"by {admin.username}: {done.jobs} questions kept as {user.username}, "
+                               f"{done.rows} rows removed")
     db.commit()
-    # after the commit: files, kept connections and the knowledge base (another database) — a failure there
-    # must not undo the delete
-    after_commit(done, artifacts_dir=config.artifacts_dir)
+    # after the commit: kept connections and the knowledge base (another database) — a failure there must not
+    # undo the delete
+    after_commit(done)
     done.knowledge_base = delete_knowledge_base_rows(user_id, config)
-    return {"status": "deleted", "id": user_id, "username": username, "questions": done.jobs,
-            "rows": done.rows, "chat_folders": done.files, "knowledge_base": done.knowledge_base}
+    return {"status": "deleted", "id": user_id, "username": username, "kept_as": user.username,
+            "questions": done.jobs, "rows": done.rows, "knowledge_base": done.knowledge_base}
 
 
 # ── sign-up: the open switch and invite links (BACKLOG L16 S7) ─────────────────────────────────────────
@@ -295,9 +299,7 @@ def list_locks(_admin: User = Depends(require_admin), db: Session = Depends(get_
 
 @router.delete("/{user_id}/lock")
 def unlock_user(user_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:
-    user = db.get(User, user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = _live_user(db, user_id)
     return {"unlocked": abuse.unlock(db, account_key(user.id, user.username), by=admin.username)}
 
 
@@ -311,7 +313,7 @@ def command_log(search: str = "", limit: int = COMMAND_LOG_LIMIT, _admin: User =
     deleted (ISSUES_LOG O123). `search` matches the user, server, host or command."""
     from src.core.models_db import CommandLog
 
-    stmt = select(CommandLog, User.username).outerjoin(User, User.id == CommandLog.user_id)
+    stmt = select(CommandLog, User.username, User.status).outerjoin(User, User.id == CommandLog.user_id)
     words = search.strip()
     if words:
         like = f"%{words}%"
@@ -321,10 +323,11 @@ def command_log(search: str = "", limit: int = COMMAND_LOG_LIMIT, _admin: User =
     rows = db.execute(stmt.order_by(CommandLog.created_at.desc()).limit(max(1, min(limit, COMMAND_LOG_LIMIT)))).all()
     return {"rows": [{
         "id": row.id, "at": row.created_at.isoformat() if row.created_at else None,
-        "username": name or row.username or "(deleted)", "deleted": row.user_id is None,
+        # the name saved with the row (the audit trail keeps it after a delete), else the account's
+        "username": row.username or name or "(unknown)", "deleted": row.user_id is None or status == USER_FORMER,
         "server": row.server_label, "host": row.host, "command": row.command, "decision": row.decision,
         "exit_code": row.exit_code, "output": row.output or "",
-    } for row, name in rows]}
+    } for row, name, status in rows]}
 
 
 @router.get("/security-events")
