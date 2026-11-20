@@ -9,6 +9,9 @@ import { btn, formFieldCompact } from "@/lib/ui";
 
 // the usual port of each kind: SSH (servers, routers, switches), and the recorder's web API
 const DEFAULT_PORT: Record<ServerKind, number> = { ssh: 22, nvr: 80, network: 22 };
+// a router / switch saved on SNMP's port is read over SNMP; its password is the community string (netdev.uses_snmp)
+const SNMP_PORT = 161;
+const SNMP_USER = "snmp";      // the login needs a user name; SNMPv2c has none
 // what the list shows before the login, for the kinds that are not servers
 const KIND_TAG: Record<ServerKind, string> = { ssh: "", nvr: "NVR · ", network: "Router / switch · " };
 
@@ -42,10 +45,12 @@ const modeAccent: Record<ServerMode, string> = {
 export default function ServersSection({ servers, isAdmin }: { servers: ServersApi; isAdmin: boolean }) {
   const [form, setForm] = useState<ServerLoginInput>(emptyServer);
   const [auth, setAuth] = useState<"password" | "key">("password");
+  const [via, setVia] = useState<"ssh" | "snmp">("ssh");          // a router / switch: its command line or SNMP
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (patch: Partial<ServerLoginInput>) => setForm((f) => ({ ...f, ...patch }));
   const recorder = form.kind === "nvr";          // a recorder: password only
+  const snmp = form.kind === "network" && via === "snmp";   // a switch read over SNMP: a community string only
   const readOnly = form.kind !== "ssh";          // recorders, routers and switches: never changed by the agent
 
   async function submit(event: FormEvent) {
@@ -57,14 +62,14 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
         kind: form.kind,
         label: form.label,
         host: form.host,
-        port: Number(form.port) || DEFAULT_PORT[form.kind],
-        username: form.username,
+        port: snmp ? SNMP_PORT : Number(form.port) || DEFAULT_PORT[form.kind],
+        username: snmp ? SNMP_USER : form.username,
         mode: form.mode,
-        ...(auth === "password" || recorder
+        ...(auth === "password" || recorder || snmp
           ? { password: form.password }
           : { private_key: form.private_key, key_passphrase: form.key_passphrase }),
       });
-      setForm({ ...emptyServer, kind: form.kind, port: DEFAULT_PORT[form.kind] }); // the password / key leaves the page's memory
+      setForm({ ...emptyServer, kind: form.kind, port: snmp ? SNMP_PORT : DEFAULT_PORT[form.kind] }); // the password / key leaves the page's memory
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -77,7 +82,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
       <h4 className="text-base font-semibold [font-family:var(--font-display)]">Devices (this session)</h4>
       <p className="text-xs leading-relaxed text-muted">
         Devices the IT specialist can log in to: servers it can work on, and camera recorders (NVR/DVR) whose
-        cameras it can list, and routers and switches (MikroTik) it can read. The login stays in the API&rsquo;s memory only — never
+        cameras it can list, and routers and switches (MikroTik and Cisco over SSH, other managed switches over SNMP) it can read. The login stays in the API&rsquo;s memory only — never
         saved, never in the chat — and is forgotten at logout, restart or after 8 hours. For a server, the mode sets
         what the agent may do: <strong>Read-only</strong>{" "}
         (investigate only), <strong>ask me first</strong> (each change needs your click), or{" "}
@@ -136,14 +141,32 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
             value={form.kind}
             onChange={(e) => {
               const kind = e.target.value as ServerKind;
+              setVia("ssh");
               set({ kind, port: DEFAULT_PORT[kind] });
             }}
           >
             <option value="ssh">Server (SSH)</option>
             <option value="nvr">Camera recorder (NVR / DVR — Hikvision, Dahua)</option>
-            <option value="network">Router / switch (MikroTik)</option>
+            <option value="network">Router / switch (MikroTik, Cisco, TP-Link, D-Link, Netgear…)</option>
           </select>
         </label>
+        {form.kind === "network" ? (
+          <label className={label}>
+            Read with
+            <select
+              className={formFieldCompact}
+              value={via}
+              onChange={(e) => {
+                const next = e.target.value as "ssh" | "snmp";
+                setVia(next);
+                set({ port: next === "snmp" ? SNMP_PORT : DEFAULT_PORT.network });
+              }}
+            >
+              <option value="ssh">SSH — MikroTik, Cisco</option>
+              <option value="snmp">SNMP — TP-Link, D-Link, Netgear and other managed switches</option>
+            </select>
+          </label>
+        ) : null}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_5rem]">
           <label className={label}>
             Name
@@ -171,12 +194,14 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
               type="number"
               min={1}
               max={65535}
-              value={form.port}
+              disabled={snmp}
+              value={snmp ? SNMP_PORT : form.port}
               onChange={(e) => set({ port: Number(e.target.value) })}
             />
           </label>
         </div>
 
+        {snmp ? null : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className={label}>
             User
@@ -199,6 +224,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
             </label>
           )}
         </div>
+        )}
 
         {readOnly ? null : (
           <label className={label}>
@@ -211,14 +237,14 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
           </label>
         )}
 
-        {auth === "password" || recorder ? (
+        {auth === "password" || recorder || snmp ? (
           <label className={label}>
-            Password
+            {snmp ? "Community string (the switch's SNMP read community)" : "Password"}
             <input
               className={formFieldCompact}
               required
               type="password"
-              placeholder="••••••••"
+              placeholder={snmp ? "public" : "••••••••"}
               autoComplete="new-password"
               value={form.password || ""}
               onChange={(e) => set({ password: e.target.value })}

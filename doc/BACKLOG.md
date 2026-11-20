@@ -478,12 +478,13 @@ Cisco, TP-Link / D-Link / Netgear**.
       `network_device` tool in chat (IT specialist): name, model, version, uptime, CPU, memory, interfaces
       up/down/disabled, DHCP leases, ARP, last log lines + .xlsx; 3 eval cases. **Left: live check on the user's
       MikroTik** (best with a read-only RouterOS user: `/user add name=multeagent group=read password=…`)
-- [ ] **D2 network device reader (rest):** read-only, a fixed command set per platform kept as data — MikroTik RouterOS
-      (SSH `/system resource print`, `/interface print`, `/ip dhcp-server lease print`, `/ip arp print`, `/log`),
-      Cisco IOS (`terminal length 0`, `show version`, `show ip interface brief`, `show interfaces status`,
-      `show mac address-table`, `show arp`, `show logging`); the platform found from the device's own answer.
-      TP-Link / D-Link / Netgear: their CLIs differ by model, so **SNMP read** (sysDescr, IF-MIB ports and status,
-      BRIDGE-MIB MAC table) is the common path
+- [x] **D2 network device reader — built 2026-11-20, live check pending (the user has a device):** Cisco IOS over SSH
+      (`show version`, `show interfaces status`, `show ip interface brief`, `show mac address-table`, `show arp`,
+      `show logging`; found from the `Cisco` SSH banner; reconnects when IOS closes the session after a command);
+      TP-Link / D-Link / Netgear and other managed switches over **SNMPv2c** (`src/servers/snmp.py`, GET/GETBULK only:
+      sysName/sysDescr/uptime, IF-MIB ports, Q-BRIDGE or BRIDGE-MIB MAC table mapped to port names, ARP) — saved as a
+      router/switch on port 161 with its community string (Settings → Devices → Read with: SNMP). Reports gained a
+      MAC table ("who is connected": which device on which port) and show only the columns a device fills
 - [ ] **D3 tool:** `network_device` in chat (status, ports, who is connected, logs) + .xlsx; eval cases
 - Later: config backup, then confirmed changes
 

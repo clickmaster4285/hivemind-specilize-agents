@@ -209,6 +209,84 @@ def _cisco(outputs: dict[str, str], host: str) -> DeviceReport:
 READERS: dict[str, Callable[[dict[str, str], str], DeviceReport]] = {MIKROTIK.name: _mikrotik, CISCO.name: _cisco}
 
 
+# ── SNMP (switches without a usable command line) ──────────────────────
+
+SNMP_PLATFORM = "SNMP"
+SYS_DESCR, SYS_UPTIME, SYS_NAME = "1.3.6.1.2.1.1.1.0", "1.3.6.1.2.1.1.3.0", "1.3.6.1.2.1.1.5.0"
+# IF-MIB columns: one walk each, indexed by ifIndex
+IF_COLUMNS = {"descr": "1.3.6.1.2.1.2.2.1.2", "iftype": "1.3.6.1.2.1.2.2.1.3", "mac": "1.3.6.1.2.1.2.2.1.6",
+              "admin": "1.3.6.1.2.1.2.2.1.7", "oper": "1.3.6.1.2.1.2.2.1.8", "name": "1.3.6.1.2.1.31.1.1.1.1",
+              "speed": "1.3.6.1.2.1.31.1.1.1.15", "alias": "1.3.6.1.2.1.31.1.1.1.18"}
+Q_FDB_PORT = "1.3.6.1.2.1.17.7.1.2.2.1.2"      # Q-BRIDGE: vlan.mac → bridge port (VLAN-aware switches)
+FDB_PORT = "1.3.6.1.2.1.17.4.3.1.2"            # BRIDGE-MIB: mac → bridge port (older or simpler switches)
+BRIDGE_PORT_IFINDEX = "1.3.6.1.2.1.17.1.4.1.2"  # bridge port → ifIndex, so a MAC gets its port's name
+ARP_MAC = "1.3.6.1.2.1.4.22.1.2"               # ipNetToMediaPhysAddress: ifIndex.a.b.c.d → MAC (routing switches)
+IF_UP, IF_ADMIN_DOWN = 1, 2                    # ifOperStatus up(1); ifAdminStatus down(2) = switched off
+IF_TYPES = {6: "ethernet", 24: "loopback", 53: "virtual", 71: "wifi", 135: "vlan", 136: "vlan", 161: "lag"}
+
+
+def _column(walk: Callable[[str], list], oid: str) -> dict[str, Any]:
+    from src.servers import snmp
+    return {snmp.index_suffix(o, oid): v for o, v in walk(oid)}
+
+
+def snmp_report(host: str, walk: Callable[[str], list], get: Callable[[list[str]], dict]) -> DeviceReport:
+    """A switch read over SNMP: walk(oid) and get(oids) are bound to its address and community."""
+    from src.servers import snmp
+
+    system = get([SYS_DESCR, SYS_UPTIME, SYS_NAME])
+    cols = {key: _column(walk, oid) for key, oid in IF_COLUMNS.items()}
+    # ifName ("Gi1/0/1", "1/0/1") when the switch fills it, else ifDescr (a Value is always truthy: compare text)
+    names = {i: str(cols["name"].get(i, "")) or str(cols["descr"][i]) for i in cols["descr"]}
+    interfaces = []
+    for index in sorted(cols["descr"], key=lambda i: int(i) if i.isdigit() else 0):
+        admin, oper = (getattr(cols[k].get(index), "number", None) for k in ("admin", "oper"))
+        speed = getattr(cols["speed"].get(index), "number", None)
+        interfaces.append({"name": names[index], "description": str(cols["alias"].get(index) or ""),
+                           "type": IF_TYPES.get(getattr(cols["iftype"].get(index), "number", None) or 0, ""),
+                           "status": "disabled" if admin == IF_ADMIN_DOWN else "up" if oper == IF_UP else "down",
+                           "speed": f"{speed} Mb/s" if speed else "", "mac": cols["mac"][index].mac
+                           if index in cols["mac"] else ""})
+    port_if = {bp: str(v) for bp, v in _column(walk, BRIDGE_PORT_IFINDEX).items()}
+    macs = []
+    for index, port in _column(walk, Q_FDB_PORT).items():
+        found = snmp.vlan_mac_from_index(index)
+        if found:
+            macs.append({"vlan": str(found[0]), "mac": found[1], "type": "dynamic",
+                         "port": names.get(port_if.get(str(port), ""), str(port))})
+    if not macs:                                   # no Q-BRIDGE: the plain bridge table
+        for index, port in _column(walk, FDB_PORT).items():
+            if mac := snmp.mac_from_index(index):
+                macs.append({"vlan": "", "mac": mac, "type": "dynamic",
+                             "port": names.get(port_if.get(str(port), ""), str(port))})
+    arp = []
+    for index, value in _column(walk, ARP_MAC).items():
+        if_index, _, ip = index.partition(".")
+        if value.mac:
+            arp.append({"ip": ip, "mac": value.mac, "interface": names.get(if_index, if_index)})
+    uptime = system.get(SYS_UPTIME)
+    return DeviceReport(
+        host=host, platform=SNMP_PLATFORM, name=str(system.get(SYS_NAME) or ""),
+        info={"model": str(system.get(SYS_DESCR) or ""), "uptime": snmp.uptime_text(uptime.number or 0)
+              if uptime is not None else ""},
+        interfaces=interfaces, arp=arp, macs=macs)
+
+
+def uses_snmp(login: ServerLogin) -> bool:
+    """A router / switch saved on SNMP's port is read over SNMP; its password is the community string."""
+    from src.servers.net_scan import SNMP_PORT
+    return login.port == SNMP_PORT
+
+
+def read_snmp(login: ServerLogin) -> DeviceReport:
+    from src.servers import snmp
+
+    community = login.password or ""
+    return snmp_report(login.host,
+                       walk=lambda oid: snmp.walk(login.host, oid, community=community, port=login.port),
+                       get=lambda oids: snmp.get(login.host, oids, community=community, port=login.port))
+
+
 # ── reading a device ───────────────────────────────────────────────────
 
 def _run(client: Any, command: str) -> str:
@@ -220,6 +298,11 @@ def read_device(login: ServerLogin, *,
                 open_session: Callable[[ServerLogin], tuple[Any, str]] = connect) -> tuple[DeviceReport, str]:
     """Log in, find the platform from the banner, run its read-only commands, parse them.
     → (report, the host key fingerprint seen)."""
+    if uses_snmp(login):
+        try:
+            return read_snmp(login), ""                       # SNMP has no host key to pin
+        except Exception as exc:                              # SnmpError: the reason is already plain words
+            raise DeviceError(str(exc)) from exc
     client, fingerprint = open_session(login)
     try:
         banner = client.get_transport().remote_version or ""
@@ -245,7 +328,9 @@ def test_login(login: ServerLogin) -> dict[str, str]:
     return {"host_key": fingerprint,
             "os": " · ".join(p for p in (report.platform, report.info.get("model", ""),
                                          report.info.get("version", "")) if p),
-            "access": f"{len(report.interfaces)} interfaces, {len(report.leases)} DHCP leases"}
+            "access": f"{len(report.interfaces)} interfaces, "
+                      + (f"{len(report.macs)} MAC addresses" if report.macs or not report.leases
+                         else f"{len(report.leases)} DHCP leases")}
 
 
 # ── as a chat job ──────────────────────────────────────────────────────

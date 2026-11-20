@@ -190,10 +190,11 @@ TOOLS: tuple[Tool, ...] = (
          run="src.servers.nvr:run_nvr_cameras",
          acts_on_machines=True, repeatable=True),
     Tool("network_device",
-         "Log in to a router or switch (MikroTik) added this session in Settings → Devices and read it, read-only: "
-         "model, firmware, uptime, CPU and memory, every interface/port and whether it is up, the devices connected "
-         "(DHCP leases with IP, MAC and host name), the ARP table and the recent log. Use for 'check the router', "
-         "'who is connected to the mikrotik', 'which ports are down on the switch', 'show the router log'.",
+         "Log in to a router or switch (MikroTik, Cisco, TP-Link, D-Link, Netgear) from Settings → Devices and read "
+         "it, read-only: model, firmware, uptime, CPU and memory, every interface/port and whether it is up, the "
+         "devices connected (DHCP leases with IP, MAC and host name, or a switch's MAC table: which device is on "
+         "which port), the ARP table and the recent log. Use for 'check the router', 'who is connected to the "
+         "mikrotik', 'which ports are down on the switch', 'what is plugged into port 5', 'show the router log'.",
          {"device": "the router's or switch's name or IP as the user wrote it; empty = the only one added"},
          (), lambda c: c.security_scan_enabled,
          run="src.servers.netdev:run_network_device",
