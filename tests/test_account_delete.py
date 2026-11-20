@@ -15,6 +15,7 @@ from src.core.config import Config
 from src.core.db import Base
 from src.core.models_db import (
     ChatThreadRow,
+    CommandLog,
     DeviceRow,
     Job,
     JobEvent,
@@ -83,6 +84,8 @@ def _fill(session, rita: User, tmp_path) -> None:
         SkillRow(owner_id=None, name="shared", created_by=rita.id),
         User(username="friend", password_hash="x", role="member", status="active", invited_by=rita.id),
         LlmUsage(job_id=JOB, user_id=rita.id, step="chat_runner", model="m"),
+        CommandLog(user_id=rita.id, server_label="pk server", host="10.0.0.2", command="systemctl restart nginx",
+                   decision="confirmed"),
     ])
     session.flush()
     (tmp_path / JOB / "images").mkdir(parents=True)
@@ -110,6 +113,8 @@ def test_delete_removes_the_account_and_everything_theirs(session, people, confi
     assert shared.created_by is None and _count(session, SkillRow, SkillRow.name == "mine") == 0
     assert session.scalar(select(User).where(User.username == "friend")).invited_by is None
     assert session.scalar(select(LlmUsage)).user_id is None                 # usage totals stay right
+    trail = session.scalar(select(CommandLog))                                # O123: the audit trail stays
+    assert trail.user_id is None and trail.username == "rita" and trail.command == "systemctl restart nginx"
     logged = session.scalar(select(SecurityEvent).where(SecurityEvent.kind == "account_deleted"))
     assert logged.account == "rita" and "by root" in logged.detail
 
@@ -147,3 +152,21 @@ def test_the_last_active_admin_cannot_be_deleted(session, people, config):
     with pytest.raises(HTTPException) as exc:
         delete_user(other.id, UserDeletePayload(confirm="boss"), admin=admin, db=session)
     assert exc.value.status_code == 400
+
+
+def test_admins_read_the_command_log_with_deleted_users_named(session, people, config, tmp_path):
+    from web.routers.users import command_log
+
+    admin, rita = people
+    session.add_all([
+        CommandLog(user_id=rita.id, username="rita", server_label="pk server", host="10.0.0.2",
+                   command="systemctl restart nginx", decision="confirmed", exit_code=0),
+        CommandLog(user_id=admin.id, username="root", server_label="uk server", host="10.0.0.3",
+                   command="apt-get upgrade", decision="refused"),
+    ])
+    session.flush()
+    delete_user(rita.id, UserDeletePayload(confirm="rita"), admin=admin, db=session)
+    rows = command_log(_admin=admin, db=session)["rows"]
+    assert {(r["username"], r["deleted"]) for r in rows} == {("rita", True), ("root", False)}
+    found = command_log(search="nginx", _admin=admin, db=session)["rows"]
+    assert [r["server"] for r in found] == ["pk server"]

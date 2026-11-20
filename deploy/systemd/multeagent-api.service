@@ -1,0 +1,25 @@
+# MulteAgent API + its job worker (BACKLOG L30 T1). Installed by deploy/install-services.sh, which fills @USER@/@ROOT@.
+# Starts at boot, comes back 5 s after a crash. The database runs in Docker (restart: unless-stopped); until it is up,
+# the API exits and systemd tries again.
+[Unit]
+Description=MulteAgent API (FastAPI + job worker)
+After=network-online.target docker.service ollama.service
+Wants=network-online.target docker.service ollama.service
+StartLimitIntervalSec=300
+StartLimitBurst=30
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/.venv/bin/python main.py --gui
+Restart=always
+RestartSec=5
+# open answers finish, the database pool closes
+TimeoutStopSec=20
+KillMode=mixed
+StandardOutput=append:@ROOT@/logs/api.log
+StandardError=append:@ROOT@/logs/api.log
+
+[Install]
+WantedBy=multi-user.target

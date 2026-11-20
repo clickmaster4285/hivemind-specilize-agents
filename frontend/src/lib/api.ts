@@ -218,6 +218,24 @@ export async function listSecurityEvents(kind?: string): Promise<SecurityLog> {
   return request(`/api/auth/users/security-events${kind ? `?kind=${encodeURIComponent(kind)}` : ""}`);
 }
 
+/** One command the agent ran (or was refused) on a server — kept after the account is deleted (admins). */
+export type CommandLogRow = {
+  id: number;
+  at: string | null;
+  username: string;
+  deleted: boolean;
+  server: string;
+  host: string;
+  command: string;
+  decision: string;
+  exit_code: number | null;
+  output: string;
+};
+
+export async function listCommandLog(search = ""): Promise<{ rows: CommandLogRow[] }> {
+  return request(`/api/auth/users/command-log${search ? `?search=${encodeURIComponent(search)}` : ""}`);
+}
+
 export async function unlockUser(id: number): Promise<{ unlocked: boolean }> {
   return request(`/api/auth/users/${id}/lock`, { method: "DELETE" });
 }

@@ -1,0 +1,14 @@
+# One backup run (backup.sh): database + files into backups/, old automatic archives pruned (BACKUP_KEEP), a copy
+# off this disk when BACKUP_COPY_TO is set. Started by multeagent-backup.timer.
+[Unit]
+Description=MulteAgent backup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=@USER@
+WorkingDirectory=@ROOT@
+ExecStart=@ROOT@/backup.sh
+StandardOutput=append:@ROOT@/logs/backup.log
+StandardError=append:@ROOT@/logs/backup.log

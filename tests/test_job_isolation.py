@@ -89,6 +89,21 @@ def test_deleting_another_users_job_is_forbidden_and_leaves_it(session, two_user
     assert session.get(Job, "b1").deleted_at is None                      # untouched
 
 
-def test_admin_sees_every_users_jobs(session, two_users):
+def test_an_admins_list_holds_their_own_jobs_but_any_job_opens_by_id(session, two_users):
+    """O122: the list builds the sidebar — an admin's own chats only; others' jobs still open by id."""
     admin = _user(session, "root", role="admin")
-    assert {"a1", "b1"} <= {j["id"] for j in list_jobs(db=session, user=admin)}
+    assert {j["id"] for j in list_jobs(db=session, user=admin)}.isdisjoint({"a1", "b1"})
+    assert get_job_endpoint("b1", db=session, user=admin)["id"] == "b1"
+
+
+def test_the_list_leaves_out_the_copied_conversation(session, two_users):
+    import json
+
+    alice, _bob = two_users
+    job = session.get(Job, "a1")
+    job.payload_json = json.dumps({"thread_id": "t", "conversation": [{"role": "user", "content": "x" * 5000}],
+                                   "attachments": [{"filename": "a.png"}]})
+    session.flush()
+    listed = list_jobs(db=session, user=alice)[0]
+    assert "conversation" not in listed["payload"] and listed["payload"]["attachments"] == [{"filename": "a.png"}]
+    assert listed["thread_id"] == "t"

@@ -1,0 +1,11 @@
+# Daily backup at 02:30; a run missed while the machine was off happens at the next start (Persistent).
+[Unit]
+Description=Daily MulteAgent backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

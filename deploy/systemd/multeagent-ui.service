@@ -1,0 +1,26 @@
+# MulteAgent UI — the production build on port 3000, the LAN's way in (BACKLOG L30 T1). Installed by
+# deploy/install-services.sh. deploy/ui-serve.sh builds again first when the frontend's code changed.
+[Unit]
+Description=MulteAgent UI (Next.js production server)
+After=network-online.target multeagent-api.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=@USER@
+WorkingDirectory=@ROOT@/frontend
+Environment=PORT=3000
+ExecStart=@ROOT@/deploy/ui-serve.sh
+Restart=always
+RestartSec=5
+# a build can take a few minutes on a busy machine
+TimeoutStartSec=600
+TimeoutStopSec=10
+KillMode=mixed
+StandardOutput=append:@ROOT@/logs/ui.log
+StandardError=append:@ROOT@/logs/ui.log
+
+[Install]
+WantedBy=multi-user.target

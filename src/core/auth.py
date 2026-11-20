@@ -224,6 +224,18 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
+def stream_user(request: Request) -> User:
+    """The signed-in user for a long-lived stream (SSE): checked in a short session of its own and handed back
+    detached, so the stream does not keep a database connection for its whole life (ISSUES_LOG O121 — with
+    get_current_user's `get_db`, the session closes only when the stream ends: ~15 open tabs used up the pool)."""
+    from src.core.db import session_scope
+
+    with session_scope() as db:
+        user = get_current_user(request, db)
+        db.expunge(user)            # its columns are loaded; nothing else is read from it later
+    return user
+
+
 def optional_user(request: Request, db: Session) -> User | None:
     """The signed-in user, or None (no cookie, an expired or revoked session) — for answers that only say less to an
     anonymous caller instead of refusing them (GET /api/health)."""

@@ -46,6 +46,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L27](#l27-server-work-like-a-developer--2026-11-18-issues_log-o93o96) | Server work like a developer: guided deploy, look-questions, logins kept open | built 2026-11-18 | live check on the uk server |
 | [L26](#l26-ideas-from-hermes-agent--planned-2026-11-17-issues_log-o88) | Ideas from Hermes Agent: schedules, skills from tasks, search all chats | H1, H2, H3 built (2026-11-18) | NousResearch hermes-agent (MIT) |
 | [L29](#l29-live-updates-without-a-reload--planned-2026-11-20-issues_log-o120) | Live updates without a reload (one SSE stream) | built 2026-11-20 | API restart + user's look with two tabs |
+| [L30](#l30-a-team-of-10-or-more--planned-2026-11-20-issues_log-o121o125) | A team of 10+ users: capacity, accounts, admin, sharing, operations | T1 built | T1: API restart, services install; then T2 |
 
 ---
 
@@ -782,4 +783,64 @@ asked for the rest to follow without a reload (2026-11-20).
   `server_vault` (add, edit, mode, remove, access taken away), schedules; `frontend/src/lib/liveEvents.ts`,
   `hooks/useLiveEvents.ts`. The stream re-checks the sign-in every minute and ends for a signed-out, deactivated or
   deleted account. Tests: `tests/test_live_events.py`.
+
+### L30. A team of 10 or more — planned 2026-11-20 (ISSUES_LOG O121–O125)
+
+The team grows from 2–3 users to at least 10 (user, 2026-11-20). Three read-only audits (capacity, team features,
+security + operations), the main claims checked by hand. Measured over 10 days: 186 jobs, 55 s average, p90 117 s,
+queue wait so far under 12 s.
+
+**T1 — must fix before more people join (bugs that bite at 10)**
+- [x] Streams keep a database connection open: short sign-in check, `to_thread` reads, pool 20 + 20 (O121) — built
+- [x] Admin sidebar: own chats only; slim job list without payloads (O122) — built
+- [x] Command log kept after an account delete; admin viewer (O123) — built
+- [x] The UI as a production build — built: `./start.sh` builds when the frontend changed (`ui_build_needed`,
+      logs/ui-build.log) and runs `npm run start`; `./start.sh --dev` keeps the development server. The hard-coded
+      `allowedDevOrigins` stays (it only matters for `--dev`)
+- [x] Services and backups — built, **the user installs once:** `./start.sh --stop` then
+      `sudo deploy/install-services.sh` (units in `deploy/systemd/`: API and UI restart on crash and at boot, a daily
+      backup timer at 02:30). `backup.sh` keeps the newest `BACKUP_KEEP` (14) automatic archives (labelled ones
+      stay) and copies each to `BACKUP_COPY_TO` when set (folder or rsync target; a failed copy fails the run).
+      Restore rehearsed with `./restore.sh --verify` on the 2026-11-19 archive: every table back, nothing changed.
+      Left for the user: choose `BACKUP_COPY_TO` (NAS / USB / another machine)
+
+**T2 — accounts at 10+**
+- [ ] Change my own password (and email, name); first password must be changed at first sign-in
+- [ ] A password or role change ends all of that user's sessions; sessions list + "Sign out everywhere"; 30-day cap
+      on a sign-in (O124)
+- [ ] Forgot password without email: a one-time reset link an admin makes (like invite links); SMTP later if wanted
+- [ ] Admin changes logged (role, modules, quota, password reset, approvals: who, what, when)
+- [ ] Users table: search, filter (status, team, role), sort (last sign-in, questions), last sign-in column, bulk
+      actions (modules, quota, team, deactivate), usage CSV export
+- [ ] Usage per team (today the `team` field is only a label)
+
+**T3 — the queue with 10 people asking (O125)**
+- [ ] A job waiting for a confirm / choice click gives the worker back (or a 60 s limit)
+- [ ] A second lane for jobs that do not need the GPU (scans, server reads), the GPU still behind `llm_slot`
+- [ ] Honest wait: the user's place in the queue and the time from measured job lengths, updated live
+- [ ] Scheduled runs after live questions (priority) and not counted as the owner's one active question
+- [ ] The answer check gives way to waiting questions, like suggestions do
+- [ ] Notify (browser notification + tab title) when an answer finishes while the user is elsewhere
+
+**T4 — sharing in a team** (each needs the user's yes on the design first)
+- [ ] Team devices: an admin's saved server that chosen members may use, never see; every use logged — instead of
+      10 copies of the root password
+- [ ] Roles beyond admin / member: team lead (approves, sees their team's usage), auditor (read-only)
+- [ ] Share a chat or project read-only with a person or a team; team skills
+- [ ] Team knowledge: documents a team uploads (needs a new decision: today "private data never mixes with the
+      shared brain", and only public + private scopes exist)
+
+**T5 — operations**
+- [ ] Monitoring: health, disk, GPU, database size, queue depth, last backup — an alert when one is wrong
+- [ ] Remote access only over a VPN (WireGuard / Tailscale) or HTTPS; `Secure` cookies from config; the real
+      client address behind a proxy (else every remote user shares one rate-limit bucket)
+- [ ] Database password (O32), the default admin password changed; password rule: common passwords refused
+- [ ] Log rotation (logrotate), old job events purged, dependency scan of our own code (`trivy fs`), pinned
+      versions; Alembic at the next schema change
+- [ ] Brain refresh at night (`BRAIN_REFRESH_WINDOW=01-06`); daily quota resets at local midnight
+
+Already good (keep): ownership checks on every job, chat, schedule, skill and library route (no IDOR found);
+admin routes behind `require_admin`, modules checked by the API; one active question per user and first-in-first-out
+turns; HttpOnly SameSite=Strict cookies, refresh-token reuse detection, a deactivated user cut off at once; only
+port 3000 open to the LAN; `.env` and backups mode 600, long secrets.
 

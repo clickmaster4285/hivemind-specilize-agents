@@ -19,6 +19,10 @@ _engine = None
 _SessionLocal = None
 
 
+DB_POOL_SIZE = 20           # connections kept open
+DB_POOL_OVERFLOW = 20       # extra ones for a busy moment
+DB_POOL_TIMEOUT = 10        # seconds a request waits for a free connection
+
 def get_engine(config: Config | None = None):
     global _engine, _SessionLocal
     if _engine is not None:
@@ -35,7 +39,12 @@ def get_engine(config: Config | None = None):
         # fail fast when Docker/Postgres is down instead of hanging (see doc/ISSUES_LOG.md #8)
         connect_args["connect_timeout"] = 10
 
-    _engine = create_engine(url, future=True, pool_pre_ping=True, connect_args=connect_args)
+    pool: dict = {}
+    if url.startswith("postgresql"):
+        # 10+ users: requests, chat streams' short reads and the worker share these (ISSUES_LOG O121). A request that
+        # cannot get one fails after 10 s instead of hanging 30 s. Postgres allows 100 connections by default.
+        pool = {"pool_size": DB_POOL_SIZE, "max_overflow": DB_POOL_OVERFLOW, "pool_timeout": DB_POOL_TIMEOUT}
+    _engine = create_engine(url, future=True, pool_pre_ping=True, connect_args=connect_args, **pool)
 
     if url.startswith("sqlite"):
 
@@ -74,6 +83,17 @@ def _ensure_column(engine, table: str, column: str, ddl: str) -> None:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {_postgres_ddl(ddl)}"))
 
 
+def _ensure_nullable(engine, table: str, column: str) -> None:
+    """Let an existing NOT NULL column hold NULL (create_all does not alter). SQLite tables are made fresh by
+    create_all from the model, so only Postgres needs it; running it again changes nothing."""
+    from sqlalchemy import text
+
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as conn:
+        conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN {column} DROP NOT NULL"))
+
+
 def _postgres_ddl(ddl: str) -> str:
     """The column DDL below is written for SQLite; Postgres has no DATETIME and wants true/false."""
     import re
@@ -109,6 +129,9 @@ def init_db(config: Config | None = None) -> None:
     _ensure_column(engine, "schedules", "last_status", "last_status VARCHAR(10) DEFAULT ''")
     _ensure_column(engine, "chat_threads", "unread", "unread BOOLEAN DEFAULT 0")
     _ensure_column(engine, "chat_threads", "work", "work TEXT")
+    # the command log outlives a deleted account (ISSUES_LOG O123)
+    _ensure_column(engine, "command_log", "username", "username VARCHAR(120) DEFAULT ''")
+    _ensure_nullable(engine, "command_log", "user_id")
 
 
 @contextmanager

@@ -5,12 +5,14 @@
 #   1. Docker -> database (Postgres + pgvector) and SearXNG containers; a fresh database gets its setup
 #   2. Ollama (systemd service)
 #   3. API  (python main.py --gui)  in the background, log in logs/api.log
-#   4. UI   (npm run dev)           in the background, log in logs/ui.log — the LAN's way in (it passes /api on)
+#   4. UI   (npm run start)         in the background, log in logs/ui.log — the LAN's way in (it passes /api on);
+#           the production build, made again first when the frontend's code changed (log in logs/ui-build.log)
 #   5. Health check
 #
 #   ./start.sh            everything
 #   ./start.sh --tools    also start pgAdmin (http://localhost:5050)
 #   ./start.sh --no-ui    backend only
+#   ./start.sh --dev      the UI as the Next.js development server (reloads on every edit; slower, for coding only)
 #   ./start.sh --stop     stop the API and UI — found by their ports, only this project's processes, with their
 #                         children (containers and Ollama keep running)
 #   ./start.sh --status   what runs right now: containers, Ollama + loaded model, GPU, API, UI, knowledge base, backups
@@ -44,15 +46,16 @@ FOLLOW_CONTEXT_LINES=5
 FOLLOW_PARTS=(api ui db searxng pgadmin ollama)
 declare -A FOLLOW_COLOR=([api]=32 [ui]=35 [db]=36 [searxng]=36 [pgadmin]=36 [ollama]=33)
 
-TOOLS=0; NO_UI=0; STOP=0; STATUS=0; FOLLOW=0; FOLLOW_ONLY=()
+TOOLS=0; NO_UI=0; UI_DEV=0; STOP=0; STATUS=0; FOLLOW=0; FOLLOW_ONLY=()
 while (($#)); do
     case "$1" in
         --tools) TOOLS=1 ;;
         --no-ui) NO_UI=1 ;;
+        --dev)   UI_DEV=1 ;;
         --stop)  STOP=1 ;;
         --status) STATUS=1 ;;
         --follow) FOLLOW=1; shift; FOLLOW_ONLY=("$@"); break ;;
-        -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option: $1 (see --help)"; exit 2 ;;
     esac
     shift
@@ -114,8 +117,15 @@ stop_target() {
     echo "$pid"
 }
 
+# installed as a systemd service (deploy/install-services.sh): systemd starts, restarts and stops it, not this script
+as_service() { systemctl is-active --quiet "multeagent-$1.service" 2>/dev/null; }
+
 stop_service() {  # stop_service <name> <port>
     local name="$1" port="$2" pidfile="$LOGS/$1.pid" pids=() targets=() pid target foreign=0
+    if as_service "$name"; then
+        skip "$name runs as a service (it would restart at once) — stop it with:  sudo systemctl stop multeagent-$name"
+        return 0
+    fi
     if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then pids+=("$(cat "$pidfile")"); fi
     for pid in $(port_pids "$port"); do pids+=("$pid"); done
     for pid in "${pids[@]}"; do
@@ -363,8 +373,12 @@ elif ((!DB_UP)); then
     API_EXPECTED=0
     bad "not started: it needs the database (fix the Docker step above, then run ./start.sh again)"
 else
-    start_bg api "$ROOT" "$PYTHON" main.py --gui
-    ok "API started in the background (log: logs/api.log)"
+    if as_service api; then
+        skip "the API runs as a service — systemd keeps it up (journalctl -u multeagent-api)"
+    else
+        start_bg api "$ROOT" "$PYTHON" main.py --gui
+        ok "API started in the background (log: logs/api.log)"
+    fi
 fi
 
 # ── 4. UI ─────────────────────────────────────────────────────────────
@@ -374,9 +388,26 @@ if ((!NO_UI)); then
         skip "already listening on $UI_PORT — assuming the UI runs"
     elif [[ ! -d "$ROOT/frontend/node_modules" ]]; then
         bad "frontend packages missing — run:  cd frontend && npm install"
-    else
+    elif ((UI_DEV)); then
         start_bg ui "$ROOT/frontend" npm run dev
-        ok "UI started in the background (log: logs/ui.log)"
+        ok "UI (development server) started in the background (log: logs/ui.log)"
+    else
+        ui_ready=1
+        if ui_build_needed; then
+            skip "the frontend changed since the last build — building it (about a minute, log: logs/ui-build.log)"
+            mkdir -p "$LOGS"
+            printf '\n===== %s  build =====\n' "$(date '+%F %T')" >>"$LOGS/ui-build.log"
+            if (cd "$ROOT/frontend" && npm run build >>"$LOGS/ui-build.log" 2>&1); then
+                ok "UI built"
+            else
+                ui_ready=0
+                bad "the UI build failed — see logs/ui-build.log (./start.sh --dev runs the development server instead)"
+            fi
+        fi
+        if ((ui_ready)); then
+            start_bg ui "$ROOT/frontend" npm run start
+            ok "UI started in the background (production build, log: logs/ui.log)"
+        fi
     fi
 fi
 

@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.core.auth import get_current_user, get_db
+from src.core.auth import stream_user, get_current_user, get_db
 from src.core.config import Config
 from src.core.models_db import Job, User
 from src.jobs.jobs import (
@@ -97,15 +97,16 @@ def list_jobs(
     user: User = Depends(get_current_user),
     limit: int = 100,
 ) -> list[dict[str, Any]]:
+    # your own chats only, admins included: the sidebar is built from this list, and an admin's filled with
+    # everyone's chats while their own older ones fell out of the 100 (ISSUES_LOG O122). An admin can still open
+    # any job by its id (_owned_job).
     stmt = (
         select(Job)
-        .where(Job.deleted_at.is_(None))
+        .where(Job.deleted_at.is_(None), Job.user_id == user.id)
         .order_by(Job.created_at.desc())
         .limit(min(limit, 100))
     )
-    if user.role != "admin":
-        stmt = stmt.where(Job.user_id == user.id)
-    return [job_to_dict(j) for j in db.scalars(stmt).all()]
+    return [job_to_dict(j, slim=True) for j in db.scalars(stmt).all()]
 
 
 @router.post("/soft-delete")
@@ -264,17 +265,32 @@ def job_attachment(
     return FileResponse(path, media_type=mime, filename=filename)
 
 
+def _check_owned(job_id: str, user: User) -> None:
+    from src.core.db import session_scope
+
+    with session_scope() as db:
+        _owned_job(db, job_id, user)
+
+
+def _read_new(job_id: str, after_seq: int) -> tuple[str | None, list[tuple[int, str]]]:
+    """(the job's status — None when it is gone, its events after `after_seq`) in a short session of its own, run in
+    a worker thread: the stream holds no database connection between reads and never blocks the event loop (O121)."""
+    from src.core.db import session_scope
+
+    with session_scope() as session:
+        current = get_job(session, job_id)
+        if current is None:
+            return None, []
+        # Copy fields inside the session to avoid DetachedInstanceError.
+        return current.status, [(row.seq, row.event_json) for row in list_events_after(session, job_id, after_seq)]
+
+
 @router.get("/{job_id}/events")
-async def job_events_stream(
-    job_id: str,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> StreamingResponse:
-    _owned_job(db, job_id, user)
+async def job_events_stream(job_id: str, user: User = Depends(stream_user)) -> StreamingResponse:
+    await asyncio.to_thread(_check_owned, job_id, user)
 
     async def event_generator():
         from src.jobs import live
-        from src.core.db import session_scope
 
         last_seq = 0
         terminal = {"succeeded", "failed", "cancelled"}
@@ -286,17 +302,10 @@ async def job_events_stream(
             # read the live text BEFORE the stored events: text cleared just before a final event
             # then cannot be sent after it
             live_now = live.snapshot(job_id)
-            payloads: list[tuple[int, str]] = []
-            status = "queued"
-            with session_scope() as session:
-                current = get_job(session, job_id)
-                if current is None:
-                    yield f"data: {json.dumps({'type': 'fatal', 'error': 'Job missing'})}\n\n"
-                    break
-                status = current.status
-                rows = list_events_after(session, job_id, last_seq)
-                # Copy fields inside the session to avoid DetachedInstanceError.
-                payloads = [(row.seq, row.event_json) for row in rows]
+            status, payloads = await asyncio.to_thread(_read_new, job_id, last_seq)
+            if status is None:
+                yield f"data: {json.dumps({'type': 'fatal', 'error': 'Job missing'})}\n\n"
+                break
             for seq, event_json in payloads:
                 last_seq = seq
                 if '"agent_done"' in event_json:

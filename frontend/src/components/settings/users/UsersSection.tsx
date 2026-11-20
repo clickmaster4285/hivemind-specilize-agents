@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import { useApp } from "@/components/app/AppProvider";
 import BlockedComputers from "@/components/settings/users/BlockedComputers";
+import CommandLogPanel from "@/components/settings/users/CommandLogPanel";
 import InvitesPanel from "@/components/settings/users/InvitesPanel";
 import SecurityLogPanel from "@/components/settings/users/SecurityLogPanel";
 import type { UsersApi } from "@/hooks/useUsers";
@@ -200,6 +201,7 @@ export default function UsersSection({ users }: { users: UsersApi }) {
       )}
 
       <SecurityLogPanel />
+      <CommandLogPanel />
     </>
   );
 }

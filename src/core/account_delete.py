@@ -1,12 +1,12 @@
 """Delete an account for good (Settings → Users → Delete; the user's choice 2026-11-20).
 
 "Deactivate" (web/routers/users.py) blocks sign-in and keeps everything; this removes the person and what is
-theirs: chats and their messages, projects, schedules, device logins, own skills, feedback, command log, SEO
+theirs: chats and their messages, projects, schedules, device logins, own skills, feedback, SEO
 projects and audits, sign-in tokens, the invites they made, and each chat's files under artifacts/<job id>/.
 In the knowledge base: the questions they asked (retrieval_log) and their private sources.
 
-Kept on purpose, without their name: the security log (it must outlive the account it is about) and the model
-usage rows (the totals stay right; user_id is cleared). Shared skills they wrote and accounts they invited stay,
+Kept on purpose: the security log and the server command log (audit trails must outlive the account they are
+about; the command log keeps the username), and the model usage rows without their name (the totals stay right). Shared skills they wrote and accounts they invited stay,
 with the link to them cleared.
 """
 
@@ -81,7 +81,7 @@ def delete_account(db: Session, user: User) -> Deleted:
     done.device_ids = set(db.scalars(select(DeviceRow.id).where(DeviceRow.user_id == uid)))
     for model, column in (
         (ChatThreadRow, ChatThreadRow.user_id), (ProjectRow, ProjectRow.user_id), (ScheduleRow, ScheduleRow.user_id),
-        (DeviceRow, DeviceRow.user_id), (Feedback, Feedback.user_id), (CommandLog, CommandLog.user_id),
+        (DeviceRow, DeviceRow.user_id), (Feedback, Feedback.user_id),
         (SeoAudit, SeoAudit.user_id), (SeoProject, SeoProject.user_id), (RefreshToken, RefreshToken.user_id),
         (UserInvite, UserInvite.created_by), (SkillRow, SkillRow.owner_id),
     ):
@@ -92,6 +92,10 @@ def delete_account(db: Session, user: User) -> Deleted:
     db.execute(update(SkillRow).where(SkillRow.created_by == uid).values(created_by=None))
     db.execute(update(User).where(User.invited_by == uid).values(invited_by=None))
     db.execute(update(LlmUsage).where(LlmUsage.user_id == uid).values(user_id=None))
+    # the server command log is the audit trail: kept, with the name of who it was (ISSUES_LOG O123)
+    db.execute(update(CommandLog).where(CommandLog.user_id == uid, CommandLog.username == "")
+               .values(username=user.username))
+    db.execute(update(CommandLog).where(CommandLog.user_id == uid).values(user_id=None))
     db.delete(user)
     db.flush()
 

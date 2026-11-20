@@ -45,3 +45,16 @@ BACKUP_DIR="${BACKUP_DIR:-$ROOT/backups}"
 # .env must travel with the dump: its DEVICE_KEY decrypts the saved device logins.
 # Not carried, as they rebuild themselves: data/brain_cache (fetched sources), models, .venv, node_modules.
 BACKUP_PATHS=(.env artifacts agents data/brain_eval/results)
+
+# The UI's production build is made again when anything it is built from is newer than the last build
+# (10+ users: the dev server served source maps and recompiled on demand — BACKLOG L30 T1)
+UI_SOURCES=(src public package.json package-lock.json next.config.ts tsconfig.json postcss.config.mjs server.mjs)
+ui_build_needed() {
+    local stamp="$ROOT/frontend/.next/BUILD_ID" part
+    [[ -f "$stamp" ]] || return 0
+    for part in "${UI_SOURCES[@]}"; do
+        [[ -e "$ROOT/frontend/$part" ]] || continue
+        [[ -n "$(find "$ROOT/frontend/$part" -newer "$stamp" -print -quit 2>/dev/null)" ]] && return 0
+    done
+    return 1
+}

@@ -380,8 +380,16 @@ def cancel_job(session: Session, job: Job) -> Job:
     return job
 
 
-def job_to_dict(job: Job) -> dict[str, Any]:
+# what a job carries only for the worker: the earlier chat copied into each question is ~94% of a payload (O122)
+WORKER_ONLY_PAYLOAD = ("conversation",)
+
+
+def job_to_dict(job: Job, *, slim: bool = False) -> dict[str, Any]:
+    """slim: for lists — the payload without the parts only the worker reads."""
     payload = json.loads(job.payload_json or "{}")
+    if slim:
+        for key in WORKER_ONLY_PAYLOAD:
+            payload.pop(key, None)
     return {
         "id": job.id,
         "user_id": job.user_id,

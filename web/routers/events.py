@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from src.core import live_events
-from src.core.auth import get_current_user
+from src.core.auth import get_current_user, stream_user
 from src.core.models_db import User
 
 router = APIRouter(tags=["events"])
@@ -36,7 +36,7 @@ def _still_signed_in(request: Request) -> bool:
 
 
 @router.get("/api/events")
-async def live_events_stream(request: Request, user: User = Depends(get_current_user)) -> StreamingResponse:
+async def live_events_stream(request: Request, user: User = Depends(stream_user)) -> StreamingResponse:
     sub = live_events.subscribe(user.id, user.role == "admin")
 
     async def stream():

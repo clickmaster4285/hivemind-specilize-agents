@@ -301,6 +301,32 @@ def unlock_user(user_id: int, admin: User = Depends(require_admin), db: Session 
     return {"unlocked": abuse.unlock(db, account_key(user.id, user.username), by=admin.username)}
 
 
+COMMAND_LOG_LIMIT = 300        # newest rows the admin page shows
+
+
+@router.get("/command-log")
+def command_log(search: str = "", limit: int = COMMAND_LOG_LIMIT, _admin: User = Depends(require_admin),
+                db: Session = Depends(get_db)) -> dict[str, Any]:
+    """What the agent ran (or was refused) on servers, newest first, for every user — kept after an account is
+    deleted (ISSUES_LOG O123). `search` matches the user, server, host or command."""
+    from src.core.models_db import CommandLog
+
+    stmt = select(CommandLog, User.username).outerjoin(User, User.id == CommandLog.user_id)
+    words = search.strip()
+    if words:
+        like = f"%{words}%"
+        stmt = stmt.where(CommandLog.username.ilike(like) | User.username.ilike(like)
+                          | CommandLog.server_label.ilike(like) | CommandLog.host.ilike(like)
+                          | CommandLog.command.ilike(like))
+    rows = db.execute(stmt.order_by(CommandLog.created_at.desc()).limit(max(1, min(limit, COMMAND_LOG_LIMIT)))).all()
+    return {"rows": [{
+        "id": row.id, "at": row.created_at.isoformat() if row.created_at else None,
+        "username": name or row.username or "(deleted)", "deleted": row.user_id is None,
+        "server": row.server_label, "host": row.host, "command": row.command, "decision": row.decision,
+        "exit_code": row.exit_code, "output": row.output or "",
+    } for row, name in rows]}
+
+
 @router.get("/security-events")
 def security_events(kind: str | None = None, limit: int = security_log.LIST_LIMIT,
                     _admin: User = Depends(require_admin), db: Session = Depends(get_db)) -> dict[str, Any]:

@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import select
+
 from src.core.config import Config
 from src.core.db import session_scope
-from src.core.models_db import CommandLog
+from src.core.models_db import CommandLog, User
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +37,8 @@ def log_command(
     try:
         with session_scope(config) as session:
             session.add(CommandLog(
-                user_id=user_id, job_id=job_id, server_label=server_label[:80], host=host[:255],
+                user_id=user_id, username=session.scalar(select(User.username).where(User.id == user_id)) or "",
+                job_id=job_id, server_label=server_label[:80], host=host[:255],
                 command=command, decision=decision, exit_code=exit_code,
                 output=(output or "")[:OUTPUT_KEPT] or None,
             ))

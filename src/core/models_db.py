@@ -210,12 +210,14 @@ class ModelRecord(Base):
 class CommandLog(Base):
     """Audit trail of commands the agent ran on a server (SERVER_ACCESS_DECISION.md §8). One row per
     command that changed, or would have changed, a server — the host and command are kept, never the
-    password. Read-only diagnose commands are not logged here (they change nothing)."""
+    password. Read-only diagnose commands are not logged here (they change nothing). Kept when the account is
+    deleted (ISSUES_LOG O123): user_id is then cleared and `username` still says who it was."""
 
     __tablename__ = "command_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True, nullable=True)
+    username: Mapped[str] = mapped_column(String(120), default="")
     job_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
     server_label: Mapped[str] = mapped_column(String(80))
     host: Mapped[str] = mapped_column(String(255))

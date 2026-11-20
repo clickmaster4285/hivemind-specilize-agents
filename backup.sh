@@ -13,8 +13,12 @@
 #   BACKUP_DIR=/media/usb ./backup.sh    somewhere else, e.g. a USB drive or NAS mount
 #   ./backup.sh --label before-update    adds a word to the file name
 #
-# Daily, e.g. at 02:30 (crontab -e):
-#   30 2 * * *  cd /path/to/multeagent && ./backup.sh >> logs/backup.log 2>&1
+# Daily at 02:30: the systemd timer from  sudo deploy/install-services.sh  (BACKLOG L30 T1).
+#
+# Kept: the newest $BACKUP_KEEP automatic archives (default 14); archives made with --label are never removed.
+# Off this disk: set BACKUP_COPY_TO (in the environment or as a line in .env) to a folder (a NAS mount, a USB
+# drive) or an rsync target (user@nas:/backups/multeagent); each new archive is copied there, and a failed copy
+# makes the run fail so the timer shows it.
 #
 # Check a backup without changing anything:  ./restore.sh --verify <archive>
 
@@ -30,6 +34,18 @@ while (($#)); do
     esac
 done
 [[ "$LABEL" =~ ^[A-Za-z0-9_-]*$ ]] || { bad "--label: letters, digits, - and _ only"; exit 2; }
+
+# a setting from the environment, else its line in .env (KEY=value, quotes allowed), else the default
+setting() {  # setting <KEY> <default>
+    local value="${!1:-}"
+    if [[ -z "$value" && -f "$ROOT/.env" ]]; then
+        value="$(grep -E "^[[:space:]]*$1=" "$ROOT/.env" | tail -1 | cut -d= -f2- | sed -E "s/^[\"']|[\"']\$//g")"
+    fi
+    echo "${value:-$2}"
+}
+BACKUP_KEEP="$(setting BACKUP_KEEP 14)"
+BACKUP_COPY_TO="$(setting BACKUP_COPY_TO "")"
+[[ "$BACKUP_KEEP" =~ ^[0-9]+$ ]] && ((BACKUP_KEEP > 0)) || { bad "BACKUP_KEEP must be a number above 0"; exit 2; }
 
 umask 077   # the archive holds every secret: this user only
 name="multeagent-$(date +%Y%m%d-%H%M%S)${LABEL:+-$LABEL}"
@@ -69,6 +85,30 @@ step "Archive"
 archive="$BACKUP_DIR/$name.tar.gz"
 tar -C "$work" -czf "$archive" "$name"
 ok "$archive ($(du -h "$archive" | cut -f1))"
+
+step "Old archives"
+# automatic ones only (no --label): multeagent-YYYYMMDD-HHMMSS.tar.gz, newest first; the rest beyond BACKUP_KEEP go
+mapfile -t automatic < <(find "$BACKUP_DIR" -maxdepth 1 -type f -regextype posix-extended \
+    -regex '.*/multeagent-[0-9]{8}-[0-9]{6}\.tar\.gz' -printf '%f\n' | sort -r)
+if ((${#automatic[@]} > BACKUP_KEEP)); then
+    for old in "${automatic[@]:BACKUP_KEEP}"; do
+        rm -f -- "${BACKUP_DIR:?}/${old:?}"
+        ok "removed $old (keeping the newest $BACKUP_KEEP)"
+    done
+else
+    skip "${#automatic[@]} automatic archive(s), keeping up to $BACKUP_KEEP"
+fi
+
+step "Copy off this disk"
+if [[ -z "$BACKUP_COPY_TO" ]]; then
+    skip "BACKUP_COPY_TO is not set — the archive is only on this disk (a disk failure loses it)"
+elif [[ "$BACKUP_COPY_TO" == *:* ]]; then
+    if rsync -a --chmod=F600 "$archive" "$BACKUP_COPY_TO/"; then ok "copied to $BACKUP_COPY_TO"
+    else bad "the copy to $BACKUP_COPY_TO failed"; exit 1; fi
+else
+    if [[ -d "$BACKUP_COPY_TO" ]] && cp -- "$archive" "$BACKUP_COPY_TO/"; then ok "copied to $BACKUP_COPY_TO"
+    else bad "the copy to $BACKUP_COPY_TO failed (is the drive or share mounted?)"; exit 1; fi
+fi
 echo
 echo "   Not encrypted and holds every secret: copy it off this machine and keep it like a password file."
 echo "   Test it any time:  ./restore.sh --verify $archive"
