@@ -97,3 +97,14 @@ export const formLabel = "flex flex-col gap-1 text-[0.82rem] text-muted";
 /** The smaller text box of the Settings lists (users, invites, servers, skills search), with a copper focus ring. */
 export const formFieldCompact =
   "w-full rounded-lg border border-line bg-panel-2 px-3 py-2 text-sm text-text placeholder:text-muted outline-none focus:border-copper";
+
+/** A data table (Users, Devices, Usage): a bordered box that scrolls sideways on a narrow screen, a header row
+ *  in small capitals, and a line between rows. */
+export const table = {
+  wrap: "overflow-x-auto rounded-lg border border-line",
+  table: "w-full text-sm",
+  head: "bg-panel-2",
+  th: "whitespace-nowrap px-3 py-2 text-left text-[0.72rem] font-medium uppercase tracking-[0.04em] text-muted",
+  row: "border-t border-line align-middle",
+  td: "px-3 py-2",
+};

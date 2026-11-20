@@ -10,6 +10,18 @@ export const LIBRARY_PATH = "/library";
 export const SCHEDULES_PATH = "/schedules";
 const CHAT_PREFIX = "/chat/";
 
+// the forms that are pages of their own inside the layout (BACKLOG L19b D5): "new" opens an empty form
+export const NEW_DEVICE_PATH = `${DEVICES_PATH}/new`;
+export type SettingsTab = "users" | "usage" | "agents";
+export const settingsTabPath = (tab: SettingsTab) => `${SETTINGS_PATH}?tab=${tab}`;
+export const userPath = (id: number | "new") => `${SETTINGS_PATH}/users/${id}`;
+export const agentPath = (id: string) => `${SETTINGS_PATH}/agents/${encodeURIComponent(id)}`;
+
+/** The own page a path belongs to: "/settings/users/3" → "/settings", so the sidebar and navbar name its page. */
+export function pageRoot(pathname: string | null): string {
+  return /^\/[^/?#]*/.exec(pathname || "")?.[0] ?? "";
+}
+
 /** The navbar title of each own page; a chat page shows the chat's title instead. */
 export const PAGE_TITLES: Record<string, string> = {
   [SETTINGS_PATH]: "Settings",

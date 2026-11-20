@@ -8,23 +8,31 @@ export const pageSearch =
 export const pageTab = (on: boolean) =>
   `rounded-lg px-3 py-1.5 text-[0.85rem] ${on ? "bg-panel-2 text-text" : "text-muted hover:text-text"}`;
 
+/** How wide an own page's content may grow, on Tailwind's scale (rem, follows the browser's font size):
+ *  64rem for pages and forms, 80rem for pages of tables (Settings, Devices). */
+export const PAGE_WIDTH = "max-w-5xl";
+export const WIDE_PAGE_WIDTH = "max-w-7xl";
+
 /** The head of an own page (BACKLOG L24 U5): title, one line of what it is, an optional action on the right
- *  (New project …) and an optional toolbar row under it (search, filters). The body follows as children. */
+ *  (New project …) and an optional toolbar row under it (search, filters). The body follows as children.
+ *  `wide` lets a page of tables use more of a large screen. */
 export default function PageHeader({
   title,
   about,
   action,
   toolbar,
+  wide = false,
   children,
 }: {
   title: string;
   about: string;
   action?: ReactNode;
   toolbar?: ReactNode;
+  wide?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="mx-auto w-full max-w-[960px] px-4 py-8">
+    <div className={`mx-auto w-full ${wide ? WIDE_PAGE_WIDTH : PAGE_WIDTH} px-4 py-8`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="m-0 text-[1.6rem] [font-family:var(--font-display)]">{title}</h1>

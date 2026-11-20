@@ -9,6 +9,7 @@ import type { ManagedUser, UserCreateInput, UserUpdateInput } from "@/lib/types"
  */
 export function useUsers(active: boolean) {
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [loaded, setLoaded] = useState(false);   // the first list arrived (a user's own page waits for it)
 
   const load = useCallback(async () => {
     try {
@@ -24,7 +25,8 @@ export function useUsers(active: boolean) {
     let cancelled = false;
     listUsers()
       .then((list) => !cancelled && setUsers(list))
-      .catch(() => !cancelled && setUsers([]));
+      .catch(() => !cancelled && setUsers([]))
+      .finally(() => !cancelled && setLoaded(true));
     return () => {
       cancelled = true;
     };
@@ -63,7 +65,7 @@ export function useUsers(active: boolean) {
     [load],
   );
 
-  return { users, create, update, deactivate, unlock };
+  return { users, loaded, create, update, deactivate, unlock };
 }
 
 export type UsersApi = ReturnType<typeof useUsers>;

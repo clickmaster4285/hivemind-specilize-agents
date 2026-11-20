@@ -21,6 +21,7 @@ const SPECIALIST_KEY = "multeagent_specialist";
 export function useSpecialists() {
   const [specialists, setSpecialists] = useState<Specialist[]>([]);
   const [options, setOptions] = useState<SpecialistOptions>({ tools: [], collections: [] });
+  const [loaded, setLoaded] = useState(false);   // the list arrived after sign-in (an agent's own page waits for it)
   const [stored, setChoice] = useLocalStorage(SPECIALIST_KEY, "auto");
   const choice = stored || "auto";
 
@@ -33,6 +34,7 @@ export function useSpecialists() {
 
   const load = useCallback(async () => {
     setSpecialists(await listSpecialists());
+    setLoaded(true);
     try {
       setOptions(await specialistOptions());
     } catch {
@@ -40,7 +42,10 @@ export function useSpecialists() {
     }
   }, []);
 
-  const clear = useCallback(() => setSpecialists([]), []);
+  const clear = useCallback(() => {
+    setSpecialists([]);
+    setLoaded(false);
+  }, []);
 
   const save = useCallback(
     async (id: string | null, form: SpecialistInput) => {
@@ -65,7 +70,7 @@ export function useSpecialists() {
     await load();
   }, [load]);
 
-  return { specialists, options, choice, setChoice, label, load, clear, save, remove, reset };
+  return { specialists, loaded, options, choice, setChoice, label, load, clear, save, remove, reset };
 }
 
 export type SpecialistsApi = ReturnType<typeof useSpecialists>;

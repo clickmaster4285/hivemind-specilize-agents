@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 
 import { useApp } from "@/components/app/AppProvider";
 import ThemeToggle from "@/components/app/ThemeToggle";
-import { PAGE_TITLES } from "@/lib/routes";
+import { PAGE_TITLES, pageRoot } from "@/lib/routes";
 import { threadDate } from "@/lib/threadGroups";
 import { HOVER_CARD_DELAY_MS } from "@/lib/ui";
 
@@ -21,7 +21,7 @@ export default function Navbar() {
     timer.current = null;
     setCard(false);
   };
-  const pageTitle = PAGE_TITLES[pathname || ""];
+  const pageTitle = PAGE_TITLES[pageRoot(pathname)];   // a form page (/settings/users/3) shows its page's name
   const thread = app.history.threads.find((t) => t.id === app.history.activeThreadId);
   const title = pageTitle || app.chat.title;
   const subtitle = pageTitle

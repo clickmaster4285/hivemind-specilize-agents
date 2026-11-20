@@ -1,288 +1,117 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import Link from "next/link";
 
+import { MODE_LABEL, SNMP_PORT } from "@/components/settings/DeviceForm";
 import type { ServersApi } from "@/hooks/useServers";
-import { errorText } from "@/lib/chat";
-import type { ServerKind, ServerLoginInput, ServerMode } from "@/lib/types";
-import { btn, formFieldCompact } from "@/lib/ui";
+import { NEW_DEVICE_PATH } from "@/lib/routes";
+import type { ServerKind, ServerMode } from "@/lib/types";
+import { btn, formFieldCompact, table } from "@/lib/ui";
 
-// the usual port of each kind: SSH (servers, routers, switches), and the recorder's web API
-const DEFAULT_PORT: Record<ServerKind, number> = { ssh: 22, nvr: 80, network: 22 };
-// a router / switch saved on SNMP's port is read over SNMP; its password is the community string (netdev.uses_snmp)
-const SNMP_PORT = 161;
-const SNMP_USER = "snmp";      // the login needs a user name; SNMPv2c has none
-// what the list shows before the login, for the kinds that are not servers
-const KIND_TAG: Record<ServerKind, string> = { ssh: "", nvr: "NVR · ", network: "Router / switch · " };
+const KIND_NAME: Record<ServerKind, string> = { ssh: "Server", nvr: "Recorder (NVR)", network: "Router / switch" };
 
-const emptyServer: ServerLoginInput = {
-  kind: "ssh",
-  label: "",
-  host: "",
-  port: DEFAULT_PORT.ssh,
-  username: "",
-  password: "",
-  private_key: "",
-  key_passphrase: "",
-  mode: "audit",
+// the dot before a device's name: what the agent may do there (recorders, routers and switches are read-only)
+const modeDot: Record<ServerMode, string> = {
+  audit: "bg-teal",
+  confirm: "bg-copper",
+  trusted: "bg-danger",
 };
 
-const MODE_LABEL: Record<string, string> = {
-  audit: "Read-only (audit)",
-  confirm: "Operate — ask me first",
-  trusted: "Operate — trusted (no asking)",
-};
-
-// Inline Tailwind building blocks (styling stays with the component).
-const label = "flex flex-col gap-1 text-xs text-muted";
-const modeAccent: Record<ServerMode, string> = {
-  audit: "border-l-teal",
-  confirm: "border-l-copper",
-  trusted: "border-l-danger",
-};
-
-/** The /devices page body: device logins kept in the API's memory for this session only (admins). */
+/** The /devices page body: the saved device logins and what the agent may do on each. Adding one is its own
+ *  page, /devices/new (DeviceForm, BACKLOG L19b D5). */
 export default function ServersSection({ servers, isAdmin }: { servers: ServersApi; isAdmin: boolean }) {
-  const [form, setForm] = useState<ServerLoginInput>(emptyServer);
-  const [auth, setAuth] = useState<"password" | "key">("password");
-  const [via, setVia] = useState<"ssh" | "snmp">("ssh");          // a router / switch: its command line or SNMP
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const set = (patch: Partial<ServerLoginInput>) => setForm((f) => ({ ...f, ...patch }));
-  const recorder = form.kind === "nvr";          // a recorder: password only
-  const snmp = form.kind === "network" && via === "snmp";   // a switch read over SNMP: a community string only
-  const readOnly = form.kind !== "ssh";          // recorders, routers and switches: never changed by the agent
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      await servers.add({
-        kind: form.kind,
-        label: form.label,
-        host: form.host,
-        port: snmp ? SNMP_PORT : Number(form.port) || DEFAULT_PORT[form.kind],
-        username: snmp ? SNMP_USER : form.username,
-        mode: form.mode,
-        ...(auth === "password" || recorder || snmp
-          ? { password: form.password }
-          : { private_key: form.private_key, key_passphrase: form.key_passphrase }),
-      });
-      setForm({ ...emptyServer, kind: form.kind, port: snmp ? SNMP_PORT : DEFAULT_PORT[form.kind] }); // the password / key leaves the page's memory
-    } catch (err) {
-      setError(errorText(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <>
-      <h4 className="text-base font-semibold [font-family:var(--font-display)]">Devices (this session)</h4>
       <p className="text-xs leading-relaxed text-muted">
-        Devices the IT specialist can log in to: servers it can work on, and camera recorders (NVR/DVR) whose
-        cameras it can list, and routers and switches (MikroTik and Cisco over SSH, other managed switches over SNMP) it can read. The login stays in the API&rsquo;s memory only — never
-        saved, never in the chat — and is forgotten at logout, restart or after 8 hours. For a server, the mode sets
-        what the agent may do: <strong>Read-only</strong>{" "}
-        (investigate only), <strong>ask me first</strong> (each change needs your click), or{" "}
-        <strong>trusted</strong> (changes run automatically; the worst are always blocked — admins only). Each person
-        sees only the devices they added. Recorders, routers and switches are always read-only.
+        Devices the IT specialist can log in to: servers it can work on, camera recorders (NVR/DVR) whose cameras it
+        can list, and routers and switches (MikroTik and Cisco over SSH, other managed switches over SNMP) it can
+        read. Each login is saved encrypted, never shown in the chat, and kept until you remove it; each person sees
+        only the devices they added. For a server, the mode sets what the agent may do:{" "}
+        <strong>Read-only</strong> (investigate only), <strong>ask me first</strong> (each change needs your click),
+        or <strong>trusted</strong> (changes run automatically; the worst are always blocked — admins only).
+        Recorders, routers and switches are always read-only.
       </p>
 
-      {/* Existing logins */}
+      {/* Saved logins */}
       {servers.servers.length ? (
-        <ul className="flex flex-col gap-2">
-          {servers.servers.map((s) => (
-            <li
-              key={s.id}
-              className={`rounded-lg border border-l-4 border-line ${modeAccent[s.mode]} bg-panel-2 px-3 py-2.5 flex flex-col gap-1.5`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <strong className="truncate text-sm">{s.label}</strong>
-                <button type="button" className={btn("ghost", "sm")} onClick={() => void servers.remove(s.id)}>
-                  Remove
-                </button>
-              </div>
-              <div className="truncate text-xs text-muted">
-                {KIND_TAG[s.kind]}
-                {s.username}@{s.host}:{s.port}
-                {s.kind === "ssh" ? ` · ${s.auth}` : " · read-only"}
-                {s.os ? ` · ${s.os}` : ""}
-              </div>
-              {s.kind !== "ssh" ? null : (
-              <label className="flex items-center gap-2 text-xs text-muted">
-                <span className="shrink-0">Agent may</span>
-                <select
-                  className={formFieldCompact}
-                  value={s.mode}
-                  onChange={(e) => void servers.setMode(s.id, e.target.value as ServerMode)}
-                  title="What the agent may do on this server"
-                >
-                  <option value="audit">{MODE_LABEL.audit}</option>
-                  <option value="confirm">{MODE_LABEL.confirm}</option>
-                  {isAdmin ? <option value="trusted">{MODE_LABEL.trusted}</option> : null}
-                </select>
-              </label>
-              )}
-            </li>
-          ))}
-        </ul>
+        <div className={table.wrap}>
+          <table className={table.table}>
+            <thead className={table.head}>
+              <tr>
+                <th className={table.th}>Name</th>
+                <th className={`${table.th} hidden sm:table-cell`}>Type</th>
+                <th className={table.th}>Address</th>
+                <th className={`${table.th} hidden md:table-cell`}>Login</th>
+                <th className={`${table.th} hidden lg:table-cell`}>System</th>
+                <th className={table.th}>Agent may</th>
+                <th className={table.th}>
+                  <span className="sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {servers.servers.map((s) => {
+                const snmp = s.kind === "network" && s.port === SNMP_PORT;
+                return (
+                  <tr key={s.id} className={table.row}>
+                    <td className={table.td}>
+                      <span className="flex items-center gap-2 font-semibold">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${modeDot[s.mode]}`} title={MODE_LABEL[s.mode]} />
+                        {s.label || s.host}
+                      </span>
+                      {/* the type, hidden as a column on a phone */}
+                      <small className="block text-xs text-muted sm:hidden">{KIND_NAME[s.kind]}</small>
+                    </td>
+                    <td className={`${table.td} hidden sm:table-cell whitespace-nowrap`}>{KIND_NAME[s.kind]}</td>
+                    <td className={`${table.td} whitespace-nowrap font-[var(--font-mono)] text-[0.8rem]`}>
+                      {s.host}:{s.port}
+                    </td>
+                    <td className={`${table.td} hidden md:table-cell whitespace-nowrap text-muted`}>
+                      {snmp ? "SNMP community" : `${s.username} · ${s.kind === "ssh" ? s.auth : "password"}`}
+                    </td>
+                    <td className={`${table.td} hidden lg:table-cell text-muted`}>{s.os || "—"}</td>
+                    <td className={table.td}>
+                      {s.kind === "ssh" ? (
+                        <select
+                          className={formFieldCompact}
+                          value={s.mode}
+                          onChange={(e) => void servers.setMode(s.id, e.target.value as ServerMode)}
+                          aria-label={`What the agent may do on ${s.label || s.host}`}
+                        >
+                          <option value="audit">{MODE_LABEL.audit}</option>
+                          <option value="confirm">{MODE_LABEL.confirm}</option>
+                          {isAdmin ? <option value="trusted">{MODE_LABEL.trusted}</option> : null}
+                        </select>
+                      ) : (
+                        <span className="whitespace-nowrap text-muted">Read only</span>
+                      )}
+                    </td>
+                    <td className={`${table.td} text-right`}>
+                      <button
+                        type="button"
+                        className={btn("ghost", "sm")}
+                        onClick={() => {
+                          if (confirm(`Remove ${s.label || s.host}? Its saved login is deleted.`)) void servers.remove(s.id);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
-        <p className="text-xs text-muted">No devices added this session.</p>
+        <p className="text-xs text-muted">
+          No devices yet.{" "}
+          <Link href={NEW_DEVICE_PATH} className="text-copper underline">
+            Add one
+          </Link>
+          .
+        </p>
       )}
-
-      {/* Add a login */}
-      <form className="flex flex-col gap-3 border-t border-line pt-4" onSubmit={submit} autoComplete="off">
-        <label className={label}>
-          Type
-          <select
-            className={formFieldCompact}
-            value={form.kind}
-            onChange={(e) => {
-              const kind = e.target.value as ServerKind;
-              setVia("ssh");
-              set({ kind, port: DEFAULT_PORT[kind] });
-            }}
-          >
-            <option value="ssh">Server (SSH)</option>
-            <option value="nvr">Camera recorder (NVR / DVR — Hikvision, Dahua)</option>
-            <option value="network">Router / switch (MikroTik, Cisco, TP-Link, D-Link, Netgear, Hikvision…)</option>
-          </select>
-        </label>
-        {form.kind === "network" ? (
-          <label className={label}>
-            Read with
-            <select
-              className={formFieldCompact}
-              value={via}
-              onChange={(e) => {
-                const next = e.target.value as "ssh" | "snmp";
-                setVia(next);
-                set({ port: next === "snmp" ? SNMP_PORT : DEFAULT_PORT.network });
-              }}
-            >
-              <option value="ssh">SSH — MikroTik, Cisco</option>
-              <option value="snmp">SNMP — TP-Link, D-Link, Netgear, Hikvision and other managed switches</option>
-            </select>
-          </label>
-        ) : null}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_5rem]">
-          <label className={label}>
-            Name
-            <input
-              className={formFieldCompact}
-              placeholder="web01"
-              value={form.label}
-              onChange={(e) => set({ label: e.target.value })}
-            />
-          </label>
-          <label className={label}>
-            Address
-            <input
-              className={formFieldCompact}
-              required
-              placeholder="192.168.1.20 or myvps.example.com"
-              value={form.host}
-              onChange={(e) => set({ host: e.target.value })}
-            />
-          </label>
-          <label className={label}>
-            Port
-            <input
-              className={formFieldCompact}
-              type="number"
-              min={1}
-              max={65535}
-              disabled={snmp}
-              value={snmp ? SNMP_PORT : form.port}
-              onChange={(e) => set({ port: Number(e.target.value) })}
-            />
-          </label>
-        </div>
-
-        {snmp ? null : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className={label}>
-            User
-            <input
-              className={formFieldCompact}
-              required
-              placeholder={recorder ? "admin" : "root"}
-              autoComplete="off"
-              value={form.username}
-              onChange={(e) => set({ username: e.target.value })}
-            />
-          </label>
-          {recorder ? null : (
-            <label className={label}>
-              Authentication
-              <select className={formFieldCompact} value={auth} onChange={(e) => setAuth(e.target.value as "password" | "key")}>
-                <option value="password">Password</option>
-                <option value="key">Private key</option>
-              </select>
-            </label>
-          )}
-        </div>
-        )}
-
-        {readOnly ? null : (
-          <label className={label}>
-            What the agent may do
-            <select className={formFieldCompact} value={form.mode} onChange={(e) => set({ mode: e.target.value as ServerMode })}>
-              <option value="audit">{MODE_LABEL.audit}</option>
-              <option value="confirm">{MODE_LABEL.confirm}</option>
-              {isAdmin ? <option value="trusted">{MODE_LABEL.trusted}</option> : null}
-            </select>
-          </label>
-        )}
-
-        {auth === "password" || recorder || snmp ? (
-          <label className={label}>
-            {snmp ? "Community string (the switch's SNMP read community)" : "Password"}
-            <input
-              className={formFieldCompact}
-              required
-              type="password"
-              placeholder={snmp ? "public" : "••••••••"}
-              autoComplete="new-password"
-              value={form.password || ""}
-              onChange={(e) => set({ password: e.target.value })}
-            />
-          </label>
-        ) : (
-          <>
-            <label className={label}>
-              Private key
-              <textarea
-                className={`${formFieldCompact} font-[var(--font-mono)] resize-y`}
-                required
-                rows={4}
-                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-                spellCheck={false}
-                value={form.private_key || ""}
-                onChange={(e) => set({ private_key: e.target.value })}
-              />
-            </label>
-            <label className={label}>
-              Key passphrase (if any)
-              <input
-                className={formFieldCompact}
-                type="password"
-                placeholder="••••••••"
-                autoComplete="new-password"
-                value={form.key_passphrase || ""}
-                onChange={(e) => set({ key_passphrase: e.target.value })}
-              />
-            </label>
-          </>
-        )}
-
-        {error ? <p className="text-xs text-danger">{error}</p> : null}
-        <button type="submit" className={btn("primary", "sm")} disabled={busy}>
-          {busy ? "Testing the login…" : "Add & test login"}
-        </button>
-      </form>
     </>
   );
 }

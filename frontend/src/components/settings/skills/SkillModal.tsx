@@ -56,7 +56,7 @@ type Props = {
   onClose: () => void;
 };
 
-// Inline Tailwind building blocks, matching SpecialistModal.
+// Inline Tailwind building blocks, matching SpecialistForm.
 const checkRow = "flex items-center gap-[0.45rem] text-text";
 const toolGrid =
   "m-0 grid gap-x-[0.8rem] gap-y-[0.35rem] rounded-[0.65rem] border border-line px-[0.7rem] py-[0.6rem] [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]";

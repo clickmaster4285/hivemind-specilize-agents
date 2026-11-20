@@ -35,7 +35,7 @@ What we decided, what is being built, and what comes later. **Start with "At a g
 | [L17](#l17-nvr-camera-list--in-progress-2026-11-04-fixes-issues_log-o17-before-l16-s2-users-order) | NVR camera list | in progress | N4 ONVIF; live check on the NVR |
 | [L18](#l18-rdp-window--open-2026-11-04-issues_log-o18) | "RDP window" | open — to decide |  |
 | [L19](#l19-devices--routers-switches-and-more-read-only--in-progress-2026-11-04-fixes-issues_log-o19) | Devices (routers, switches) read-only | in progress | D2 reader (rest), D3 chat tool |
-| [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | in progress | D5 full pages |
+| [L19b](#l19b-saved-devices-full-report-full-pages--planned-2026-11-04-issues_log-o21o23) | Saved devices, full report, full pages | done (live check pending) | — |
 | [L20](#l20-move-to-ubuntu--started-2026-11-07-issues_log-o24) | Move to Ubuntu | in progress | O32 database password (user); O44 eval misses, O46 stale answer (rerun by the user); O47 web answer depth; O48 timings; O51–O58 chat quality, speed, context; O62 Mermaid 12 done; O63 chat recall done (11/11); O64–O71 server operate and routing (2026-11-16 chat) |
 | [L21](#l21-docs-that-are-easy-to-find-and-maintain---done-2026-11-11-issues_log-o41) | Docs easy to find and maintain | ✅ 2026-11-11 |  |
 | [L22](#l22-styles-in-tailwind-only---done-2026-11-11-issues_log-o42) | Styles in Tailwind only | ✅ 2026-11-11 |  |
@@ -509,7 +509,10 @@ each) when the NVR cannot relay; order: encrypted devices → full NVR report �
       own `/ISAPI/System/deviceInfo`, `Network/interfaces`, `status`, `time` + `ntpServers`, `Image/channels/1`
       with the NVR login, one try per camera, 8 cameras at a time (`nvr-report-…xlsx` shape): NVRs sheet (status, network, uptime, CPU, HDDs,
       camera counts), Cameras (device, network, system, main/sub stream, image settings), Storage (per HDD)
-- [ ] **D5 full pages:** user form, agent editor and device form as full pages inside the app layout
+- [x] **D5 full pages — built 2026-11-20, live check pending:** `/settings/users/<id|new>` (UserForm),
+      `/settings/agents/<id|new>` (SpecialistForm, was SpecialistModal; members see it read-only), `/devices/new`
+      (DeviceForm, split from ServersSection; "Add device" on /devices). Settings keeps its tab in the address
+      (`?tab=`) so leaving a form returns to it; sidebar and navbar name the parent page (`pageRoot`)
 
 ### L20. Move to Ubuntu — started 2026-11-07 (ISSUES_LOG O24)
 

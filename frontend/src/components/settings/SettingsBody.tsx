@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 
-import SpecialistModal from "@/components/settings/SpecialistModal";
+import { WIDE_PAGE_WIDTH } from "@/components/app/PageHeader";
 import UsageSection from "@/components/settings/UsageSection";
 import UsersSection from "@/components/settings/users/UsersSection";
 import { useUsers } from "@/hooks/useUsers";
 import type { SpecialistsApi } from "@/hooks/useSpecialists";
-import type { AuthUser, Specialist } from "@/lib/types";
+import { agentPath, settingsTabPath, type SettingsTab } from "@/lib/routes";
+import type { AuthUser } from "@/lib/types";
 import { btn } from "@/lib/ui";
 
 // Shared Tailwind class strings (kept here so the styling stays with the component, not in global CSS).
@@ -16,33 +18,34 @@ const heading = "text-base font-semibold [font-family:var(--font-display)]";
 const hint = "text-xs leading-relaxed text-muted";
 const rowCard = "flex items-center justify-between gap-3 rounded-lg border border-line bg-panel-2 px-3 py-2.5";
 
-type TabId = "users" | "usage" | "agents";
-
 /** The Settings content, organised into tabs: Users (admins), Usage, Agents. Skills live on the Plugins page and
- *  devices on /devices (BACKLOG L24 U5). One section shows at a time; the shell provides the navbar + sidebar. */
+ *  devices on /devices (BACKLOG L24 U5). One section shows at a time; the shell provides the navbar + sidebar.
+ *  The tab is in the address (/settings?tab=agents), so coming back from a user's or an agent's own page
+ *  (BACKLOG L19b D5) lands on the tab it was opened from. */
 export default function SettingsBody({ user, specialists }: { user: AuthUser; specialists: SpecialistsApi }) {
   const isAdmin = user.role === "admin";
   // the modules an admin gave this user (admins have all): each one is a tab
   const has = (module: string) => Boolean(user.modules?.includes(module));
   const users = useUsers(isAdmin);
-  // undefined = modal closed, null = new specialist
-  const [editing, setEditing] = useState<Specialist | null | undefined>(undefined);
+  const router = useRouter();
+  const asked = useSearchParams().get("tab");
 
   // Admins get Users; Usage follows the user's modules; everyone gets Agents. Skills moved to the Plugins page,
   // Devices to /devices, and Models was dropped (one model, picked per message) — the user's asks, 2026-11-17.
   // The first visible tab is the default.
-  const tabs: { id: TabId; label: string }[] = [
+  const tabs: { id: SettingsTab; label: string }[] = [
     ...(isAdmin ? [{ id: "users" as const, label: "Users" }] : []),
     ...(has("usage") ? [{ id: "usage" as const, label: "Usage" }] : []),
     { id: "agents", label: "Agents" },
   ];
-  const [tab, setTab] = useState<TabId>(tabs[0].id);
-
+  const tab = tabs.find((t) => t.id === asked)?.id ?? tabs[0].id;
+  const setTab = (id: SettingsTab) => router.replace(settingsTabPath(id), { scroll: false });
 
   return (
-    <div className="mx-auto w-full max-w-4xl p-6">
+    <div className={`mx-auto w-full ${WIDE_PAGE_WIDTH} px-4 py-6`}>
       {/* Tab bar */}
-      <div className="mb-6 flex gap-1 overflow-x-auto border-b border-line">
+      {/* scrolls sideways only if the tabs do not fit; no scrollbar drawn (the tabs' -1px overlap made one) */}
+      <div className="mb-6 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line [scrollbar-width:none]">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -80,9 +83,9 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
           <div className="flex items-center justify-between gap-3">
             <h4 className={heading}>Agents</h4>
             {isAdmin ? (
-              <button type="button" className={btn("ghost", "sm")} onClick={() => setEditing(null)}>
+              <Link href={agentPath("new")} className={btn("ghost", "sm")}>
                 New agent
-              </button>
+              </Link>
             ) : null}
           </div>
           <p className={hint}>
@@ -102,9 +105,9 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
                     <small className="block truncate text-xs text-muted">{s.covers}</small>
                   </span>
                 </span>
-                <button type="button" className={btn("ghost", "sm")} onClick={() => setEditing(s)}>
+                <Link href={agentPath(s.id)} className={`${btn("ghost", "sm")} shrink-0`}>
                   {isAdmin ? "Edit" : "View"}
-                </button>
+                </Link>
               </li>
             ))}
           </ul>
@@ -120,17 +123,6 @@ export default function SettingsBody({ user, specialists }: { user: AuthUser; sp
             </button>
           ) : null}
         </section>
-      ) : null}
-
-      {editing !== undefined ? (
-        <SpecialistModal
-          key={editing?.id ?? "new"}
-          specialist={editing}
-          options={specialists.options}
-          onSave={specialists.save}
-          onDelete={specialists.remove}
-          onClose={() => setEditing(undefined)}
-        />
       ) : null}
     </div>
   );

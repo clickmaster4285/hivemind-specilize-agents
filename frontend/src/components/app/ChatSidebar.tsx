@@ -9,7 +9,15 @@ import {
 import RepeatDialog from "@/components/app/RepeatDialog";
 import type { HistoryApi } from "@/hooks/useHistory";
 import { searchChats, type ChatSearchHit } from "@/lib/api";
-import { DEVICES_PATH, LIBRARY_PATH, PLUGINS_PATH, PROJECTS_PATH, SCHEDULES_PATH, SETTINGS_PATH } from "@/lib/routes";
+import {
+  DEVICES_PATH,
+  LIBRARY_PATH,
+  PLUGINS_PATH,
+  PROJECTS_PATH,
+  SCHEDULES_PATH,
+  SETTINGS_PATH,
+  pageRoot,
+} from "@/lib/routes";
 import { groupThreads, threadDate, type ThreadView } from "@/lib/threadGroups";
 import type { ChatThread } from "@/lib/threads";
 import { brandMark, btn, HOVER_CARD_DELAY_MS, iconBtn } from "@/lib/ui";
@@ -21,7 +29,7 @@ type Props = {
   history: HistoryApi;
   collapsed: boolean;
   onToggleCollapsed: () => void;
-  /** the page open now, to highlight its nav entry */
+  /** the page open now, to highlight its nav entry (a form under it, like /settings/users/3, counts as it) */
   pathname: string;
   onGo: (path: string) => void;
   onNewChat: () => void;
@@ -136,8 +144,8 @@ export default function ChatSidebar({
           {collapsed ? null : <span>New chat</span>}
         </button>
         {PAGES.filter((p) => !p.module || modules.includes(p.module)).map(({ path, label, Icon }) => (
-          <button key={path} type="button" className={navItem(pathname === path, collapsed)} title={label}
-                  aria-current={pathname === path ? "page" : undefined} onClick={() => onGo(path)}>
+          <button key={path} type="button" className={navItem(pageRoot(pathname) === path, collapsed)} title={label}
+                  aria-current={pageRoot(pathname) === path ? "page" : undefined} onClick={() => onGo(path)}>
             <Icon />
             {collapsed ? null : <span>{label}</span>}
           </button>
