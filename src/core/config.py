@@ -127,6 +127,8 @@ class Config:
     verify_deep_answers: bool = True
     # keep the pages a web answer cited in the knowledge base and answer similar questions from them (src/brain/learned.py)
     learn_from_web: bool = True
+    # serve a kept answer again for the same general first question, at once (src/brain/answer_cache.py)
+    reuse_answers: bool = True
     # security_check tool (src/security_scan.py): ports, services, certificates, this PC's firewall — admins only
     security_scan_enabled: bool = True
     # the offline CVE list security_check matches software versions against (src/servers/cve_db.py)
@@ -284,6 +286,7 @@ class Config:
             verify_web_answers=_bool("VERIFY_WEB_ANSWERS", True),
             verify_deep_answers=_bool("VERIFY_DEEP_ANSWERS", True),
             learn_from_web=_bool("LEARN_FROM_WEB", True),
+            reuse_answers=_bool("REUSE_ANSWERS", True),
             cve_db_path=Path(os.getenv("CVE_DB", str(DEFAULT_CVE_DB))),
             nuclei_dir=Path(os.getenv("NUCLEI_DIR", str(DEFAULT_NUCLEI_DIR))),
             security_scan_enabled=os.getenv("SECURITY_SCAN_ENABLED", "true").strip().lower()

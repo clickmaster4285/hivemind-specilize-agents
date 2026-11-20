@@ -87,6 +87,7 @@ def create_job_endpoint(
                 "options": payload.options,
                 "followup": payload.followup,
                 "refine": payload.refine,
+                "fresh": payload.fresh,
                 "client_time_zone": payload.client_time_zone,
             },
             config=config,

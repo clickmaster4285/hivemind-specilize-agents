@@ -8,7 +8,7 @@ import { errorText, timeAgo } from "@/lib/chat";
 import { saveUrl } from "@/lib/download";
 import { fileSize, usageLine } from "@/lib/format";
 import type { AnswerOption, AnswerUsage, ChatImage, FeedItem } from "@/lib/types";
-import { msgAction } from "@/lib/ui";
+import { btn, msgAction } from "@/lib/ui";
 
 import { RepeatButton } from "./RepeatButton";
 import SaveAsSkill from "./SaveAsSkill";
@@ -659,6 +659,21 @@ export function ScheduleNote({ item }: { item: FeedItem }) {
     <div className={`${box} border-[color-mix(in_srgb,var(--copper)_45%,var(--line))] bg-[color-mix(in_srgb,var(--copper)_7%,var(--panel-2))] text-text`}>
       <p className="m-0 mb-1 font-semibold">🔁 What changed since the last run</p>
       <p className="m-0 whitespace-pre-wrap">{r.changes}</p>
+    </div>
+  );
+}
+
+/** An answer kept from the same question asked earlier (BACKLOG L31): said plainly, with its date, and — under the
+ *  latest answer — a way to have it written anew. */
+export function ReusedNote({ item, onFresh }: { item: FeedItem; onFresh?: () => void }) {
+  if (item.pending || !item.reused) return null;
+  const when = new Date(item.reused.asked_at).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  return (
+    <div className="mt-[0.6rem] mb-[0.2rem] flex flex-wrap items-center gap-2 rounded-lg border border-line px-[0.7rem] py-[0.4rem] text-[0.78rem] text-muted">
+      <span>⚡ Answered earlier, on {when} — the same question was asked before, so this answer came at once.</span>
+      {onFresh ? (
+        <button type="button" className={btn("ghost", "sm")} onClick={onFresh}>Fresh answer</button>
+      ) : null}
     </div>
   );
 }

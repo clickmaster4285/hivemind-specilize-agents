@@ -10,7 +10,7 @@ import { RepeatHint } from "@/components/chat/RepeatButton";
 import ConfirmCard from "@/components/chat/ConfirmCard";
 import { IconChevronDown } from "@/components/chat/Icons";
 import PromptRail, { promptAnchorId } from "@/components/chat/PromptRail";
-import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, ScheduleNote, SourceList, SuggestionChips, ToolDrawer, useWebImages, VerificationNote } from "@/components/chat/MessageExtras";
+import { AgentThumbs, AnswerActions, ArtifactChips, ClarifyForm, OptionCards, QuizCard, ScheduleNote, SourceList, SuggestionChips, ToolDrawer, useWebImages, VerificationNote, ReusedNote } from "@/components/chat/MessageExtras";
 import type { AnswerOption, ChatImage, FeedItem } from "@/lib/types";
 import { composerColumn, msgAction } from "@/lib/ui";
 
@@ -89,7 +89,7 @@ function InlineEdit({ initial, onCancel, onSend }: { initial: string; onCancel: 
 }
 
 /** The conversation: user bubbles, answers (streamed Markdown), status lines. */
-function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onChoose, onPickOption, onClarifySubmit, onPickSuggestion, readOnly = false }: Props) {
+function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegenerate, onConfirm, onChoose, onPickOption, onClarifySubmit, onPickSuggestion, onFresh, readOnly = false }: Props) {
   const lastUserIdx = feed.reduce((acc, item, i) => (item.kind === "user" ? i : acc), -1);
   const lastAgentIdx = feed.reduce((acc, item, i) => (item.kind === "agent" ? i : acc), -1);
   // for each item, the user's question it answers (the last user message before it): what "Repeat…" asks again
@@ -180,6 +180,7 @@ function MessageFeed({ feed, running, activeJobId, onEditSend, onRetry, onRegene
             onPickOption={onPickOption}
             onClarifySubmit={onClarifySubmit}
             onPickSuggestion={onPickSuggestion}
+            onFresh={readOnly ? undefined : onFresh}
             isLastAgent={!readOnly && index === lastAgentIdx}
             question={questions[index]}
           />
@@ -214,6 +215,8 @@ type Props = {
   onPickOption: (query: string, card: AnswerOption) => void;
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
   onPickSuggestion: (q: string) => void;
+  /** "Fresh answer" under an answer given earlier (BACKLOG L31); absent in a read-only chat */
+  onFresh?: () => void;
   /** a chat shared with me (BACKLOG L30 T4): read only — no edit, retry or regenerate */
   readOnly?: boolean;
 };
@@ -392,6 +395,7 @@ function MessageRow({
   onPickOption,
   onClarifySubmit,
   onPickSuggestion,
+  onFresh,
   isLastAgent,
   question,
 }: {
@@ -410,6 +414,7 @@ function MessageRow({
   onPickOption: (query: string, card: AnswerOption) => void;
   onClarifySubmit: (query: string, picks: { question: string; chosen: string[] }[]) => void;
   onPickSuggestion: (q: string) => void;
+  onFresh?: () => void;
   isLastAgent: boolean;
   question: string;
 }) {
@@ -475,6 +480,7 @@ function MessageRow({
                 <ClarifyForm item={item} onSubmit={onClarifySubmit} />
                 <ScheduleNote item={item} />
                 {item.repeatable && !item.pending && question.trim() ? <RepeatHint prompt={question.trim()} /> : null}
+                <ReusedNote item={item} onFresh={isLastAgent && !running ? onFresh : undefined} />
                 <VerificationNote item={item} />
                 <SourceList item={item} />
                 {isLastAgent ? <QuizCard item={item} /> : null}

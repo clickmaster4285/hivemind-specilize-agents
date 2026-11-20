@@ -489,6 +489,8 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
       ? (event.sources as BrainSource[]).filter((s) => s && typeof s.n === "number" && s.title)
       : undefined;
     const grounded = typeof event.grounded === "boolean" ? event.grounded : undefined;
+    const reused = event.reused && typeof event.reused === "object"
+      ? (event.reused as { asked_at: string; similarity: number }) : undefined;
     const v = event.verification as AnswerVerification | undefined;
     const verification =
       v && typeof v.checked === "number" && typeof v.supported === "number"
@@ -528,6 +530,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
           sources,
           grounded,
           verification,
+          reused,
           options,
           optionsQuery,
           clarify,
@@ -552,6 +555,7 @@ export function reduceFeed(prev: FeedItem[], event: JobEvent): FeedItem[] {
             sources: sources || item.sources,
             grounded: grounded ?? item.grounded,
             verification: verification || item.verification,
+            reused: reused || item.reused,
             options: options || item.options,
             optionsQuery: optionsQuery || item.optionsQuery,
             clarify: clarify || item.clarify,

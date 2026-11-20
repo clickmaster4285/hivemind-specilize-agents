@@ -96,6 +96,52 @@ def build_refine_note(reason: str) -> str:
             "the reason points to. Do not apologise or mention this rating; just answer better.]")
 
 
+# answers that may be served again for the same first question (BACKLOG L31 step 2): written from sources
+KEPT_ROLES = ("Web search", "Knowledge base")
+
+
+def _keep_in_background(question: str, answer: str, extra: dict[str, Any], config: Config, *, news: bool,
+                        job_id: str | None) -> None:
+    """Keep a grounded first-question answer for later repeats (src/brain/answer_cache.py), after it is out."""
+    if not (config.reuse_answers and config.brain_enabled):
+        return
+    import threading
+
+    from src.brain.answer_cache import keep
+
+    threading.Thread(target=keep, args=(question, answer, extra, config),
+                     kwargs={"news": news, "job_id": job_id}, name="keep-answer", daemon=True).start()
+
+
+def reuse_answer(query: str, *, job_id: str | None, config: Config,
+                 on_progress: ProgressCallback | None) -> bool:
+    """A first question that was answered before: send the kept answer at once — before any routing — as it was,
+    with its sources and check line and the date it was written ("Answered earlier", a Fresh answer button in the
+    chat). False (nothing sent) when there is none or the knowledge base is off or down."""
+    if not (config.reuse_answers and config.brain_enabled):
+        return False
+    from src.brain.answer_cache import find
+
+    try:
+        found = find(query, config)
+    except Exception as exc:  # noqa: BLE001 — the lookup is a shortcut; the normal answer follows
+        log.info("answer reuse skipped: %s", exc)
+        return False
+    if found is None:
+        return False
+    who = speaker(None)
+    extra = dict(found["extra"])
+    role = extra.pop("role", "Knowledge base")
+    _emit(on_progress, {"type": "agent_start", "agent_id": "assistant", **who, "role": role, "stage": "chat",
+                        "model": "answered earlier"})
+    _emit(on_progress, {"type": "agent_done", "agent_id": "assistant", **who, "role": role, "stage": "chat",
+                        "elapsed_seconds": 0.0, "output": found["answer"], **extra,
+                        "reused": {"asked_at": found["asked_at"], "similarity": found["similarity"]}})
+    live.answer_written(job_id)
+    _emit(on_progress, {"type": "answer_written", "agent_id": "assistant"})
+    return True
+
+
 def _recall_learned(question: str, config: Config, *, news: bool) -> list[Any] | None:
     """Pages kept from an earlier web answer that answer this question (src/brain/learned.py), or None. Never
     blocks the answer: the knowledge base may be off or down — then the web is searched as before."""
@@ -242,6 +288,7 @@ def run_chat(
     should_continue: Callable[[], bool] | None = None,
     specialist: Specialist | None = None,
     refine: str | None = None,
+    keep_answer: bool = False,
 ) -> ChatResult:
     """about=True: a question about MulteAgent itself, answered from live facts with no brain search.
     web_search=True: the user asked to search the internet — SearXNG + the top pages (src/web_search.py).
@@ -485,6 +532,8 @@ def run_chat(
         else:
             output = chat(system=system, user=user_msg, model=model, images=pics or None)
         result.output = output
+        if keep_answer and role in KEPT_ROLES and extra.get("grounded"):
+            _keep_in_background(query, output, {"role": role, **extra}, config, news=web_news, job_id=job_id)
         elapsed = time.perf_counter() - started
         live.finish_agent(job_id, "assistant")       # the final text replaces the streamed one
         _emit(

@@ -386,6 +386,8 @@ export async function createJob(payload: {
   model?: string;
   images?: { filename: string; mime: string; data: string }[];
   /** Prior turns so follow-ups like “write that as docx” keep context */
+  /** "Fresh answer" on an answer given earlier: write a new one (BACKLOG L31) */
+  fresh?: boolean;
   conversation?: { role: "user" | "assistant"; content: string }[];
   force_intent?: ImageForceIntent;
   image_profile?: ImageProfile;

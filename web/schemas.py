@@ -285,6 +285,8 @@ class JobCreatePayload(BaseModel):
     followup: bool = False
     # "Try again, better": the user's reason for a 👎, steered into this regenerate (feedback phase 2)
     refine: str | None = None
+    # "Fresh answer" on an answer given earlier: write a new one instead of the kept one (BACKLOG L31)
+    fresh: bool = False
     # the browser's IANA time zone: the job's prompts tell the time in it (was dropped before, ISSUES_LOG O92)
     client_time_zone: str | None = Field(default=None, max_length=64)
 

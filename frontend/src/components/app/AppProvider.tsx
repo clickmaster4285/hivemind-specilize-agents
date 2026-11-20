@@ -178,6 +178,13 @@ function useAppState() {
     await chat.send(last.body === IMAGE_QUESTION ? "" : last.body, lastImages, { retry: true, refine: reason.trim() });
   }
 
+  // "Fresh answer" under an answer given earlier: the same question again, written anew (BACKLOG L31)
+  async function freshAnswer() {
+    const last = chat.lastUserMessage();
+    if (!last || chat.running) return;
+    await chat.send(last.body, [], { retry: true, fresh: true });
+  }
+
   function onConfirm(commandId: string, approved: boolean) {
     const jobId = chat.activeJobId;
     if (!jobId) return;
@@ -276,7 +283,7 @@ function useAppState() {
     pickSuggestion: (q: string) => void chat.send(q, []),
     canStop: Boolean(chat.activeJobId && chat.running),
     stop: () => void chat.stop(),
-    send, newChat, cancelEdit, beginEdit, editAndResend, retry, regenerate, onConfirm, onChoose, deleteThread,
+    send, newChat, cancelEdit, beginEdit, editAndResend, retry, regenerate, freshAnswer, onConfirm, onChoose, deleteThread,
     memoryBusy, continueInNewChat, saveSummary,
   };
 }

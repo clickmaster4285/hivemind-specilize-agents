@@ -352,6 +352,8 @@ export type FeedItem = {
   grounded?: boolean;
   sources?: BrainSource[];
   verification?: AnswerVerification;
+  /** an answer kept from the same question asked earlier, sent at once (BACKLOG L31): when it was written */
+  reused?: { asked_at: string; similarity: number };
   /** Options toggle: candidate approaches to pick from, and the original question each one answers. */
   options?: AnswerOption[];
   optionsQuery?: string;

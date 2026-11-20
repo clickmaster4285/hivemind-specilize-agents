@@ -31,6 +31,7 @@ export default function ChatView() {
       onPickOption: (...a: Parameters<AppValue["pickOption"]>) => latest.current.pickOption(...a),
       onClarifySubmit: (...a: Parameters<AppValue["submitClarify"]>) => latest.current.submitClarify(...a),
       onPickSuggestion: (...a: Parameters<AppValue["pickSuggestion"]>) => latest.current.pickSuggestion(...a),
+      onFresh: () => void latest.current.freshAnswer(),
     }),
     [],
   );

@@ -860,8 +860,11 @@ queue wait so far under 12 s.
       weekly timer `multeagent-depscan` — first run: 5 medium, 2 low, nothing high or critical
 - [x] Housekeeping (`src/core/maintenance.py`, every 6 h): stored messages of chats deleted 30+ days ago, spent
       reset links; knowledge-base refresh at night by default (`BRAIN_REFRESH_WINDOW` 01-06)
-- [ ] Remote access: options explained ([SECURITY.md](SECURITY.md) Part 4 — Tailscale Funnel recommended); the
-      user chooses; then the real client address behind the tunnel and Secure cookies
+- [ ] Remote access — **decided 2026-11-20: Tailscale Funnel, later** (user: "log it, we will do it later"). When it
+      is done: the user installs Tailscale and runs `sudo tailscale funnel --bg 3000` (fixed
+      `https://<pc>.<tailnet>.ts.net`, a trusted certificate, nothing on other PCs); Claude makes the UI pass the
+      visitor's real address from the tunnel (else every visitor shares one rate-limit bucket and one sign-in lock)
+      and marks cookies Secure from the configuration. Options compared: [SECURITY.md](SECURITY.md) Part 4
 - [ ] Database password (O32) and the default admin password — the user's
 - [ ] Pinned versions, Alembic at the next schema change — later
 
@@ -889,7 +892,14 @@ whole answers later**; **freshness by type**; a deleted person's chats are **kep
       research leaves them out (it compares our docs with the live web). Saves the 5–8 s of search + reading per
       repeat; writing the answer takes as long as before. Off switch: `LEARN_FROM_WEB=false`.
 - [ ] **Tune** `RECALL_MIN_SIMILARITY` from the logged "learned recall: yes/no (best similarity …)" lines
-- [ ] **Whole answers** reused for near-identical general questions (no personal chat context) — the user's
-      second step
+- [x] **Whole answers — built 2026-11-20** (user: reuse exactly, labelled, no rewording): a grounded web or
+      knowledge-base answer to a general first question is kept (`src/brain/answer_cache.py`, migration 007,
+      `brain.answer_cache`, system-written, readable by all); the same first question later gets it before any
+      routing — question-to-question similarity ≥ 0.92 (vs 0.70 for saved pages, which are only material), the
+      same identifiers (every token with a digit: versions, IPs, ports, codes), young enough for its kind. Never
+      kept: unsupported statements, non-public sources; never reused: with a chat history, pictures, skills, Deep /
+      Options, follow-ups, "Try again", scheduled runs. "⚡ Answered earlier, on …" + **Fresh answer** (writes a
+      new one, kept instead). Off switch `REUSE_ANSWERS=false`
+- [ ] **Tune** `answer_cache.SAME_QUESTION` (0.92) from the logged "answer reuse: yes/no (similarity …)" lines
 - [ ] An admin view of the learned pages (list, remove one) — when the collection grows
 

@@ -12,7 +12,7 @@ from src.agentic.runtime import run_agentic
 from src.brain.answer import should_use_brain
 from src.core.conversation import normalize_conversation
 from src.jobs.chat_memory import chat_memory, prefold, remember_job
-from src.jobs.chat_runner import run_chat
+from src.jobs.chat_runner import reuse_answer, run_chat
 from src.core.clock import set_time_zone
 from src.llm.assistant import BY_JOB, BY_NAME, CLARIFY_INTRO, decide, speaker, tool_flag
 from src.llm.skills import Skill
@@ -330,6 +330,17 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
             on_progress = lambda event: emit({**event, "clarify_query": typed} if event.get("clarify_query")  # noqa: E731
                                              else event)
 
+        # A general first question asked before gets the kept answer at once, before any routing (BACKLOG L31):
+        # not with an earlier chat, a picture, a skill, Deep / Options, a follow-up or "Try again"; never for a
+        # scheduled run (it is there for news). "Fresh answer" (payload.fresh) writes a new one, kept instead.
+        first_question = (not conversation and not (has_images or images) and skill is None and not refine
+                          and not payload.get("followup") and not payload.get("options") and not payload.get("scheduled")
+                          and str(payload.get("depth") or "").strip().lower() != "deep")
+        if first_question and not payload.get("fresh") and reuse_answer(query, job_id=job_id, config=config,
+                                                                       on_progress=on_progress):
+            _finish(config, job_id, [])
+            return
+
         # Deep research toggle: skip tool routing and research the topic across many sources (text-only).
         if str(payload.get("depth") or "").strip().lower() == "deep" and not (has_images or images):
             specialist, _picked = _answerer(payload, query, skill, config=config, conversation=conversation,
@@ -504,6 +515,7 @@ def _run_job(job_id: str, config: Config, *, mode: str, query: str, user_id: int
                 learning=learning,
                 specialist=specialist,
                 refine=refine,
+                keep_answer=first_question,
             )
             _finish(config, job_id, result.errors, failed=bool(result.errors and not result.output))
             return
