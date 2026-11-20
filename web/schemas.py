@@ -180,6 +180,18 @@ class ServerLoginPayload(BaseModel):
     kind: Literal["ssh", "nvr", "network"] = "ssh"   # server_vault.KINDS: SSH server, camera recorder, router/switch
 
 
+class DeviceShareIn(BaseModel):
+    """One share of an admin's device: a person (user_id) or a team, and what the agent may do for them."""
+
+    user_id: int | None = None
+    team: str | None = Field(default=None, max_length=40)
+    mode: Literal["audit", "confirm"] = "audit"
+
+
+class DeviceSharesPayload(BaseModel):
+    shares: list[DeviceShareIn] = Field(default_factory=list, max_length=500)
+
+
 class ServerModePayload(BaseModel):
     mode: str
 

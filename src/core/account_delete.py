@@ -27,6 +27,7 @@ from src.core.models_db import (
     USER_FORMER,
     CommandLog,
     DeviceRow,
+    DeviceShare,
     Job,
     LoginFailure,
     PasswordReset,
@@ -76,6 +77,10 @@ def delete_account(db: Session, user: User) -> Deleted:
     done = Deleted()
     done.jobs = db.scalar(select(func.count()).select_from(Job).where(Job.user_id == uid)) or 0
     done.device_ids = set(db.scalars(select(DeviceRow.id).where(DeviceRow.user_id == uid)))
+    # shares of their devices, and the devices shared with them (BACKLOG L30 T4)
+    done.rows += db.execute(delete(DeviceShare).where(DeviceShare.user_id == uid)).rowcount or 0
+    if done.device_ids:
+        done.rows += db.execute(delete(DeviceShare).where(DeviceShare.device_id.in_(done.device_ids))).rowcount or 0
     for model, column in (
         (RefreshToken, RefreshToken.user_id), (PasswordReset, PasswordReset.user_id),
         (DeviceRow, DeviceRow.user_id), (ScheduleRow, ScheduleRow.user_id),

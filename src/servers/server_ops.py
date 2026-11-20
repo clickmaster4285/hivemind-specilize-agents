@@ -254,6 +254,28 @@ def is_destructive(command: str) -> str | None:
 
 
 # ── pick the classifier for the server's OS (Linux = bash, Windows = PowerShell) ───────────────────
+def _log_shared_reads(config: Config, user_id: int | None, job_id: str | None, login: ServerLogin,
+                      runs: list[CommandRun], *, refused_too: bool) -> None:
+    """On a device an admin shared (BACKLOG L30 T4), every command goes in the command log with who asked — reads
+    too, since several people use the one login. Changing commands are logged where they run (operate's audit);
+    here the read-only ones, and for diagnose the refused attempts. Personal devices log changes only, as before."""
+    if not login.shared_by:
+        return
+    from src.servers.command_audit import log_command
+
+    for run in runs:
+        if run.refused:
+            if not refused_too:
+                continue
+            decision = "refused"
+        elif classify_for(run.command, login.os_family):
+            continue                                   # a change: operate's audit already logged it
+        else:
+            decision = "read"
+        log_command(config=config, user_id=user_id, job_id=job_id, server_label=login.label, host=login.host,
+                    command=run.command, decision=decision, exit_code=run.code, output=run.output)
+
+
 def classify_for(command: str, os_family: str) -> str | None:
     """Reason the command is NOT read-only (or None if it is), using the right classifier for the OS."""
     return classify_windows_command(command) if os_family == "windows" else classify_command(command)
@@ -695,6 +717,7 @@ def run_server_diagnose(
 
             result = diagnose(login, query, config=config, should_continue=lambda: not live.is_stopped(job_id),
                               on_command=on_command, context=chat_work)
+            _log_shared_reads(config, user_id, job_id, login, result.runs, refused_too=True)
             note = "\n\n_Read-only diagnosis: the server was not changed._"
             output = (result.report or "No findings.") + _commands_block(result.runs) + note
     except (AuditError, VaultError) as exc:
@@ -919,6 +942,7 @@ def run_server_operate(
             result = operate(login, query, config=config, user_id=user_id, job_id=job_id,
                              should_continue=lambda: not live.is_stopped(job_id), confirm=confirm,
                              on_command=on_command, context=chat_work)
+            _log_shared_reads(config, user_id, job_id, login, result.runs, refused_too=False)
             note = (f"\n\n_Operated on **{login.label}** ({login.mode} mode): {result.changes} change(s) made. "
                     "Every change is in the command log._")
             output = (result.report or "Done.") + _commands_block(result.runs) + note

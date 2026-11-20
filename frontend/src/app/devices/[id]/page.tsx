@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useApp } from "@/components/app/AppProvider";
 import PageHeader from "@/components/app/PageHeader";
 import DeviceForm from "@/components/settings/DeviceForm";
+import DeviceSharing from "@/components/settings/DeviceSharing";
 import { useServers } from "@/hooks/useServers";
 import { DEVICES_PATH } from "@/lib/routes";
 
@@ -34,18 +35,28 @@ export default function EditDevicePage() {
         </button>
       </div>
     );
+  } else if (device.shared_by) {
+    body = (
+      <p className="mt-6 text-[0.9rem] text-muted">
+        {device.label} is shared with you by {device.shared_by}: you use it from chat, and only they can change it.
+      </p>
+    );
   } else {
     body = (
-      <section className="mt-6 rounded-xl border border-line bg-panel p-5">
-        <DeviceForm
-          key={device.id}
-          device={device}
-          save={(payload) => servers.update(device.id, payload)}
-          isAdmin={user.role === "admin"}
-          onSaved={back}
-          onCancel={back}
-        />
-      </section>
+      <>
+        <section className="mt-6 rounded-xl border border-line bg-panel p-5">
+          <DeviceForm
+            key={device.id}
+            device={device}
+            save={(payload) => servers.update(device.id, payload)}
+            isAdmin={user.role === "admin"}
+            onSaved={back}
+            onCancel={back}
+          />
+        </section>
+        {/* an admin's own device can be shared with people or teams (BACKLOG L30 T4) */}
+        {user.role === "admin" ? <DeviceSharing deviceId={device.id} /> : null}
+      </>
     );
   }
   return (

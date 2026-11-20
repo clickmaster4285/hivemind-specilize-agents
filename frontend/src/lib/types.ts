@@ -64,6 +64,8 @@ export type ServerInfo = {
   os_family?: "linux" | "windows";
   kind: ServerKind;
   access?: string;
+  /** an admin's device shared with this user (BACKLOG L30 T4): the owner's name; only they change it */
+  shared_by?: string;
 };
 
 /** ssh = a server the agent logs in to; nvr = a camera recorder; network = a router or switch.

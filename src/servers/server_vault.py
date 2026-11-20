@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from src.core import crypto
 from src.core.db import session_scope
-from src.core.models_db import DeviceRow
+from src.core.models_db import USER_FORMER, DeviceRow, DeviceShare, User
 
 MAX_SERVERS_PER_USER = 50
 # what the agent may do on a server (SERVER_ACCESS_DECISION.md §8):
@@ -65,6 +65,7 @@ class ServerLogin:
     os: str = ""                       # pretty OS name learned at login ("Ubuntu 24.04", "Windows Server 2022")
     os_family: str = "linux"           # linux | windows — picks the command classifier the agent uses
     kind: str = "ssh"                  # KINDS
+    shared_by: str = ""                # an admin's device shared with this user (BACKLOG L30 T4): the owner's name
 
     @property
     def shown(self) -> str:
@@ -77,7 +78,7 @@ class ServerLogin:
         return {"id": self.id, "label": self.label, "host": self.host, "port": self.port,
                 "username": self.username, "auth": "key" if self.private_key else "password",
                 "host_key": self.host_key, "mode": self.mode, "os": self.os, "os_family": self.os_family,
-                "kind": self.kind}
+                "kind": self.kind, "shared_by": self.shared_by}
 
 
 def check_host(host: str) -> str:
@@ -159,14 +160,90 @@ def add(user_id: int, *, label: str, host: str, port: int, username: str, passwo
     return added
 
 
+# what a share may let people do: never "trusted" (changes without asking) on someone else's login
+SHARE_MODES = ("audit", "confirm")
+
+
 def list_servers(user_id: int, kind: str | None = "ssh") -> list[ServerLogin]:
-    """The user's logins of one kind (None = all, for Settings)."""
+    """The logins this user may use, of one kind (None = all, for Settings): their own, and the devices an admin
+    shared with them or their team (BACKLOG L30 T4) — in the share's mode, marked with the owner's name. A device
+    shared with both the person and their team takes the person's share."""
     with _scope() as session:
-        query = select(DeviceRow).where(DeviceRow.user_id == user_id)
+        own = select(DeviceRow).where(DeviceRow.user_id == user_id)
+        team = session.scalar(select(User.team).where(User.id == user_id))
+        mine = DeviceShare.user_id == user_id
+        reach = (mine | (DeviceShare.team == team)) if team else mine
+        shared = (select(DeviceRow, DeviceShare.mode, DeviceShare.user_id, User.username)
+                  .join(DeviceShare, DeviceShare.device_id == DeviceRow.id)
+                  .join(User, User.id == DeviceRow.user_id)
+                  .where(reach, DeviceRow.user_id != user_id))
         if kind is not None:
-            query = query.where(DeviceRow.kind == kind)
-        logins = [_login(row) for row in session.scalars(query)]
-    return sorted(logins, key=lambda s: s.label.lower())
+            own, shared = own.where(DeviceRow.kind == kind), shared.where(DeviceRow.kind == kind)
+        logins = {row.id: _login(row) for row in session.scalars(own)}
+        for row, mode, person, owner in sorted(session.execute(shared).all(), key=lambda r: r[2] is None):
+            if row.id not in logins:                      # the person's own share sorts first
+                login = _login(row)
+                login.mode, login.shared_by = mode, owner
+                logins[row.id] = login
+    return sorted(logins.values(), key=lambda s: s.label.lower())
+
+
+def shares(owner_id: int, server_id: str) -> list[dict[str, Any]]:
+    """Who an owner's device is shared with: [{user_id, username, team, mode}]."""
+    with _scope() as session:
+        _owned(session, owner_id, server_id)
+        rows = session.execute(select(DeviceShare, User.username).outerjoin(User, User.id == DeviceShare.user_id)
+                               .where(DeviceShare.device_id == server_id).order_by(DeviceShare.id)).all()
+        return [{"user_id": s.user_id, "username": name, "team": s.team, "mode": s.mode} for s, name in rows]
+
+
+def set_shares(owner_id: int, server_id: str, wanted: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Replace who the device is shared with, in one transaction. Each entry: user_id or team, and a mode in
+    SHARE_MODES. Everyone who gained or lost it is told (their Devices list reloads)."""
+    with _scope() as session:
+        _owned(session, owner_id, server_id)
+        clean: dict[tuple, str] = {}
+        for entry in wanted:
+            mode = entry.get("mode", "audit")
+            if mode not in SHARE_MODES:
+                raise VaultError(f"a shared device may be {' or '.join(SHARE_MODES)} only")
+            person, team = entry.get("user_id"), (entry.get("team") or "").strip() or None
+            if (person is None) == (team is None):
+                raise VaultError("share with a person or a team")
+            if person is not None:
+                found = session.get(User, person)
+                if found is None or found.status == USER_FORMER:
+                    raise VaultError("that person does not exist")
+                if person == owner_id:
+                    continue                                   # the owner has it already
+            clean[(person, team)] = mode
+        before = _reached(session, server_id)
+        session.execute(delete(DeviceShare).where(DeviceShare.device_id == server_id))
+        session.add_all([DeviceShare(device_id=server_id, user_id=person, team=team, mode=mode)
+                         for (person, team), mode in clean.items()])
+        session.flush()
+        told = before | _reached(session, server_id)
+    for user_id in told:
+        _changed(user_id)
+    return shares(owner_id, server_id)
+
+
+def _owned(session: Session, owner_id: int, server_id: str) -> DeviceRow:
+    row = session.scalar(select(DeviceRow).where(DeviceRow.user_id == owner_id, DeviceRow.id == server_id))
+    if row is None:
+        raise VaultError("device not found")
+    return row
+
+
+def _reached(session: Session, server_id: str) -> set[int]:
+    """Everyone a device's shares reach now: the people named and the members of the teams named."""
+    people = set(session.scalars(select(DeviceShare.user_id).where(DeviceShare.device_id == server_id,
+                                                                   DeviceShare.user_id.is_not(None))))
+    teams = set(session.scalars(select(DeviceShare.team).where(DeviceShare.device_id == server_id,
+                                                               DeviceShare.team.is_not(None))))
+    if teams:
+        people |= set(session.scalars(select(User.id).where(User.team.in_(teams))))
+    return people
 
 
 def find(user_id: int, name: str | None, kind: str = "ssh") -> ServerLogin | None:
@@ -268,6 +345,7 @@ def update(user_id: int, login: ServerLogin) -> ServerLogin:
         saved = _login(row)
     _forget({login.id})        # a connection kept open with the old login closes now
     _changed(user_id)
+    _tell_sharers(login.id)
     return saved
 
 
@@ -284,10 +362,24 @@ def set_mode(user_id: int, server_id: str, mode: str) -> ServerLogin:
     return changed
 
 
+def _tell_sharers(server_id: str) -> None:
+    """The people a device is shared with see the owner's change (its name, address…) without a reload."""
+    with _scope() as session:
+        reached = _reached(session, server_id)
+    for user_id in reached:
+        _changed(user_id)
+
+
 def remove(user_id: int, server_id: str) -> bool:
     with _scope() as session:
-        removed = session.execute(delete(DeviceRow).where(DeviceRow.user_id == user_id,
-                                                          DeviceRow.id == server_id)).rowcount > 0
+        owned = session.scalar(select(DeviceRow.id).where(DeviceRow.user_id == user_id, DeviceRow.id == server_id))
+        if owned is None:                 # someone else's device (a shared one): nothing of it is touched
+            return False
+        reached = _reached(session, server_id)
+        session.execute(delete(DeviceShare).where(DeviceShare.device_id == server_id))
+        removed = session.execute(delete(DeviceRow).where(DeviceRow.id == server_id)).rowcount > 0
+    for other in reached:
+        _changed(other)
     if removed:
         _forget({server_id})
         _changed(user_id)
@@ -298,6 +390,8 @@ def clear(user_id: int) -> int:
     """Every device of this user (their Devices access was taken away)."""
     with _scope() as session:
         ids = set(session.scalars(select(DeviceRow.id).where(DeviceRow.user_id == user_id)))
+        if ids:
+            session.execute(delete(DeviceShare).where(DeviceShare.device_id.in_(ids)))
         count = session.execute(delete(DeviceRow).where(DeviceRow.user_id == user_id)).rowcount
     _forget(ids)
     if count:

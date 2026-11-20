@@ -804,3 +804,18 @@ export async function bulkUpdateUsers(ids: number[], changes: UserBulkChanges): 
   return request("/api/auth/users/bulk", { method: "POST", body: JSON.stringify({ ids, changes }) });
 }
 
+/** Who an admin's device is shared with (BACKLOG L30 T4): a person or a team, and what the agent may do. */
+export type DeviceShare = { user_id: number | null; username?: string | null; team: string | null; mode: "audit" | "confirm" };
+
+export async function getDeviceShares(id: string): Promise<DeviceShare[]> {
+  return request(`/api/servers/${encodeURIComponent(id)}/shares`);
+}
+
+/** Replace who may use the device; they use it from chat and never see its password. */
+export async function setDeviceShares(id: string, shares: DeviceShare[]): Promise<DeviceShare[]> {
+  return request(`/api/servers/${encodeURIComponent(id)}/shares`, {
+    method: "PUT",
+    body: JSON.stringify({ shares: shares.map(({ user_id, team, mode }) => ({ user_id, team, mode })) }),
+  });
+}
+

@@ -88,6 +88,22 @@ class DeviceRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
+class DeviceShare(Base):
+    """An admin's saved device shared with one person or a whole team (BACKLOG L30 T4): they use it from chat in this
+    share's mode (audit = read-only, confirm = each change asked) and never see its password; the login stays the
+    owner's row, so changing the password once changes it for everyone. One of user_id / team is set."""
+
+    __tablename__ = "device_shares"
+    __table_args__ = (UniqueConstraint("device_id", "user_id", "team", name="uq_device_share"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    device_id: Mapped[str] = mapped_column(ForeignKey("devices.id"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    team: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    mode: Mapped[str] = mapped_column(String(20), default="audit")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class RefreshToken(Base):
     """One refresh token of a sign-in (BACKLOG L16 S1); only its SHA-256 is kept. A sign-in is a family:
     each refresh spends the token and issues the next one in the same family. A spent token shown again

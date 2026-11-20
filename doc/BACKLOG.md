@@ -831,13 +831,20 @@ queue wait so far under 12 s.
 - [x] A finished answer marks the tab title ("✓") while the person is elsewhere, and a browser notification when
       they already allowed them
 
-**T4 — sharing in a team** (each needs the user's yes on the design first)
-- [ ] Team devices: an admin's saved server that chosen members may use, never see; every use logged — instead of
-      10 copies of the root password
-- [ ] Roles beyond admin / member: team lead (approves, sees their team's usage), auditor (read-only)
-- [ ] Share a chat or project read-only with a person or a team; team skills
-- [ ] Team knowledge: documents a team uploads (needs a new decision: today "private data never mixes with the
-      shared brain", and only public + private scopes exist)
+**T4 — sharing in a team** — designs decided by the user 2026-11-20 (all four as recommended); build order below
+- [x] **Team devices — built 2026-11-20:** an admin saves a server once and shares it with chosen people or teams,
+      each with a mode (read-only / ask first, never trusted); they use it from chat and never see the password;
+      every command on a shared device is logged with who asked (reads too); one password change for everyone.
+      Personal devices keep working. `device_shares` table, `server_vault.list_servers` (a person's own share wins
+      over their team's), `set_shares` (replace-all, one transaction), Devices → device → **Sharing**
+- [ ] **Roles:** *team lead* — for their own team only: approve sign-ups, make reset links, deactivate, see the
+      team's usage; cannot change roles, admins or settings. *Auditor* — read-only usage, security log and server
+      commands; changes nothing
+- [ ] **Sharing chats and projects:** read-only with chosen people or a team, under "Shared with me"; "Continue in
+      my own chat" makes a copy; the owner sees who has it and can stop sharing any time
+- [ ] **Team knowledge:** a new *team* level in the knowledge base (next to public and private): documents (PDF,
+      Word, Markdown, text) uploaded by an admin or that team's lead, found only by that team's members — one
+      person's private data still never mixes with shared knowledge (decision 2026-10-14 kept)
 
 **T5 — operations**
 - [ ] Monitoring: health, disk, GPU, database size, queue depth, last backup — an alert when one is wrong

@@ -58,6 +58,12 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
                       <span className="flex items-center gap-2 font-semibold">
                         <span className={`h-2 w-2 shrink-0 rounded-full ${modeDot[s.mode]}`} title={MODE_LABEL[s.mode]} />
                         {s.label || s.host}
+                        {s.shared_by ? (
+                          <span className="rounded-full border border-line px-1.5 py-0.5 text-[0.65rem] font-normal text-muted"
+                                title="Shared with you: you use it from chat; only the owner can change it or see its login">
+                            shared by {s.shared_by}
+                          </span>
+                        ) : null}
                       </span>
                       {/* the type, hidden as a column on a phone */}
                       <small className="block text-xs text-muted sm:hidden">{KIND_NAME[s.kind]}</small>
@@ -71,7 +77,9 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
                     </td>
                     <td className={`${table.td} hidden lg:table-cell text-muted`}>{s.os || "—"}</td>
                     <td className={table.td}>
-                      {s.kind === "ssh" ? (
+                      {s.shared_by ? (
+                        <span className="whitespace-nowrap text-muted">{MODE_LABEL[s.mode]}</span>
+                      ) : s.kind === "ssh" ? (
                         <select
                           className={formFieldCompact}
                           value={s.mode}
@@ -87,9 +95,10 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
                       )}
                     </td>
                     <td className={`${table.td} text-right`}>
+                      {s.shared_by ? null : (
                       <span className="inline-flex gap-1.5">
                         <Link href={devicePath(s.id)} className={btn("ghost", "sm")}>
-                          Edit
+                          {isAdmin ? "Edit · Share" : "Edit"}
                         </Link>
                         <button
                           type="button"
@@ -101,6 +110,7 @@ export default function ServersSection({ servers, isAdmin }: { servers: ServersA
                           Remove
                         </button>
                       </span>
+                      )}
                     </td>
                   </tr>
                 );

@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from src.core.auth import require_module
 from src.core.models_db import User
-from web.schemas import ServerLoginPayload, ServerModePayload
+from src.core.auth import require_admin
+from web.schemas import DeviceSharesPayload, ServerLoginPayload, ServerModePayload
 
 logger = logging.getLogger("multeagent.web")
 
@@ -149,3 +150,31 @@ def remove_server(server_id: str, user: User = Depends(DEVICES)) -> dict[str, st
     if not server_vault.remove(user.id, server_id):
         raise HTTPException(status_code=404, detail="server not found (the session may have ended)")
     return {"status": "removed", "id": server_id}
+
+
+# ── team devices (BACKLOG L30 T4): an admin shares a saved device with people or teams ─────────────────────
+
+@router.get("/{server_id}/shares")
+def device_shares(server_id: str, admin: User = Depends(require_admin)) -> list[dict[str, Any]]:
+    """Who this admin's device is shared with, and in which mode."""
+    from src.servers import server_vault
+
+    try:
+        return server_vault.shares(admin.id, server_id)
+    except server_vault.VaultError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.put("/{server_id}/shares")
+def set_device_shares(server_id: str, payload: DeviceSharesPayload,
+                      admin: User = Depends(require_admin)) -> list[dict[str, Any]]:
+    """Replace who may use this admin's device (read-only or ask-first); they never see its password. One
+    transaction; each person who gained or lost it sees their Devices list change."""
+    from src.servers import server_vault
+
+    try:
+        return server_vault.set_shares(admin.id, server_id, [s.model_dump() for s in payload.shares])
+    except server_vault.VaultError as exc:
+        status = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+

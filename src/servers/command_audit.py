@@ -1,8 +1,9 @@
 """Audit log of commands the agent ran on a server (SERVER_ACCESS_DECISION.md §8).
 
 One row per command that changed, or would have changed, a server. The host and command are stored;
-the password never is. Read-only diagnose commands are not logged (they change nothing). Writing the
-log never breaks the operation — a logging failure is swallowed with a warning.
+the password never is. Read-only commands are not logged (they change nothing) — except on a device an admin
+shared with people (BACKLOG L30 T4), where every command is logged with who asked. Writing the log never breaks
+the operation — a logging failure is swallowed with a warning.
 """
 
 from __future__ import annotations
