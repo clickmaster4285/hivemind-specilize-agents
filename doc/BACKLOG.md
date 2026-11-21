@@ -896,7 +896,7 @@ whole answers later**; **freshness by type**; a deleted person's chats are **kep
       knowledge-base answer to a general first question is kept (`src/brain/answer_cache.py`, migration 007,
       `brain.answer_cache`, system-written, readable by all); the same first question later gets it before any
       routing — question-to-question similarity ≥ 0.92 (vs 0.70 for saved pages, which are only material), the
-      same identifiers (every token with a digit: versions, IPs, ports, codes), young enough for its kind. Never
+      same identifiers (every token with a digit: versions, IPs, ports, codes; and since 2026-11-21 which way it asks — enable/disable, install/remove, allow/block, up/down, lock/unlock, a negation: O126), young enough for its kind. Never
       kept: unsupported statements, non-public sources; never reused: with a chat history, pictures, skills, Deep /
       Options, follow-ups, "Try again", scheduled runs. "⚡ Answered earlier, on …" + **Fresh answer** (writes a
       new one, kept instead). Off switch `REUSE_ANSWERS=false`

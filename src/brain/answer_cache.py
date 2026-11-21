@@ -44,10 +44,31 @@ Embed = Callable[[str], list[float]]
 DIGIT_TOKEN_RE = re.compile(r"[\w.:/-]*\d[\w.:/-]*")
 
 
+# which way a question asks (checklist 2026-11-20: "how do I disable the firewall on ubuntu" is 0.925 like "... enable
+# ..." and would have got its answer): each word names a side, and both questions must ask the same sides
+DIRECTION_WORDS = {
+    "on": ("enable", "enabled", "enabling", "activate", "start", "turn on", "switch on"),
+    "off": ("disable", "disabled", "disabling", "deactivate", "stop", "turn off", "switch off"),
+    "add": ("install", "installed", "add", "create", "set up", "setup"),
+    "remove": ("uninstall", "remove", "removed", "delete", "purge", "get rid of"),
+    "allow": ("allow", "permit", "unblock", "whitelist", "open"),
+    "block": ("block", "deny", "blacklist", "close"),
+    "up": ("increase", "upgrade", "raise", "extend", "enlarge"),
+    "down": ("decrease", "downgrade", "reduce", "shrink", "lower"),
+    "lock": ("lock", "encrypt", "mount"),
+    "unlock": ("unlock", "decrypt", "unmount", "umount"),
+    "not": ("not", "no", "never", "without", "can't", "cannot", "won't", "doesn't", "don't", "isn't"),
+}
+DIRECTION_RE = {side: re.compile(r"(?<![\w'])(?:" + "|".join(re.escape(w) for w in words) + r")(?![\w'])", re.I)
+                for side, words in DIRECTION_WORDS.items()}
+
+
 def identifiers(question: str) -> set[str]:
-    """What must be the same in two questions for one answer to serve both."""
+    """What must be the same in two questions for one answer to serve both: the digit tokens, the strong terms and
+    which way it asks ("~on" for enable / turn on, "~not" for a negation)."""
     found = {m.group(0).strip(".:/-").lower() for m in DIGIT_TOKEN_RE.finditer(question)}
-    return {t for t in found if t} | {t.lower() for t in detect_exact_terms(question)[0]}
+    asks = {f"~{side}" for side, pattern in DIRECTION_RE.items() if pattern.search(question.replace("’", "'"))}
+    return {t for t in found if t} | {t.lower() for t in detect_exact_terms(question)[0]} | asks
 
 
 def _vector(values: list[float]):

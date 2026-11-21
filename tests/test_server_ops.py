@@ -568,3 +568,41 @@ def test_comparing_with_the_remote_is_read_only_fetching_is_not():
 def test_pm2_reading_is_read_only_its_actions_are_not(command, read_only):
     """2026-11-19, zamr server: `pm2 status` asked for approval twice; diagnose could not use pm2 at all."""
     assert (so.classify_command(command) is None) is read_only
+
+
+# ── O69: a follow-up ("run git pull there") works in the folder the chat looked at ───
+def test_the_operate_agent_gets_the_assistants_reading_of_the_message(monkeypatch):
+    from src.servers import server_vault
+
+    login = so.ServerLogin(id="1", label="uk", host="94.0.0.1", port=22, username="root", password="p", mode="confirm")
+    monkeypatch.setattr(server_vault, "list_servers", lambda user_id: [login])
+    monkeypatch.setattr(server_vault, "find", lambda user_id, name: login)
+    monkeypatch.setattr(so, "_remember_folder", lambda *a: None)
+    tasks: list[str] = []
+    monkeypatch.setattr(so, "operate", lambda login, task, **_: tasks.append(task) or so.OperateResult(report="ok"))
+    cfg = replace(Config.from_env(), security_scan_enabled=True)
+    so.run_server_operate("run git pull there", job_id="j", config=cfg, user_id=7,
+                          task="cd /var/www/app && git pull")
+    so.run_server_operate("restart nginx", job_id="j", config=cfg, user_id=7, task="restart nginx")
+    assert tasks == ["run git pull there\n(Read in this chat as: cd /var/www/app && git pull)", "restart nginx"]
+
+
+def test_the_folder_a_job_worked_in():
+    run = so.CommandRun
+    assert so.worked_folder([run("cd /var/www/app && git status", code=0), run("ls", code=0)]) == "/var/www/app"
+    assert so.worked_folder([run("cd /var/www/a/ && ls", code=0), run("cd /srv/b; ls", code=0)]) == "/srv/b"
+    assert so.worked_folder([run("cd /var/www/gone && ls", code=2)]) == ""          # it failed: not that folder
+    assert so.worked_folder([run("cd /root && ls", code=0), run("df -h", code=0)]) == ""   # home: no project
+    assert so.worked_folder([run("git -C /var/www/app status", code=0)]) == ""
+
+
+def test_the_status_line_says_when_the_open_login_is_used():
+    login = so.ServerLogin(id="9", label="uk", host="94.0.0.9", port=22, username="root", password="p", mode="confirm")
+    assert so._login_line(login).startswith("Logging in to")
+    with so._idle_lock:
+        so._idle[so._pool_key(login)] = (object(), 0.0)
+    try:
+        assert so._login_line(login).startswith("Using the open login to")
+    finally:
+        with so._idle_lock:
+            so._idle.pop(so._pool_key(login), None)

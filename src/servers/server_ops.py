@@ -454,6 +454,14 @@ def release_session(session: RemoteSession) -> None:
     _start_sweeper()
 
 
+def _login_line(login: ServerLogin) -> str:
+    """The status line before the first command: the login kept from the last message is used again, so the chat
+    does not say "Logging in" when it does not (checklist 2026-11-20, O69)."""
+    with _idle_lock:
+        kept = _pool_key(login) in _idle
+    return f"Using the open login to {login.shown}…" if kept else f"Logging in to {login.shown}…"
+
+
 def forget(login_ids: set[str]) -> None:
     """These logins were removed (Settings → Devices, or access taken away): close their kept connections now."""
     with _idle_lock:
@@ -686,6 +694,30 @@ def diagnose(
     return result
 
 
+# the folder a command worked in: `cd /var/www/app && git status` (each command is a new shell, so the cd is in it)
+_CD_FOLDER = re.compile(r"(?:^|&&|;)\s*cd\s+(/[^\s;&|'\"]+)")
+
+
+def worked_folder(runs: list[CommandRun]) -> str:
+    """The folder the last successful `cd /path …` command worked in, or "" (a home or root folder is no project)."""
+    for run in reversed(runs):
+        found = _CD_FOLDER.findall(run.command) if run.code == 0 else []
+        folder = found[-1].rstrip("/") if found else ""
+        if folder and folder.count("/") >= 2:
+            return folder
+    return ""
+
+
+def _remember_folder(config: Config, job_id: str, runs: list[CommandRun]) -> None:
+    """Keep the folder this job worked in as the chat's project, so "run git pull there" next works in it (O69):
+    only deploy used to remember one. Another folder than the chat's last one drops that one's branch and deploy."""
+    from src.jobs import chat_work
+
+    folder = worked_folder(runs)
+    if folder and chat_work.get(config, job_id).get("project") != folder:
+        chat_work.remember(config, job_id, project=folder, branch=None, deploy=None)
+
+
 # ── as a chat job ──────────────────────────────────────────────────────────
 def _commands_block(runs: list[CommandRun]) -> str:
     """The commands under a report, as Markdown: the chat does not render HTML such as <details> (O65)."""
@@ -721,7 +753,7 @@ def run_server_diagnose(
         if login is None:
             output = ask_first
         else:
-            status(f"Logging in to {login.shown}…")
+            status(_login_line(login))
 
             def on_command(run: CommandRun) -> None:
                 status(("Refused: " if run.refused else "Ran: ") + run.command[:70])
@@ -729,6 +761,7 @@ def run_server_diagnose(
             result = diagnose(login, query, config=config, should_continue=lambda: not live.is_stopped(job_id),
                               on_command=on_command, context=chat_work)
             _log_shared_reads(config, user_id, job_id, login, result.runs, refused_too=True)
+            _remember_folder(config, job_id, result.runs)
             note = "\n\n_Read-only diagnosis: the server was not changed._"
             output = (result.report or "No findings.") + _commands_block(result.runs) + note
     except (AuditError, VaultError) as exc:
@@ -916,10 +949,13 @@ def run_server_operate(
     server: str | None = None,
     user_id: int | None = None,
     chat_work: str = "",
+    task: str = "",
     **_: object,
 ) -> tuple[str, list[str], float]:
     """'log in to web01 and restart nginx' / 'run deploy.sh on web01' → the agent does the work, changing
-    commands gated by the server's mode (audit/confirm/trusted). Every change is logged."""
+    commands gated by the server's mode (audit/confirm/trusted). Every change is logged.
+    task: the assistant's reading of the message, with "there" and "it" resolved from the chat (O69: "run git pull
+    there" ran in the home folder because only the bare message reached the command model)."""
     from src.jobs import live
     from src.servers import server_vault
 
@@ -945,15 +981,18 @@ def run_server_operate(
         if login is None:
             output = ask_first
         else:
-            status(f"Logging in to {login.shown}…")
+            status(_login_line(login))
 
             def on_command(run: CommandRun) -> None:
                 status(("Refused: " if run.refused else "Ran: ") + run.command[:70])
 
-            result = operate(login, query, config=config, user_id=user_id, job_id=job_id,
+            task = task.strip()
+            wanted = query if not task or task == query.strip() else f"{query}\n(Read in this chat as: {task})"
+            result = operate(login, wanted, config=config, user_id=user_id, job_id=job_id,
                              should_continue=lambda: not live.is_stopped(job_id), confirm=confirm,
                              on_command=on_command, context=chat_work)
             _log_shared_reads(config, user_id, job_id, login, result.runs, refused_too=False)
+            _remember_folder(config, job_id, result.runs)
             note = (f"\n\n_Operated on **{login.label}** ({login.mode} mode): {result.changes} change(s) made. "
                     "Every change is in the command log._")
             output = (result.report or "Done.") + _commands_block(result.runs) + note

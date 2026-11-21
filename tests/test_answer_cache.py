@@ -132,10 +132,15 @@ def test_a_general_question_does_not_get_an_answer_written_for_one_version(confi
 
 
 @pytest.mark.parametrize("question, ids", [
-    ("upgrade nginx 1.26 on debian", {"1.26"}),
+    ("upgrade nginx 1.26 on debian", {"1.26", "~up"}),
     ("what is on 192.168.10.45?", {"192.168.10.45"}),
     ("error 0x80070005 after KB5034441", {"0x80070005", "kb5034441"}),
     ("how do I restart nginx", set()),
+    ("how do I enable the firewall on ubuntu", {"~on"}),
+    ("how to turn on the ubuntu firewall", {"~on"}),
+    ("how do I disable the firewall on ubuntu", {"~off"}),
+    ("why is the firewall not enabled", {"~not", "~on"}),
+    ("uninstall docker on debian", {"~remove"}),
 ])
 def test_the_identifiers_two_questions_must_share(question, ids):
     assert answer_cache.identifiers(question) == ids
